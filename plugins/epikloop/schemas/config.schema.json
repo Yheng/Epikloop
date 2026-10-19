@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Yheng/Epikloop/main/plugins/epikloop/schemas/config.schema.json",
+  "title": "Epikloop user config",
+  "description": "~/.epikloop/config.json: per-user settings, never committed.",
+  "type": "object",
+  "required": ["format"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": 1, "description": "Format version of this file." },
+    "effort": {
+      "type": "object",
+      "description": "Story-worker effort per tier. A project's own setting in .epikloop/project.json wins over this one.",
+      "additionalProperties": false,
+      "properties": {
+        "T1": { "$ref": "#/$defs/effort" },
+        "T2": { "$ref": "#/$defs/effort" },
+        "T3": { "$ref": "#/$defs/effort" }
+      }
+    },
+    "harbor": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether Harbor runs. Off means no Harbor process exists."
+    }
+  },
+  "$defs": {
+    "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+  }
+}

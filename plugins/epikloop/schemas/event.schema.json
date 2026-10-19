@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Yheng/Epikloop/main/plugins/epikloop/schemas/event.schema.json",
+  "title": "Epikloop event line",
+  "description": "One line of ~/.epikloop/events/YYYY-MM-DD.jsonl, written only inside an Epikloop project. Events say where, never what: no tool output, prompts, file contents or secret values.",
+  "type": "object",
+  "required": ["format", "ts", "project_id", "cwd", "session_id", "kind"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": 1, "description": "Format version of the line." },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The emitter's clock, ISO 8601 UTC with milliseconds. Hook input carries no timestamp."
+    },
+    "project_id": { "type": "string", "pattern": "^[0-9a-f]{12}$" },
+    "cwd": { "type": "string", "minLength": 1 },
+    "session_id": { "type": "string", "minLength": 1 },
+    "kind": {
+      "enum": [
+        "session.start",
+        "session.end",
+        "tool.pre",
+        "tool.post",
+        "subagent.start",
+        "subagent.stop",
+        "task.created",
+        "task.completed",
+        "permission.requested",
+        "notification",
+        "stop",
+        "story.started",
+        "story.committed",
+        "gate.passed",
+        "gate.failed",
+        "question.parked",
+        "decision.recorded",
+        "phase.tagged"
+      ]
+    },
+    "story": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+    "tool": { "type": "string", "minLength": 1 },
+    "agent": { "type": "string", "minLength": 1 },
+    "state": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "One status word for the subject, such as a gate name for gate.* or awaiting-review for a T3 story."
+    },
+    "detail": {
+      "type": "object",
+      "description": "Identifiers and counts only.",
+      "maxProperties": 16,
+      "additionalProperties": {
+        "anyOf": [
+          { "type": "string", "maxLength": 512 },
+          { "type": "number" },
+          { "type": "boolean" }
+        ]
+      }
+    }
+  }
+}

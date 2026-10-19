@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Yheng/Epikloop/main/plugins/epikloop/schemas/cost-row.schema.json",
+  "title": "Epikloop cost row",
+  "description": "One line of ~/.epikloop/projects/<id>/cost.jsonl per closed story. Written by the emitter, never by the model; the instrument for tuning effort levels.",
+  "type": "object",
+  "required": ["format", "ts", "story", "tier", "wall", "cost", "model", "effort"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": 1, "description": "Format version of the line." },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the story closed, by the emitter's clock (ISO 8601 UTC)."
+    },
+    "story": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+    "tier": { "enum": ["T1", "T2", "T3"] },
+    "wall": { "type": "number", "minimum": 0, "description": "Wall-clock seconds, from the emitter's own clock." },
+    "cost": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "USD when a source reports it; null otherwise. Never a placeholder 0."
+    },
+    "model": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Model id when reported; null otherwise."
+    },
+    "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+  }
+}

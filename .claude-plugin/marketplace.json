@@ -1,0 +1,19 @@
+{
+  "name": "epikloop",
+  "description": "Epikloop: an agentic delivery loop for Claude Code.",
+  "owner": {
+    "name": "Ariel Retes"
+  },
+  "plugins": [
+    {
+      "name": "epikloop",
+      "source": "./plugins/epikloop",
+      "description": "Spec it, story it, run the epic unattended through hard gates, decide, run again, ship."
+    },
+    {
+      "name": "epikloop-harbor",
+      "source": "./plugins/epikloop-harbor",
+      "description": "Optional local 3D view of your Epikloop projects, drawn from files Epikloop already writes."
+    }
+  ]
+}

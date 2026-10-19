@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "id": "3f9c2a7b1e04",
+  "lane": "web",
+  "mode": "solo",
+  "mvp_frozen": "2026-11-02",
+  "effort": { "T3": "max" },
+  "hours_per_day": 4,
+  "deadline": "2027-01-15",
+  "staging_url": "https://staging.example.com",
+  "gates": {
+    "commands": { "test": "npm test", "e2e": "npx playwright test" },
+    "ratchet": { "lint": 412, "typecheck": 37 },
+    "token_ignore": [
+      { "path": "src/legacy/**", "reason": "Pre-token UI, replaced in epic 4" }
+    ],
+    "allow_workflows": ["deploy.yml"]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "ts": "2026-10-19T14:03:22.118Z",
+  "project_id": "3f9c2a7b1e04",
+  "cwd": "/home/dev/shop",
+  "session_id": "8d1e5c2a-4b7f-4e0a-9c3d-2f6b8a1e7c90",
+  "kind": "gate.failed",
+  "story": "2.3",
+  "state": "typecheck",
+  "detail": { "errors": 3, "file": "src/cart/total.ts" }
+}

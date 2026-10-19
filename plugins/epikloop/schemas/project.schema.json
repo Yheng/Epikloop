@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Yheng/Epikloop/main/plugins/epikloop/schemas/project.schema.json",
+  "title": "Epikloop project marker",
+  "description": "The committed .epikloop/project.json that makes a repository an Epikloop project. Teammates get identical behaviour because the project describes itself.",
+  "type": "object",
+  "required": ["format", "id", "lane", "mode"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": 1, "description": "Format version of this file." },
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$",
+      "description": "Project id, derived once when the project is created: the first 12 hex digits of the SHA-256 of the normalized git remote (host/owner/repo, lowercased, without scheme, credentials or .git), or of the repository path when there is no remote. Committed, so moved and re-cloned repos keep their state."
+    },
+    "lane": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Lane profile: web, service, mobile-expo, mobile-flutter, or a community lane.",
+      "examples": ["web", "service", "mobile-expo", "mobile-flutter"]
+    },
+    "mode": {
+      "enum": ["solo", "team"],
+      "description": "Team mode adds one required GitHub check that runs scripts/check.sh on pull requests; solo mode has no workflow."
+    },
+    "mvp_frozen": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the MVP set was frozen by plan. It moves only by a recorded decision."
+    },
+    "effort": { "$ref": "#/$defs/effort_overrides" },
+    "hours_per_day": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 24,
+      "description": "Hours per day the human works on the project; an input to the ETA."
+    },
+    "deadline": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Target date, when there is one."
+    },
+    "staging_url": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "description": "Where the staging smoke runs."
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Gate configuration read by scripts/check.sh.",
+      "properties": {
+        "commands": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Stack commands. Blanks are auto-detected for Node, Python, Go and Rust.",
+          "properties": {
+            "lint": { "type": "string", "minLength": 1 },
+            "typecheck": { "type": "string", "minLength": 1 },
+            "test": { "type": "string", "minLength": 1 },
+            "build": { "type": "string", "minLength": 1 },
+            "e2e": { "type": "string", "minLength": 1 }
+          }
+        },
+        "ratchet": {
+          "type": "object",
+          "description": "Brownfield baselines: a gate passes while its error count stays at or below its baseline. Retros lower the numbers.",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "token_ignore": {
+          "type": "array",
+          "description": "Exceptions to the token gate, each with its reason.",
+          "items": {
+            "type": "object",
+            "required": ["path", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string", "minLength": 1, "description": "Glob relative to the repository root." },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "allow_workflows": {
+          "type": "array",
+          "description": "Workflow files that solo mode tolerates; any other workflow fails the gates.",
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.ya?ml$" },
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "effort_overrides": {
+      "type": "object",
+      "description": "Story-worker effort per tier. Precedence: this file, then ~/.epikloop/config.json, then the plugin defaults (T1 medium, T2 high, T3 xhigh).",
+      "additionalProperties": false,
+      "properties": {
+        "T1": { "$ref": "#/$defs/effort" },
+        "T2": { "$ref": "#/$defs/effort" },
+        "T3": { "$ref": "#/$defs/effort" }
+      }
+    },
+    "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+  }
+}

@@ -1,0 +1,3 @@
+# LF in every checkout on every OS. Git for Windows defaults to core.autocrlf=true, which would
+# give Windows clones CRLF frontmatter and, later, CRLF shebangs in the hook shims.
+* text=auto eol=lf

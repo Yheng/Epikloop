@@ -1,0 +1,14 @@
+{
+  "name": "epikloop-harbor",
+  "displayName": "Epikloop Harbor",
+  "version": "0.1.0-dev.0",
+  "description": "Optional local 3D view of Epikloop projects, drawn from the event log and repo files Epikloop already writes.",
+  "author": {
+    "name": "Ariel Retes"
+  },
+  "homepage": "https://github.com/Yheng/Epikloop",
+  "repository": "https://github.com/Yheng/Epikloop",
+  "license": "Apache-2.0",
+  "keywords": ["visualizer", "dashboard", "epikloop"],
+  "dependencies": ["epikloop"]
+}
