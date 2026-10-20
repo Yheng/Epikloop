@@ -19,6 +19,9 @@ All notable changes to Epikloop are recorded here.
 - JSON Schemas, each with an example, for `.epikloop/project.json`, the event line, the cost row and
   `~/.epikloop/config.json`.
 - CI that validates the marketplace and both plugins on Linux, macOS and Windows.
+- The git guard: a PreToolUse hook on Bash and PowerShell that, inside an Epikloop project, denies
+  six git usages and allows the pipeline's own commands. CI runs its self-test on Linux, macOS and
+  Windows.
 
 ### Founding rules (adopted 2026-10-19)
 
@@ -48,3 +51,9 @@ Each article of the constitution, with the failure it answers:
   path that contains a backslash, as `path escapes plugin directory`, and loads the plugin without
   that component, so a backslash path works on Windows only. Found in Claude Code's plugin
   reference during the hooks-module spike.
+
+### Gate rules (adopted 2026-10-20)
+
+- **The git guard** — an audit of an earlier pipeline's gates found the model could get past them
+  with git itself (skipping hooks, repointing `core.hooksPath`) and could destroy work with
+  force-push, hard reset, `clean -fdx` and whole-tree checkout or restore.

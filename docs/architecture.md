@@ -95,14 +95,19 @@ What each event does:
   only.
   - Both tools are covered because on Windows without Git Bash there is no Bash tool, and PowerShell
     is on by default for claude.ai and Console accounts.
+  - It acts only inside an Epikloop project, found the way SessionStart finds one. Elsewhere it
+    gives no answer.
   - It sets `onFailure: "block"`, so a crash fails closed.
   - It denies first, with a reason: `git … --no-verify`, `git commit -n`,
     `git push … -f/--force/+ref/--delete`, `git reset --hard`,
-    `git switch -f/--discard-changes`, hooks-path overrides, `git clean -fdx`, `git checkout -- .`
+    `git switch -f/--discard-changes`, hooks-path overrides, `git clean -f`, `git checkout -- .`
     and `git restore .`.
   - It then allows the pipeline's own ceremony: `scripts/check.sh`,
     `git status/diff/log/fetch/add/commit/push/switch/tag/branch`, `gh issue/pr`, and the active
-    lane's UI test tool.
+    lane's UI test tool. Merging and deleting are left out: `gh pr merge/close`,
+    `git branch -d/-D` and `git tag -d`.
+  - It allows a command only when every part of it is on that list, and nothing in it substitutes
+    or redirects, gives git a global option or a URL, or runs a program through a git option.
   - A plugin can't ship a permissions allowlist, so this hook is how the pipeline runs without
     prompts in default, acceptEdits and dontAsk modes. Plan mode and the user's own deny and ask
     rules still apply.
@@ -158,8 +163,8 @@ The module has these limits:
 The gates' self-test measures two targets:
 
 - no blocking hook on non-shell tools
-- blocking time per shell command under 150 ms on Windows, where spawning Node alone takes roughly
-  110–140 ms
+- blocking time per shell command: median under 150 ms on Windows, max reported. Spawning Node
+  alone takes roughly 110–140 ms there.
 
 ### Event log and cost rows
 

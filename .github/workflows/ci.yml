@@ -31,3 +31,4 @@ jobs:
       - run: claude plugin validate . --strict
       - run: claude plugin validate plugins/epikloop --strict
       - run: claude plugin validate plugins/epikloop-harbor --strict
+      - run: node plugins/epikloop/bin/guard.mjs --self-test

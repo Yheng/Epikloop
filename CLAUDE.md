@@ -18,8 +18,8 @@ This is the tool, not a product built with it.
   `scripts/check.sh`, `.githooks/`) appear here only as templates and eval fixtures.
 - This repository's own `docs/` is documentation about Epikloop.
 
-Skills currently have frontmatter and a purpose paragraph but no bodies. Hooks, scripts, lanes and
-templates arrive with M1 (`docs/roadmap.md`).
+Skills currently have frontmatter and a purpose paragraph but no bodies. The git guard is the first
+hook; the other hooks, scripts, lanes and templates arrive with M1 (`docs/roadmap.md`).
 
 ## Map
 
@@ -28,7 +28,9 @@ templates arrive with M1 (`docs/roadmap.md`).
   - `skills/<name>/SKILL.md` — the skills
   - `agents/story-worker.md` — the worker subagent
   - `schemas/` — JSON Schemas, with `examples/`
-  - later: `hooks/`, `bin/`, `lanes/`, `templates/`, `evals/`
+  - `hooks/hooks.json` — the hook registrations
+  - `bin/guard.mjs` — the git guard, the PreToolUse hook on `Bash|PowerShell`, with its self-test
+  - later: `lanes/`, `templates/`, `evals/`
 - `plugins/epikloop-harbor/` — a manifest only, until M4.
 - `CONSTITUTION.md` — the rules for changing Epikloop.
 - `docs/doctrine.md`, `docs/architecture.md` (the settled decisions) and `docs/roadmap.md`.
@@ -94,9 +96,12 @@ templates arrive with M1 (`docs/roadmap.md`).
 claude plugin validate . --strict
 claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
+node plugins/epikloop/bin/guard.mjs --self-test
 ```
 
-Validating the marketplace alone skips the plugins' own files, so run all three.
+Validating the marketplace alone skips the plugins' own files, so run all three validations. The
+self-test spawns the guard once per sample and prints failures plus one summary line with spawn
+times.
 
 To load a plugin for one session:
 

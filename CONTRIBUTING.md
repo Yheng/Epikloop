@@ -43,6 +43,7 @@ Run the same checks CI runs (Claude Code 2.1.295 or later):
 claude plugin validate . --strict
 claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
+node plugins/epikloop/bin/guard.mjs --self-test
 ```
 
 To try a plugin:

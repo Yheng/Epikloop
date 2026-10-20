@@ -26,7 +26,8 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 
 - the emitter and the event log
 - `check.sh` in Node, with its hook shims, the secret and token gates, and the self-test
-- the PreToolUse guard
+- the PreToolUse guard (done; the active lane's UI test tool joins its allow list with the lanes)
+  - baseline on 2026-10-20, on Windows: spawn median 128–133 ms, max 175–209 ms
 - the SessionStart briefing
 - the project marker and project id
 - the living-spec format
@@ -34,6 +35,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   `epic`/`next`/`story` (sequential workers), `decide`, `triage`, `retro` and `release`
 - the `web` and `service` lanes
 - CI self-test, lint and evals, on top of validation
+- CI mutation check — break one guard rule in a copy and expect the self-test to fail
 - a plugin eval suite with a fixture project
 - the lane authoring guide
 - this repository's own law checks:
