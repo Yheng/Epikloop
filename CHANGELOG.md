@@ -41,3 +41,10 @@ Each article of the constitution, with the failure it answers:
    tokens and caused over-verification.
 10. **Measure before tuning** — the same high effort for every story, plus per-story rituals, were
     the largest token cost, and no numbers showed it.
+
+### Contributor rules (adopted 2026-10-20)
+
+- **Forward slashes in plugin paths** — on macOS and Linux, Claude Code rejects a plugin component
+  path that contains a backslash, as `path escapes plugin directory`, and loads the plugin without
+  that component, so a backslash path works on Windows only. Found in Claude Code's plugin
+  reference during the hooks-module spike.

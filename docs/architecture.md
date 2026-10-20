@@ -69,7 +69,7 @@ Nothing else, ever.
 
 ## Hooks
 
-The core plugin's `hooks/hooks.json` is the backbone. Every hook follows four rules:
+The core plugin's `hooks/hooks.json` is the backbone. Every command hook follows four rules:
 
 - It is written in exec form (`"command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/…"]`), which
   runs without a shell on all three operating systems.
@@ -120,26 +120,40 @@ No blocking hook is registered on any non-shell tool.
 The emitter writes the event log and the cost rows; Harbor only reads what it writes.
 
 - It writes only inside an Epikloop project.
-- It never checks whether Harbor is on, because appending is cheaper than checking.
+- It never checks whether Harbor is on, because writing an event is cheaper than checking.
 - Hook input carries no timestamps, tokens or cost, so the emitter stamps time from its own clock.
 
-Which mechanism carries it is decided by the first task of milestone 1, a spike on hooks modules
-(plugin functions that run inside Claude Code's process). The spike passes if all three hold:
+The emitter is a hooks module: plain JavaScript that runs inside Claude Code's process, with no
+build step and no dependencies. `hooks/hooks.json` names it under `modules`, beside the command
+hooks above, and it handles every event that only emits. A spike, the first task of milestone 1,
+verified on Claude Code 2.1.303 that such a module loads on a user-scope install, runs on Linux,
+macOS and Windows, and reads session cost.
 
-- a plugin can ship the module and it loads on a user-scope install
-- it runs on Linux, macOS and Windows
-- it reads session cost
+- **Events.** It uses a native module event wherever one exists. `task.created`, `task.completed`
+  and `notification` have none, so they come from `classic.*` hooks.
+- **Writes.** A module can't append, so each event is one small JSON file in
+  `~/.epikloop/events/YYYY-MM-DD/`. The module finds home as Node's `os.homedir()` does:
+  `USERPROFILE` on Windows, `HOME` elsewhere.
+- **No waiting.** Its tool hooks pass each call on at once and never wait on a write.
+- **Compaction.** Harbor and `doctor` fold each day's folder into `events/YYYY-MM-DD.jsonl` with a
+  Node append, then delete what they folded. A file that doesn't parse yet is left for the next
+  pass, because a module's writes aren't atomic.
+- **Cost rows.** A story's `cost` is the rise in the session's cost total, read with
+  `$.session.usage()`, from the worker's start to its end. `model` comes from the worker's
+  `turn.complete`, `wall` from the module's clock, and `tier` and `effort` from the story. Each
+  row is written as a file too, and folded into `projects/<id>/cost.jsonl` the same way.
+  - This assumes a foreground, sequential worker, as in M1. With parallel workers the rise is
+    shared, so a row's `cost` is an upper bound until M3 settles it.
 
-If the spike passes, the module is the emitter:
+The module has these limits:
 
-- It writes one small file per event, since a module can't append.
-- A compaction step in Harbor or `doctor` folds those files into the day's `.jsonl`.
-- Cost rows carry real cost.
-
-If any criterion fails, the emitter uses spawned processes:
-
-- Emit-only hooks are spawned Node processes that run `async: true`, off the critical path.
-- Cost rows carry wall time, model, effort and tier with `"cost": null`, never a fake 0.
+- On a subscription, `cost` is a list-price equivalent, not money spent.
+- No module loads under `--bare` or `--safe-mode`, under a managed policy that turns mods off, or
+  while Claude Code's rollout switch for mods is off. There, no events or cost rows are written.
+  Under `--bare` and `--safe-mode` no plugin hook runs at all, command hooks included.
+- Where an organization manages Claude Code, `classic.*` hooks in a plugin a person installs don't
+  run, so `task.created`, `task.completed` and `notification` are not emitted. `doctor` reports
+  this, and reports when mods can't load on the machine.
 
 The gates' self-test measures two targets:
 
@@ -210,6 +224,9 @@ The token gate:
 
 Solo mode is layers 1 and 2; team mode is all three.
 
+Under `--bare` or `--safe-mode` no plugin hook runs, so layer 1 is absent in those sessions and
+only layers 2 and 3 gate them.
+
 ## Living spec and project files
 
 - **`spec/<capability>.md`** holds the current requirements with stable IDs (`REQ-AUTH-003`) and
@@ -271,8 +288,9 @@ fragments.
   and T3 xhigh.
 - Overrides are set per tier. `.epikloop/project.json` takes precedence over
   `~/.epikloop/config.json`.
-- Stamping each tier's effort onto worker spawns mechanically is a spike. No blocking hook sits on
-  non-shell tools, so that job can only live inside the hooks module.
+- The hooks module stamps each tier's effort onto the worker's spawn, by rewriting the Agent
+  call's `effort` in its `tool.call` hook. No blocking hook sits on non-shell tools, so the job
+  lives in the module.
 
 **Frontmatter conventions:**
 

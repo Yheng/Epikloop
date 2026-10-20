@@ -47,6 +47,8 @@ templates arrive with M1 (`docs/roadmap.md`).
 - **Three operating systems.** Linux, macOS and Windows are equal targets.
   - Build paths with `path`.
   - Write hooks in exec form: `"command": "node", "args": [...]`.
+  - Paths in manifests and `hooks.json` use forward slashes, because a backslash path loads on
+    Windows only.
 - **Hook behaviour.**
   - Hooks print nothing to stdout but their JSON answer, and exit 0.
   - They never register `WorktreeCreate` or `WorktreeRemove`.

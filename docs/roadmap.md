@@ -13,13 +13,14 @@ Each plugin follows semver on its own:
 
 ## M1 — Core that builds a web app
 
-**First task: the hooks-module spike.** It passes when all three hold:
+**First task, done: the hooks-module spike.** All three held on 2026-10-20, on Claude Code
+2.1.303:
 
 - a plugin can ship a hooks module that loads on a user-scope install
 - the module runs on Linux, macOS and Windows
 - the module reads session cost
 
-The result decides how the emitter is built (see [architecture](architecture.md#the-emitter)).
+So the emitter is a hooks module (see [architecture](architecture.md#the-emitter)).
 
 **Then:**
 
@@ -48,12 +49,18 @@ The result decides how the emitter is built (see [architecture](architecture.md#
   dontAsk modes honour it; plan mode does not.
 - **Where the protocol lives.** It could be SessionStart `additionalContext` or a small committed
   `CLAUDE.md` include. Measure the token cost of each. Hook text must stay under 10,000 characters.
-- **Cost-row fidelity.** Hooks report no cost, so real dollars depend on the hooks-module spike.
+- **Cost-row fidelity.** Settled: the module reads the session's cost, so rows carry dollars. On a
+  subscription they are a list-price equivalent, and with parallel workers an upper bound until
+  M3 (see [architecture](architecture.md#the-emitter)).
 - **Windows git hooks.** Git for Windows runs hook shims through its own `sh`. Confirm whether a
   `#!/usr/bin/env node` shim or a two-line `sh` wrapper calling `node` works on all three
   operating systems.
-- **Worker effort.** Should each tier's effort be stamped onto worker spawns mechanically, inside the
-  hooks module, or not at all?
+- **Worker effort.** Settled: mechanically, inside the hooks module, by rewriting the Agent call's
+  `effort` in a `tool.call` hook. The spike saw the rewrite reach the subagent's requests.
+- **`bin/` or `scripts/`.** claude.ai and Cowork don't install a plugin that has a top-level
+  `bin/`, whose files go on the Bash tool's `PATH`. The hooks call their scripts through
+  `${CLAUDE_PLUGIN_ROOT}`, and `check.sh` lives in product repos. If nothing needs `PATH`, rename
+  `bin/` to `scripts/` before the first release.
 
 **Done when:**
 
@@ -71,7 +78,8 @@ The result decides how the emitter is built (see [architecture](architecture.md#
 ## M3 — Speed
 
 **First, a spike:** worker subagents with worktree isolation, with the plugin's hooks firing inside
-each one. Known so far:
+each one. It also settles per-story cost when workers run in parallel and share the session's cost
+rise. Known so far:
 
 - hooks fire inside subagents and identify them
 - plugin subagents support worktree isolation
