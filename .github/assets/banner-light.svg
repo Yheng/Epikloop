@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="240" viewBox="0 0 960 240" role="img" aria-labelledby="title desc">
+  <title id="title">Epikloop</title>
+  <desc id="desc">An agentic delivery loop for Claude Code</desc>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="16">
+    <path stroke="#0f766e" d="M196 57.65A72 72 0 1 1 124 57.65"/>
+    <path stroke="#1f2328" d="M130 121l21 21 40-42"/>
+  </g>
+  <path fill="#0f766e" stroke="#0f766e" stroke-width="4" stroke-linejoin="round" d="M146.52 44.65 128.8 77.97 108.8 43.33z"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif">
+    <text x="280" y="126" fill="#1f2328" font-size="92" font-weight="700" letter-spacing="-1.5">Epikloop</text>
+    <text x="283" y="176" fill="#59636e" font-size="30">An agentic delivery loop for Claude Code</text>
+  </g>
+</svg>
