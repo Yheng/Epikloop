@@ -25,7 +25,10 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 **Then:**
 
 - the emitter and the event log (done)
-- `check.sh` in Node, with its hook shims, the secret and token gates, and the self-test
+- `check.sh` in Node, with its hook shims, the secret and token gates, and the self-test (done; the
+  runner is `.githooks/check.mjs`)
+- next, before any skill body: the guard allows `node .githooks/check.mjs` in PowerShell, and
+  stops allowing `scripts/check.sh` there, where it opens Git Bash instead of running
 - the PreToolUse guard (done; the active lane's UI test tool joins its allow list with the lanes)
   - baseline on 2026-10-20, on the maintainer's Windows 11 laptop: spawn median 128–133 ms, max
     175–209 ms; GitHub's windows-latest runner measures ~50 ms median
@@ -34,6 +37,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 - the living-spec format
 - skill bodies for `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`,
   `epic`/`next`/`story` (sequential workers), `decide`, `triage`, `retro` and `release`
+  - `doctor` also reports drift between a product's `.githooks/check.mjs` and the plugin's template
 - the `web` and `service` lanes
 - CI self-test, lint and evals, on top of validation
 - CI mutation check — break one guard rule in a copy and expect the self-test to fail
@@ -46,6 +50,12 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - DCO sign-off on every commit
   - no AI co-author trailers
 
+**Held until observed.** Each waits for the failure that would justify it:
+
+- **The ratchet:** brownfield baselines, held for an adoption whose old errors would fail every
+  commit.
+- **Literal spacing in the token gate,** and Tailwind's spacing utilities.
+
 **Open questions to settle along the way:**
 
 - **Auto mode.** Does a PreToolUse `allow` skip the auto-mode classifier? Default, acceptEdits and
@@ -55,9 +65,12 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 - **Cost-row fidelity.** Settled: the module reads the session's cost, so rows carry dollars. On a
   subscription they are a list-price equivalent, and with parallel workers an upper bound until
   M3 (see [architecture](architecture.md#the-emitter)).
-- **Windows git hooks.** Git for Windows runs hook shims through its own `sh`. Confirm whether a
-  `#!/usr/bin/env node` shim or a two-line `sh` wrapper calling `node` works on all three
-  operating systems.
+- **Windows git hooks.** Settled on 2026-10-21.
+  - Git for Windows and GitHub Desktop's git run a `#!/usr/bin/env node` hook and a two-line `sh`
+    wrapper alike: from PowerShell, Git Bash and a stripped PATH, with LF or CRLF.
+  - Both fail closed without Node.
+  - The hooks are Node files, so `scripts/check.sh` stays the one shell file.
+  - The self-test's real commits and pushes confirm Linux and macOS in CI.
 - **Worker effort.** Settled: mechanically, inside the hooks module, by rewriting the Agent call's
   `effort` in a `tool.call` hook. The spike saw the rewrite reach the subagent's requests.
 - **`bin/` or `scripts/`.** claude.ai and Cowork don't install a plugin that has a top-level

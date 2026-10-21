@@ -18,8 +18,8 @@ This is the tool, not a product built with it.
   `scripts/check.sh`, `.githooks/`) appear here only as templates and eval fixtures.
 - This repository's own `docs/` is documentation about Epikloop.
 
-Skills currently have frontmatter and a purpose paragraph but no bodies. The git guard and the
-emitter are in place; the other hooks, scripts, lanes and templates arrive with M1
+Skills currently have frontmatter and a purpose paragraph but no bodies. The git guard, the emitter
+and the gate runner are in place; the other hooks, scripts, lanes and templates arrive with M1
 (`docs/roadmap.md`).
 
 ## Map
@@ -33,7 +33,11 @@ emitter are in place; the other hooks, scripts, lanes and templates arrive with 
   - `hooks/emit.js` — the emitter, a hooks module, with its suite in `tests/emit.test.ts`
   - `bin/guard.mjs` — the git guard, the PreToolUse hook on `Bash|PowerShell`, with its self-test
   - `bin/fold.mjs` — folds the emitter's files into `.jsonl` files, with its self-test
-  - later: `lanes/`, `templates/`, `evals/`
+  - `templates/githooks/check.mjs` — the gate runner, which product repos carry as
+    `.githooks/check.mjs`, with its self-test. Beside it are `templates/githooks/pre-commit` and
+    `pre-push`, and `templates/scripts/check.sh`, the shims that run it. The rest of the plugin
+    copies them verbatim.
+  - later: `lanes/`, `evals/`, and the rest of `templates/`
 - `plugins/epikloop-harbor/` — a manifest only, until M4.
 - `CONSTITUTION.md` — the rules for changing Epikloop.
 - `docs/doctrine.md`, `docs/architecture.md` (the settled decisions) and `docs/roadmap.md`.
@@ -102,12 +106,19 @@ claude plugin validate plugins/epikloop-harbor --strict
 node plugins/epikloop/bin/guard.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
+node plugins/epikloop/templates/githooks/check.mjs --self-test
 ```
 
-Validating the marketplace alone skips the plugins' own files, so run all three validations. The
-guard's self-test spawns the guard once per sample and prints failures plus one summary line with
-spawn times. The plugin test runs the emitter's suite against simulated events, with no login. The
-fold's self-test folds sample files in a temporary folder.
+Validating the marketplace alone skips the plugins' own files, so run all three validations.
+
+- **The guard's self-test** spawns the guard once per sample. It prints failures plus one summary
+  line with spawn times.
+- **The plugin test** runs the emitter's suite against simulated events, with no login.
+- **The fold's self-test** folds sample files in a temporary folder.
+- **The gate runner's self-test** builds throwaway repos with bare remotes in a temporary folder.
+  - It commits and pushes through the real hooks, and runs every gate's samples.
+  - Then it checks that each mutation of the secret scan is caught.
+  - CI runs it again on Node 22.0.0, the floor.
 
 To load a plugin for one session:
 

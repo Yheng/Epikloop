@@ -46,6 +46,7 @@ claude plugin validate plugins/epikloop-harbor --strict
 node plugins/epikloop/bin/guard.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
+node plugins/epikloop/templates/githooks/check.mjs --self-test
 ```
 
 To try a plugin:

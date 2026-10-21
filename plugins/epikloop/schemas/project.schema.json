@@ -63,12 +63,6 @@
             "e2e": { "type": "string", "minLength": 1 }
           }
         },
-        "ratchet": {
-          "type": "object",
-          "description": "Brownfield baselines: a gate passes while its error count stays at or below its baseline. Retros lower the numbers.",
-          "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
-          "additionalProperties": { "type": "integer", "minimum": 0 }
-        },
         "token_ignore": {
           "type": "array",
           "description": "Exceptions to the token gate, each with its reason.",

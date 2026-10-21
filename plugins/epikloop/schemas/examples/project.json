@@ -10,7 +10,6 @@
   "staging_url": "https://staging.example.com",
   "gates": {
     "commands": { "test": "npm test", "e2e": "npx playwright test" },
-    "ratchet": { "lint": 412, "typecheck": 37 },
     "token_ignore": [
       { "path": "src/legacy/**", "reason": "Pre-token UI, replaced in epic 4" }
     ],

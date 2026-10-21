@@ -27,6 +27,18 @@ All notable changes to Epikloop are recorded here.
   `~/.epikloop/projects/<id>/cost/`. It sets each story-worker's effort from its story's tier and
   keeps the worker in the foreground. `bin/fold.mjs` folds those files into `.jsonl` files. CI runs
   the module's `claude plugin test` suite and the fold's self-test on Linux, macOS and Windows.
+- The gate runner. Product repos carry it as `.githooks/check.mjs`, beside two-line `pre-commit` and
+  `pre-push` hooks that run it, and `scripts/check.sh` runs it by hand and in CI.
+  - Its gates are the hooks' modes, solo mode's workflows, the secret scan, the token gate, and the
+    stack's lint, typecheck, test, build and end-to-end commands.
+  - `--arm` sets `core.hooksPath` from the stack's install step.
+  - `--self-test` runs known-bad and known-good samples for every gate, and mutations of the secret
+    scan.
+  - CI runs the self-test on Linux, macOS and Windows, and on Node 22.0.0.
+
+### Removed
+
+- `gates.ratchet` in the project marker. Brownfield baselines are held until an adoption needs them.
 
 ### Founding rules (adopted 2026-10-19)
 
@@ -73,3 +85,75 @@ Each article of the constitution, with the failure it answers:
   Code 2.1.303, an Agent call that didn't ask for the background had its spawn arrive with
   `background: true`. A cost row is the rise in the session's cost while its worker runs, so it
   holds only while the worker runs in the foreground.
+
+### Gate rules (adopted 2026-10-21)
+
+Most of these failures were reproduced by an audit of an earlier pipeline's gates, on 2026-09-24.
+The rest come from the hook spike of 2026-10-21 and from failures the maintainer reported.
+
+**Where the runner lives, and how it fails:**
+
+- **The runner lives in `.githooks/check.mjs`.** JavaScript inside `scripts/check.sh` could be run
+  by `sh` alone. Observed on 2026-10-21 on Windows:
+  - Node refuses a `.sh` file under `"type": "module"` (`ERR_UNKNOWN_FILE_EXTENSION`).
+  - PowerShell has no `sh`.
+  - npm runs scripts under `cmd.exe`.
+- **The hooks are `#!/usr/bin/env node` files.** On 2026-10-21, both that form and an `sh` wrapper
+  ran under Git for Windows and GitHub Desktop's git: from PowerShell, Git Bash and a stripped
+  PATH, with LF or CRLF. Choosing Node keeps `scripts/check.sh` the one shell file.
+- **Failing is the default.** On 2026-10-21, a hook exited 0 when the runner it imported never
+  settled, and again when that import failed under `--unhandled-rejections=warn`. The hooks and the
+  runner now set exit code 1 before anything else.
+- **Every gate runs on every commit.** The audit found that a commit that only renamed files skipped
+  every gate.
+
+**The secret scan:**
+
+- **Secret files at any depth.** The audit found nested `.env` files, nested `secrets/` folders and
+  `.dev.vars` passing the path check.
+- **Current key formats.** The audit found the pattern check missing every current key format. It
+  also found a password-bearing database URL passing both that check and a third-party scanner.
+  - A prefixed `sk-` key needs 40 characters, because 20 flagged kebab-case class names.
+  - A database URL whose host has no dot is a local service.
+- **Every outgoing commit at push.** The audit found that pre-push scanned nothing and that a
+  stamp exited before the scan. It also found that `log.showRoot=false` hid the root commit and
+  that merges were never diffed. A merge is now read against its first parent.
+- **Plumbing reads, and a read check.** The audit found `color.ui=always` and `diff.external`
+  blinding the scan, and textconv output being scanned instead of the stored file.
+- **NUL-separated paths.** The audit found quoted and split paths dodging the path check.
+- **Where, never what.** The audit found the scan printing the matched secret into the model's
+  transcript. Command output is now redacted the same way.
+- **Binary files are scanned.** The audit found a NUL byte blinding the scan.
+- **Added lines only.** The audit found the commit that deletes a secret blocked, because removed
+  lines were read.
+- **The canary.** On 2026-07-09 an earlier pipeline's secret scan silently matched nothing: grep
+  read a pattern's leading dashes as options.
+
+**The other gates:**
+
+- **The token gate's colours and font families.** The audit found the earlier token gate:
+  - missing colours in shorthands and other value positions
+  - missing colour forms beyond hex
+  - missing `.astro`, `.mdx`, `.mjs`, `.less` and `.sass` files
+  - splitting paths that held spaces
+- **The stamp compares pushed trees.** The audit found the stamp hashing code alone.
+  - A stamp now covers the whole working state, the ignored env files, the runner and Node.
+  - It skips tests and build only for a pushed tip whose tree it tested.
+- **One command per gate.** The audit found `clippy || cargo check` masking lint failures.
+- **Arming never overrides, and unarmed hooks are never silent.** The audit found that when husky
+  owned `core.hooksPath`, no gate ran and nothing said so.
+- **The shims law.** On 2026-10-21, git on Windows added hooks written by Node as `100644`. Git on
+  Linux and macOS skips a hook that isn't executable.
+- **The solo workflow law.** The maintainer reported on 2026-10-19 that on earlier projects GitHub
+  Actions runs kept appearing and spending minutes after CI had been removed on purpose. Framework
+  scaffolds, and the model out of habit, had added workflow files nobody asked for or reviewed.
+- **A 10-minute cap on every command.** The maintainer reported a CI job on an earlier project that,
+  on 2026-08-21, hung for over three hours. It spent metered minutes until someone stopped it by
+  hand. The gates also run locally, so the cap applies there too.
+- **The self-test and its mutations.** The audit left an open question: a gate that fails open
+  produces no failure to cite. So every audit finding is now a sample the self-test must block or
+  pass, and a mutation of the scan the self-test must catch.
+  - A mutation counts as caught only when its own case fails on the mutated runner's report. A case
+    that throws is a harness error, and fails the self-test. On 2026-10-21 a CI run had a case throw
+    while its test repo was being copied; inside the mutation check, that throw would have counted
+    as a catch. The self-test also turns off git's background maintenance, the likely cause.

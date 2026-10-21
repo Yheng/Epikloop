@@ -1,0 +1,2 @@
+#!/usr/bin/env node
+process.exitCode = 1; process.argv.splice(2, 0, '--fast'); import('./check.mjs')

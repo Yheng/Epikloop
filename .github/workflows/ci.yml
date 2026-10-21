@@ -34,3 +34,16 @@ jobs:
       - run: node plugins/epikloop/bin/guard.mjs --self-test
       - run: claude plugin test plugins/epikloop
       - run: node plugins/epikloop/bin/fold.mjs --self-test
+      - run: node plugins/epikloop/templates/githooks/check.mjs --self-test
+
+  floor:
+    name: gate runner on node 22.0.0
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          # The floor itself: a later 22.x or 24 accepts language features 22.0.0 lacks.
+          node-version: 22.0.0
+      - run: node plugins/epikloop/templates/githooks/check.mjs --self-test

@@ -98,10 +98,10 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The git guard, a PreToolUse hook on the Bash and PowerShell tools | **Available** |
 | The emitter: the event log, cost rows, and each story-worker's effort set from its tier | **Available** |
 | JSON Schemas for the project marker, events, cost rows and user settings | **Available** |
-| CI: validation, the guard's self-test and the emitter's tests on Linux, macOS and Windows | **Available** |
+| The gate runner: `scripts/check.sh`, its git hooks, and the secret and token gates | **Available** |
+| CI: validation, the guard's and the gate runner's self-tests, and the emitter's tests on Linux, macOS and Windows | **Available** |
 | The commands: `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`, `epic`, `next`, `story`, `decide`, `triage`, `retro`, `release` | Defined; full instructions in M1 |
 | The SessionStart briefing | M1 |
-| `scripts/check.sh`, its git hook shims, and the secret and token gates | M1 |
 | The `web` and `service` lanes | M1 |
 | `design`: direction variants, every screen, the gallery | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
@@ -189,7 +189,7 @@ each time you come back, it works out the next step the same way.
 ```mermaid
 flowchart TD
     front(["/epikloop"]) -->|new product| disc["discover<br/>spec from an interview"]
-    front -->|existing code| adopt["adopt<br/>observed spec, ratchet"]
+    front -->|existing code| adopt["adopt<br/>observed spec, gate config"]
     disc --> design["design<br/>lanes with a UI"]
     adopt --> design
     design --> arch["architect<br/>stack, schema, pre-mortem"]
@@ -345,8 +345,6 @@ step is also a command you can run directly.
 - The code is read into `spec/`, with every requirement marked `observed`.
 - Design tokens are extracted from the existing UI.
 - Gate commands come from the project's own scripts.
-- The gates ratchet: they block new errors without demanding that old ones be fixed first. The
-  baselines live in `gates.ratchet` and tighten phase by phase.
 - It ends with one confirmation batch, in which you confirm or correct the observed requirements.
 
 From there, `/epikloop` walks the same stages as for a new product.
@@ -356,8 +354,8 @@ From there, `/epikloop` walks the same stages as for a new product.
 Team mode is the standard; solo mode is supported. You choose during `plan`.
 
 - `.epikloop/project.json` is committed, so every teammate gets identical behaviour.
-- Teammates are gated even without the plugin. `.githooks/` holds two-line shims that call
-  `scripts/check.sh`, armed by one entry in the stack's install step.
+- Teammates are gated even without the plugin. `.githooks/` holds the gate runner and the two-line
+  hooks that run it, and one entry in the stack's install step arms them.
 - Team mode adds one workflow, `.github/workflows/check.yml`. It runs the same `check.sh` on pull
   requests (10-minute timeout, cancel-in-progress) as a required check under branch protection.
 - Solo mode creates no workflow, and `check.sh` fails if a workflow appears that
@@ -375,7 +373,7 @@ The front door is `/epikloop`. Every other command is namespaced as `/epikloop:<
 | `/epikloop` | The front door: syncs, detects the stage, shows the fuel gauge and what needs you, recommends one step and starts it on "go" | low | you or Claude |
 | `/epikloop:doctor [--check]` | Checks that this machine can run Epikloop and says how to fix what is missing; `--check` also runs the gates | low | you or Claude |
 | `/epikloop:discover [brief]` | Greenfield: turns an interview, or a pasted brief with only the gaps asked, into `spec/` | xhigh | you or Claude |
-| `/epikloop:adopt` | Brownfield: an observed spec, extracted tokens, gate config, the ratchet and a confirmation batch | xhigh | you or Claude |
+| `/epikloop:adopt` | Brownfield: an observed spec, extracted tokens, gate config and a confirmation batch | xhigh | you or Claude |
 | `/epikloop:design [amend <screen> "<change>" \| add <screen> \| audit \| ingest]` | Three directions, your pick, then every screen as HTML, with tokens, a manifest and a gallery | high | you or Claude |
 | `/epikloop:architect` | The stack, the schema as code, the API contract, a pre-mortem, `spec/architecture.md` and the lane | max | you or Claude |
 | `/epikloop:plan [--extend]` | Epics and tiered stories with requirement IDs and spec deltas, and the frozen MVP set; `--extend` plans later work | high | you or Claude |
@@ -412,31 +410,51 @@ on GitHub.
 
 ### The gate runner
 
-`scripts/check.sh` lives in your repository: Node behind a thin shell shim, so it works in a plain
-clone without the plugin. It arrives in M1.
+> [!NOTE]
+> The gate runner is available now. It ships in the core plugin as `templates/githooks/` and
+> `templates/scripts/check.sh`, the files a product repository carries.
+
+The runner lives in your repository, so it works in a plain clone without the plugin:
+
+- `.githooks/check.mjs` is the runner, in Node.
+- `.githooks/pre-commit` and `.githooks/pre-push` are two-line hooks that run it.
+- `scripts/check.sh` is a two-line sh shim that runs it by hand and in CI.
 
 | Mode | When | Runs |
 |---|---|---|
-| `--fast` | pre-commit | secrets, token gate, lint, typecheck |
-| full | per story and pre-push | the above, plus tests and build; the secret scan also reads every outgoing commit |
+| `--fast` | pre-commit | the shims and workflow laws, secrets in what is staged, the token gate, lint, typecheck |
+| full | per story | the above, plus tests and build, with secrets in the working state |
+| `--push` | pre-push | full, with secrets in every outgoing commit |
 | `--deep` | retro | full, plus end-to-end tests |
-| `--self-test` | every retro | known-bad samples for each gate, so a gate that fails open is noticed |
+| `--self-test` | every retro | known-bad and known-good samples for each gate, and mutations of the secret scan, so a gate that fails open is noticed |
 
+- **Arming.** `node .githooks/check.mjs --arm` is the one entry in the stack's install step: npm's
+  `prepare`, for example. It sets `core.hooksPath` to `.githooks`, never fails an install, and
+  leaves alone hooks that another tool owns, naming that tool.
 - **Commands.** Stack commands come from `gates.commands` in `.epikloop/project.json`.
-  Auto-detection for Node, Python, Go and Rust fills any blanks.
-- **Limits.** Every gate is timeout-capped, and the output is failures plus a one-line summary,
-  never full logs.
-- **Stamps.** A green full run stamps the code tree, so an identical tree is skipped at push. The
-  secret scan always runs.
-- **Ratchet.** In an adopted codebase the gates block only new errors, measured against the
-  baselines in `gates.ratchet`, and they tighten phase by phase.
-- **The secret scan** covers secret files at any depth, current key formats, password-bearing
-  database URLs, renames and NUL-safe paths. It reports where a secret is, never what it is, and it
-  carries a canary.
-- **The token gate** flags literal colours, fonts and spacing in source when `design/tokens.css`
-  exists. It covers `rgb()`, shorthand, Tailwind arbitrary values, and `.astro`, `.mdx`, `.mjs`,
-  `.less` and `.sass` files. It accepts exceptions listed in `gates.token_ignore`, each with its
-  reason, and in mobile lanes it reads the lane's theme files instead.
+  - Auto-detection for Node, Python, Go and Rust fills any blanks.
+  - Each gate gets one command, and no auto-detected command fetches anything.
+- **Limits.**
+  - Every command is capped at 10 minutes.
+  - The output is failures and a one-line summary, never full logs.
+  - Everything printed is redacted.
+- **The stamp.** A green full run stamps the working state, so a push of exactly that tree skips
+  tests and build. The secret scan always runs.
+- **The secret scan** covers:
+  - secret files at any depth
+  - current key formats and password-bearing database URLs, in added lines only
+  - renames, type changes and binary files, with NUL-safe paths
+  - every outgoing commit at push
+
+  It reports where a secret is, never what it is, and it carries a canary.
+- **The token gate** flags literal colours and font families in source when `design/tokens.css`
+  exists.
+  - It covers `rgb()`, named colours, shorthand, gradients, Tailwind arbitrary values, and
+    `.astro`, `.mdx`, `.mjs`, `.less` and `.sass` files.
+  - It accepts exceptions listed in `gates.token_ignore`, each with its reason.
+  - In mobile lanes it reads the lane's theme files instead.
+- **Held until observed.** Two things wait for the failure that would justify them: literal spacing
+  in the token gate, and a ratchet for adopted codebases.
 
 ### The git guard
 
@@ -583,7 +601,7 @@ Epikloop owns exactly these files in a product repository, and nothing else, eve
 | `spec/` | The living spec: one `<capability>.md` per capability, with stable requirement IDs and business rules quoted verbatim, plus `architecture.md` |
 | `design/` | The design brief, `refs/`, `directions/`, `screens/`, `tokens.css`, `manifest.md` and the `index.html` gallery |
 | `docs/` | `stories/<epic>.md`, `decisions.md` (append-only `DECISION-XXX` entries) and `queue.md` (parked questions and backlog lines, each dated) |
-| `scripts/check.sh` and `.githooks/` | The gate runner and the two-line git hook shims that call it |
+| `scripts/check.sh` and `.githooks/` | The gate runner, `.githooks/check.mjs`; the two-line hooks that run it; and a two-line sh shim that runs it by hand and in CI |
 | `CLAUDE.md` | Project rules only, under 200 lines; the pipeline protocol arrives by hook instead |
 | One entry in the stack's install step | It arms `.githooks/` |
 | `.github/workflows/check.yml` | The required check, in team mode only |
@@ -678,7 +696,6 @@ you want to change a choice.
 | `deadline` | | The target date, when there is one |
 | `staging_url` | | Where the staging smoke runs |
 | `gates.commands` | | Stack commands: `lint`, `typecheck`, `test`, `build` and `e2e`. Blanks are auto-detected for Node, Python, Go and Rust |
-| `gates.ratchet` | | Brownfield baselines: a gate passes while its error count stays at or below its baseline, and retros lower the numbers |
 | `gates.token_ignore` | | Exceptions to the token gate, each a `path` glob with its `reason` |
 | `gates.allow_workflows` | | Workflow files that solo mode tolerates; any other workflow fails the gates |
 
@@ -698,7 +715,6 @@ you want to change a choice.
   "staging_url": "https://staging.example.com",
   "gates": {
     "commands": { "test": "npm test", "e2e": "npx playwright test" },
-    "ratchet": { "lint": 412, "typecheck": 37 },
     "token_ignore": [
       { "path": "src/legacy/**", "reason": "Pre-token UI, replaced in epic 4" }
     ],
@@ -815,9 +831,9 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 | `plugins/epikloop/skills/` | Sixteen skills: frontmatter and purpose now, full instructions in M1 | now |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard and the emitter now; the gate runner and `doctor` in M1 | now, M1 |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard and the emitter now; `doctor` in M1 | now, M1 |
 | `plugins/epikloop/lanes/` | `web` and `service`, then `mobile-expo` and `mobile-flutter` | M1, M3 |
-| `plugins/epikloop/templates/` | `check.sh`, githooks, `project.json`, `CLAUDE.md` and the team-mode workflow | M1 |
+| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, and `scripts/check.sh`, now; `project.json`, `CLAUDE.md` and the team-mode workflow in M1 | now, M1 |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project | M1 |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture and roadmap; the lane authoring guide with the first lanes | now, M1 |
@@ -834,9 +850,11 @@ claude plugin validate plugins/epikloop-harbor --strict
 node plugins/epikloop/bin/guard.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
+node plugins/epikloop/templates/githooks/check.mjs --self-test
 ```
 
-Validating the marketplace alone skips the plugins' own files, so run all three validations.
+Validating the marketplace alone skips the plugins' own files, so run all three validations. The
+gate runner's self-test also runs on Node 22.0.0, the floor.
 
 ### Trying a change
 
@@ -867,7 +885,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 
 | Milestone | Delivers |
 |---|---|
-| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates, the guard (done), the SessionStart briefing, the project marker, the living-spec format, the commands with sequential workers, the `web` and `service` lanes, and CI self-test, lint and evals |
+| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing, the project marker, the living-spec format, the commands with sequential workers, the `web` and `service` lanes, and CI self-test, lint and evals |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: Harbor, then the Bridge** | Harbor's server and 3D scene, then the Bridge's review pages |
