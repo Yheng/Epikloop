@@ -18,8 +18,9 @@ This is the tool, not a product built with it.
   `scripts/check.sh`, `.githooks/`) appear here only as templates and eval fixtures.
 - This repository's own `docs/` is documentation about Epikloop.
 
-Skills currently have frontmatter and a purpose paragraph but no bodies. The git guard is the first
-hook; the other hooks, scripts, lanes and templates arrive with M1 (`docs/roadmap.md`).
+Skills currently have frontmatter and a purpose paragraph but no bodies. The git guard and the
+emitter are in place; the other hooks, scripts, lanes and templates arrive with M1
+(`docs/roadmap.md`).
 
 ## Map
 
@@ -29,7 +30,9 @@ hook; the other hooks, scripts, lanes and templates arrive with M1 (`docs/roadma
   - `agents/story-worker.md` — the worker subagent
   - `schemas/` — JSON Schemas, with `examples/`
   - `hooks/hooks.json` — the hook registrations
+  - `hooks/emit.js` — the emitter, a hooks module, with its suite in `tests/emit.test.ts`
   - `bin/guard.mjs` — the git guard, the PreToolUse hook on `Bash|PowerShell`, with its self-test
+  - `bin/fold.mjs` — folds the emitter's files into `.jsonl` files, with its self-test
   - later: `lanes/`, `templates/`, `evals/`
 - `plugins/epikloop-harbor/` — a manifest only, until M4.
 - `CONSTITUTION.md` — the rules for changing Epikloop.
@@ -97,11 +100,14 @@ claude plugin validate . --strict
 claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
 node plugins/epikloop/bin/guard.mjs --self-test
+claude plugin test plugins/epikloop
+node plugins/epikloop/bin/fold.mjs --self-test
 ```
 
 Validating the marketplace alone skips the plugins' own files, so run all three validations. The
-self-test spawns the guard once per sample and prints failures plus one summary line with spawn
-times.
+guard's self-test spawns the guard once per sample and prints failures plus one summary line with
+spawn times. The plugin test runs the emitter's suite against simulated events, with no login. The
+fold's self-test folds sample files in a temporary folder.
 
 To load a plugin for one session:
 

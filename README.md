@@ -96,10 +96,11 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 |---|---|
 | The marketplace and both plugin manifests | **Available** |
 | The git guard, a PreToolUse hook on the Bash and PowerShell tools | **Available** |
+| The emitter: the event log, cost rows, and each story-worker's effort set from its tier | **Available** |
 | JSON Schemas for the project marker, events, cost rows and user settings | **Available** |
-| CI: validation and the guard's self-test on Linux, macOS and Windows | **Available** |
+| CI: validation, the guard's self-test and the emitter's tests on Linux, macOS and Windows | **Available** |
 | The commands: `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`, `epic`, `next`, `story`, `decide`, `triage`, `retro`, `release` | Defined; full instructions in M1 |
-| The SessionStart briefing, the emitter, the event log and cost rows | M1 |
+| The SessionStart briefing | M1 |
 | `scripts/check.sh`, its git hook shims, and the secret and token gates | M1 |
 | The `web` and `service` lanes | M1 |
 | `design`: direction variants, every screen, the gallery | M2 |
@@ -599,9 +600,8 @@ is no remote. It is committed, so a moved or re-cloned repository keeps its stat
 | `~/.epikloop/projects/<id>/cost.jsonl` | One cost row per closed story: tier, wall time, cost, model and effort |
 | `~/.epikloop/config.json` | Your settings: effort overrides and the Harbor switch |
 
-The emitter, a hooks module that arrives in M1, writes the events and cost rows. Events say where,
-never what: no tool output, prompts, file contents or secret values. Claude Code transcripts are
-never parsed.
+The emitter, a hooks module, writes the events and cost rows. Events say where, never what: no tool
+output, prompts, file contents or secret values. Claude Code transcripts are never parsed.
 
 <details>
 <summary><b>Example lines and event kinds</b></summary>
@@ -792,7 +792,7 @@ More in [Architecture → Harbor](docs/architecture.md#harbor).
 - **Each layer's bypass.** A hooks module you install can approve a call the guard denied. Local
   git hooks can be skipped with `-n`, by the web editor, or by leaving them unarmed. The required
   check in team mode can't be bypassed.
-- **The emitter (M1).** It is a hooks module, so it also doesn't load under a managed policy that
+- **The emitter.** It is a hooks module, so it also doesn't load under a managed policy that
   turns mods off, or while Claude Code's rollout switch for mods is off. Where an organization
   manages Claude Code, `classic.*` hooks in a plugin a person installs don't run, so
   `task.created`, `task.completed` and `notification` events are not emitted. `doctor` reports
@@ -815,7 +815,7 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 | `plugins/epikloop/skills/` | Sixteen skills: frontmatter and purpose now, full instructions in M1 | now |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard now; the emitter, the gate runner and `doctor` in M1 | now, M1 |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard and the emitter now; the gate runner and `doctor` in M1 | now, M1 |
 | `plugins/epikloop/lanes/` | `web` and `service`, then `mobile-expo` and `mobile-flutter` | M1, M3 |
 | `plugins/epikloop/templates/` | `check.sh`, githooks, `project.json`, `CLAUDE.md` and the team-mode workflow | M1 |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project | M1 |
@@ -832,6 +832,8 @@ claude plugin validate . --strict
 claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
 node plugins/epikloop/bin/guard.mjs --self-test
+claude plugin test plugins/epikloop
+node plugins/epikloop/bin/fold.mjs --self-test
 ```
 
 Validating the marketplace alone skips the plugins' own files, so run all three validations.
@@ -865,7 +867,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 
 | Milestone | Delivers |
 |---|---|
-| **M1: Core that builds a web app** | The emitter and the event log, `check.sh` and its gates, the guard (done), the SessionStart briefing, the project marker, the living-spec format, the commands with sequential workers, the `web` and `service` lanes, and CI self-test, lint and evals |
+| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates, the guard (done), the SessionStart briefing, the project marker, the living-spec format, the commands with sequential workers, the `web` and `service` lanes, and CI self-test, lint and evals |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: Harbor, then the Bridge** | Harbor's server and 3D scene, then the Bridge's review pages |

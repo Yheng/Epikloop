@@ -296,6 +296,8 @@ fragments.
 - The hooks module stamps each tier's effort onto the worker's spawn, by rewriting the Agent
   call's `effort` in its `tool.call` hook. No blocking hook sits on non-shell tools, so the job
   lives in the module.
+- The batch starts each spawn's `description` with the story and its tier, as in
+  `3.2 T2 login form`, which is how the module knows the tier.
 
 **Frontmatter conventions:**
 

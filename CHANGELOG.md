@@ -22,6 +22,11 @@ All notable changes to Epikloop are recorded here.
 - The git guard: a PreToolUse hook on Bash and PowerShell that, inside an Epikloop project, denies
   six git usages and allows the pipeline's own commands. CI runs its self-test on Linux, macOS and
   Windows.
+- The emitter: a hooks module that, inside an Epikloop project, writes one file per event under
+  `~/.epikloop/events/YYYY-MM-DD/` and one cost row per story-worker under
+  `~/.epikloop/projects/<id>/cost/`. It sets each story-worker's effort from its story's tier and
+  keeps the worker in the foreground. `bin/fold.mjs` folds those files into `.jsonl` files. CI runs
+  the module's `claude plugin test` suite and the fold's self-test on Linux, macOS and Windows.
 
 ### Founding rules (adopted 2026-10-19)
 
@@ -57,3 +62,14 @@ Each article of the constitution, with the failure it answers:
 - **The git guard** — an audit of an earlier pipeline's gates found the model could get past them
   with git itself (skipping hooks, repointing `core.hooksPath`) and could destroy work with
   force-push, hard reset, `clean -fdx` and whole-tree checkout or restore.
+
+### Hook rules (adopted 2026-10-21)
+
+- **The emitter** — an earlier pipeline ran every story at the same high effort and kept no
+  record of what each story cost, and its activity hooks were shell scripts that broke on Windows.
+  The emitter writes the event log and a cost row per story from inside Claude Code, and sets each
+  story-worker's effort from its story's tier.
+- **Story-workers run in the foreground** — during the hooks-module spike on 2026-10-20, on Claude
+  Code 2.1.303, an Agent call that didn't ask for the background had its spawn arrive with
+  `background: true`. A cost row is the rise in the session's cost while its worker runs, so it
+  holds only while the worker runs in the foreground.
