@@ -94,6 +94,11 @@ What each event does:
   - It never starts an interview unprompted.
   - It arms `.githooks/` by setting `core.hooksPath`, and only when that is unset and no other
     tool's hooks are present.
+    - It arms only a repository that carries the runner, and runs the plugin's own copy of the
+      runner's `--arm`, so no code from the repository runs at session start.
+    - When another tool owns the hooks, the briefing names it as something that needs the human.
+  - It is `bin/brief.mjs`, a spawned hook. Every source gets the same answer, so `compact` and
+    `clear` get the protocol back.
 - **PreToolUse: the guard.** This is one spawned, synchronous hook, registered on `Bash|PowerShell`
   only.
   - Both tools are covered because on Windows without Git Bash there is no Bash tool, and PowerShell

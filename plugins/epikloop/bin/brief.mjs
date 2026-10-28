@@ -1,0 +1,303 @@
+// Epikloop's SessionStart briefing, a command hook. Inside an Epikloop project it arms the git
+// hooks when nothing else owns them, then gives Claude one line on where the project stands,
+// followed by the pipeline protocol. Outside one it gives a single line. It prints only its JSON
+// answer and exits 0, whatever happens.
+//
+// The stage line runs the stage machine's tests that read only which files exist, up to stage 5.
+// The fuel gauge and the later stages join it as the files they read get their formats.
+//
+// `node brief.mjs --self-test` runs every case below through this file as a spawned hook.
+import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const OUTSIDE = 'Not an Epikloop project. `/epikloop` to start.'
+
+// The pipeline protocol, after the briefing line. It reaches the model, so it counts toward the
+// prompt ceiling.
+const PROTOCOL = `Epikloop protocol for this project:
+
+- The project's state lives in its files and its git history, never in the conversation. spec/
+  holds the current requirements, with stable IDs and business rules quoted verbatim, and
+  spec/architecture.md the current architecture. docs/decisions.md is append-only.
+  docs/stories/<epic>.md holds the stories; each carries a spec delta, applied in the same commit
+  as its code. docs/queue.md holds parked questions and backlog lines, each dated. design/ is the
+  visual truth. Which stories are done is read from git, never written down.
+- A batch (/epikloop:epic, /epikloop:next or /epikloop:story) never stops to ask the human. A
+  question that needs a product call is parked in docs/queue.md with the conservative default
+  taken and what it blocks, and the work goes on with that default; /epikloop:decide answers
+  parked questions in one sitting.
+- A finding goes by threshold: mechanical and small is fixed now in its own commit; one that needs
+  a product call is a parked question; real but not MVP-breaking is one dated backlog line; one
+  that breaks an MVP acceptance criterion is fixed now or parked as an explicit scope question.
+  Nothing is filed by default.`
+
+const failure = (reason) => `Epikloop's briefing couldn't run (${reason}); \`/epikloop\` shows where things stand.`
+
+// The plugin's own copy of the gate runner arms the hooks, so no code from the repository runs at
+// session start. Only a repository that carries the runner is armed.
+const RUNNER = path.join(import.meta.dirname, '..', 'templates', 'githooks', 'check.mjs')
+const ARM_CAP = 5_000
+
+// What arming did, as a fact for the briefing, or what needs the human; empty when there was
+// nothing to say.
+function arm(root) {
+  if (!fs.existsSync(path.join(root, '.githooks', 'check.mjs'))) return {}
+  const run = spawnSync(process.execPath, [RUNNER, '--arm'], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: ARM_CAP,
+    windowsHide: true,
+  })
+  if (run.error) return { needs: `git hooks couldn't be checked (${run.error.code ?? run.error.message})` }
+  const line = run.stdout.trim().split('\n').pop()
+  const said = /^git hooks: (.*)$/.exec(line)
+  if (said === null) return line === '' ? {} : { needs: `git hooks couldn't be checked (${line})` }
+  return said[1].startsWith('not armed') ? { needs: `git hooks ${said[1]}` } : { fact: `Git hooks: ${said[1]}.` }
+}
+
+// What is wrong with the project marker, by the fields its schema requires, or null.
+function markerProblem(project) {
+  if (project === null || typeof project !== 'object' || Array.isArray(project)) return 'is not a JSON object'
+  if (project.format !== 1) return 'has an unknown format'
+  if (typeof project.id !== 'string' || !/^[0-9a-f]{12}$/.test(project.id)) return 'has no valid id'
+  if (typeof project.lane !== 'string' || !/^[a-z][a-z0-9-]*$/.test(project.lane)) return 'has no valid lane'
+  if (project.mode !== 'solo' && project.mode !== 'team') return 'has no valid mode'
+  return null
+}
+
+// The first stage whose test fails, as [stage, what fails, next step], or null past stage 5.
+function stage(root, project) {
+  const has = (...parts) => fs.existsSync(path.join(root, ...parts))
+  const pages = (...parts) => {
+    const dir = path.join(root, ...parts)
+    if (!fs.existsSync(dir)) return []
+    return fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+      .map((entry) => entry.name)
+  }
+  if (!pages('spec').some((name) => name !== 'architecture.md')) {
+    return [2, 'spec/ holds no requirements yet', '/epikloop:discover for a new product, or /epikloop:adopt for existing code']
+  }
+  if (project.lane !== 'service' && !has('design', 'manifest.md')) {
+    return [3, `the ${project.lane} lane has a UI, and design/manifest.md is missing`, '/epikloop:design']
+  }
+  if (!has('spec', 'architecture.md')) return [4, 'spec/architecture.md is missing', '/epikloop:architect']
+  if (pages('docs', 'stories').length === 0) return [5, 'docs/stories/ holds no stories yet', '/epikloop:plan']
+  if (!project.mvp_frozen) return [5, "the MVP set isn't frozen", '/epikloop:plan']
+  return null
+}
+
+function briefing(root) {
+  const hooks = arm(root)
+  const needs = []
+  let project = null
+  let problem = null
+  try {
+    project = JSON.parse(fs.readFileSync(path.join(root, '.epikloop', 'project.json'), 'utf8').replace(/^﻿/, ''))
+    problem = markerProblem(project)
+  } catch (error) {
+    problem = `doesn't parse (${firstLine(error)})`
+  }
+  const parts = []
+  if (problem === null) {
+    parts.push(`Epikloop project ${project.id} (${project.lane}, ${project.mode}).`)
+    const at = stage(root, project)
+    parts.push(
+      at === null
+        ? `Stage 6 or later: stories are planned and the MVP set was frozen on ${project.mvp_frozen}. Next: /epikloop.`
+        : `Stage ${at[0]} of 10: ${at[1]}. Next: ${at[2]}.`,
+    )
+  } else {
+    parts.push('Epikloop project.')
+    needs.push(`.epikloop/project.json ${problem}`)
+  }
+  if (hooks.fact) parts.push(hooks.fact)
+  if (hooks.needs) needs.push(hooks.needs)
+  if (needs.length > 0) parts.push(`Needs the human: ${needs.join('; ')}.`)
+  return `${parts.join(' ')}\n\n${PROTOCOL}`
+}
+
+// An Epikloop project is a directory with .epikloop/project.json, here or above.
+function projectRoot(dir) {
+  for (let at = path.resolve(dir); ; at = path.dirname(at)) {
+    if (fs.existsSync(path.join(at, '.epikloop', 'project.json'))) return at
+    if (path.dirname(at) === at) return null
+  }
+}
+
+const firstLine = (error) => String(error?.message ?? error).split('\n')[0]
+
+const answer = (context) => ({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } })
+
+// Prints its answer as JSON and exits 0. Anything that goes wrong becomes a one-line context.
+async function hook() {
+  let context
+  try {
+    let raw = ''
+    for await (const chunk of process.stdin.setEncoding('utf8')) raw += chunk
+    // Windows PowerShell 5.1 starts piped text with a BOM.
+    const input = JSON.parse(raw.replace(/^﻿/, ''))
+    const root = projectRoot(input.cwd || process.cwd())
+    context = root === null ? OUTSIDE : briefing(root)
+  } catch (error) {
+    context = failure(firstLine(error))
+  }
+  process.stdout.write(JSON.stringify(answer(context)))
+}
+
+const marker = (fields = {}) => JSON.stringify({ format: 1, id: '000000000000', lane: 'web', mode: 'solo', ...fields })
+// A web project that has passed stage 5.
+const PLANNED = {
+  '.epikloop/project.json': marker({ mvp_frozen: '2026-11-02' }),
+  'spec/auth.md': '# Auth\n',
+  'spec/architecture.md': '# Architecture\n',
+  'design/manifest.md': '# Screens\n',
+  'docs/stories/1-auth.md': '# Epic 1\n',
+}
+const SILENT_HOOKS = ['git hooks', 'Git hooks']
+
+// Each case: [name, files, expectations]. Files map a path to its content, or to null to leave it
+// out. `says` lists text the context must hold and `silent` text it must not, `exact` is the whole
+// context, and `hooksPath` is what git reports afterwards ('' for unset). The layout options are
+// `git` (a repository), `armed` (core.hooksPath already .githooks), `foreign` (a hook another
+// tool installed), `cwd` (a subdirectory to start in) and `input` (raw hook input).
+const CASES = [
+  ['outside a project', {}, { exact: OUTSIDE }],
+  ['a marker that does not parse', { '.epikloop/project.json': '{' }, { says: ["Needs the human: .epikloop/project.json doesn't parse"] }],
+  ['a marker without a valid mode', { '.epikloop/project.json': marker({ mode: 'duo' }) }, { says: ['.epikloop/project.json has no valid mode'] }],
+  [
+    'requirements missing',
+    { '.epikloop/project.json': marker(), 'spec/architecture.md': '# Architecture\n' },
+    { says: ['Stage 2 of 10: spec/ holds no requirements yet. Next: /epikloop:discover for a new product'] },
+  ],
+  [
+    'a subdirectory of the project',
+    { '.epikloop/project.json': marker(), 'src/app.ts': '' },
+    { cwd: 'src', says: ['Epikloop project 000000000000 (web, solo). Stage 2 of 10'] },
+  ],
+  [
+    'a UI lane without screens',
+    { '.epikloop/project.json': marker(), 'spec/auth.md': '# Auth\n' },
+    { says: ['Stage 3 of 10: the web lane has a UI, and design/manifest.md is missing. Next: /epikloop:design.'] },
+  ],
+  [
+    'the service lane skipping design',
+    { '.epikloop/project.json': marker({ lane: 'service' }), 'spec/auth.md': '# Auth\n' },
+    { says: ['Stage 4 of 10: spec/architecture.md is missing. Next: /epikloop:architect.'] },
+  ],
+  ['stories missing', { ...PLANNED, 'docs/stories/1-auth.md': null }, { says: ['Stage 5 of 10: docs/stories/ holds no stories yet. Next: /epikloop:plan.'] }],
+  [
+    'the MVP set not frozen',
+    { ...PLANNED, '.epikloop/project.json': marker() },
+    { says: ["Stage 5 of 10: the MVP set isn't frozen. Next: /epikloop:plan."] },
+  ],
+  ['planned and frozen', PLANNED, { says: ['Stage 6 or later: stories are planned and the MVP set was frozen on 2026-11-02. Next: /epikloop.'] }],
+  ['hooks to arm', { ...PLANNED, '.githooks/check.mjs': '' }, { git: true, says: ['Git hooks: armed (.githooks).'], hooksPath: '.githooks' }],
+  ['hooks already armed', { ...PLANNED, '.githooks/check.mjs': '' }, { git: true, armed: true, silent: SILENT_HOOKS, hooksPath: '.githooks' }],
+  [
+    'hooks another tool owns',
+    { ...PLANNED, '.githooks/check.mjs': '' },
+    { git: true, foreign: true, says: ['Needs the human: git hooks not armed'], hooksPath: '' },
+  ],
+  ['a repository without the runner', PLANNED, { git: true, silent: SILENT_HOOKS, hooksPath: '' }],
+  ['input that is not JSON', {}, { input: 'not json', says: ["Epikloop's briefing couldn't run"] }],
+]
+
+// The context the hook gave, or why its run is not a valid answer.
+function contextOf({ status, stdout, error }) {
+  if (error || status !== 0) return { wrong: `exit ${status ?? error.code}` }
+  let output
+  try {
+    output = JSON.parse(stdout).hookSpecificOutput
+  } catch {
+    return { wrong: 'output that is not JSON' }
+  }
+  if (output?.hookEventName !== 'SessionStart' || typeof output.additionalContext !== 'string') {
+    return { wrong: `an answer that is not SessionStart context: ${stdout}` }
+  }
+  return { context: output.additionalContext }
+}
+
+async function selfTest() {
+  const os = await import('node:os')
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'epikloop-brief-'))
+  const home = path.join(temp, 'home')
+  fs.mkdirSync(home)
+  const globalConfig = path.join(temp, 'gitconfig')
+  fs.writeFileSync(globalConfig, '')
+  // git and the hook run without the machine's git settings or CI, which would skip arming.
+  const env = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!/^(?:GIT_.*|CI|HOME|USERPROFILE)$/i.test(key)) env[key] = value
+  }
+  Object.assign(env, {
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: globalConfig,
+    GIT_CEILING_DIRECTORIES: temp,
+    HOME: home,
+    USERPROFILE: home,
+  })
+  const git = (cwd, ...args) => {
+    const run = spawnSync('git', args, { cwd, env, encoding: 'utf8', windowsHide: true })
+    if (run.error) throw run.error
+    return run
+  }
+  const failures = []
+  const times = []
+  let largest = 0
+  try {
+    for (const [n, [name, files, expect]] of CASES.entries()) {
+      const dir = path.join(temp, `case-${n}`)
+      fs.mkdirSync(dir)
+      if (expect.git) git(dir, 'init', '-q')
+      for (const [file, content] of Object.entries(files)) {
+        if (content === null) continue
+        fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true })
+        fs.writeFileSync(path.join(dir, file), content)
+      }
+      if (expect.armed) git(dir, 'config', 'core.hooksPath', '.githooks')
+      if (expect.foreign) fs.writeFileSync(path.join(dir, '.git', 'hooks', 'pre-commit'), '#!/bin/sh\n# husky\n')
+      const cwd = path.join(dir, expect.cwd ?? '')
+      const input = expect.input ?? JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', session_id: 'self-test', cwd })
+      const start = performance.now()
+      const run = spawnSync(process.execPath, [import.meta.filename], { input, env, encoding: 'utf8', windowsHide: true })
+      times.push(performance.now() - start)
+      const { context, wrong } = contextOf(run)
+      const problems = []
+      if (wrong) problems.push(`gave ${wrong}`)
+      else {
+        largest = Math.max(largest, context.length)
+        if (context.length >= 10_000) problems.push(`gave ${context.length} characters, past the 10,000 cap`)
+        if (expect.exact !== undefined && context !== expect.exact) problems.push(`gave ${JSON.stringify(context)}`)
+        for (const text of expect.says ?? []) if (!context.includes(text)) problems.push(`lacks ${JSON.stringify(text)}`)
+        for (const text of expect.silent ?? []) if (context.includes(text)) problems.push(`holds ${JSON.stringify(text)}`)
+        const inside = '.epikloop/project.json' in files && expect.input === undefined
+        if (inside && !context.endsWith(`\n\n${PROTOCOL}`)) problems.push('lacks the protocol at its end')
+        if (!inside && context.includes(PROTOCOL)) problems.push('holds the protocol')
+        if (problems.length > 0) problems.push(`in ${JSON.stringify(context.split('\n')[0])}`)
+      }
+      if (expect.hooksPath !== undefined) {
+        const set = git(dir, 'config', '--local', '--get', 'core.hooksPath').stdout.trim()
+        if (set !== expect.hooksPath) problems.push(`left core.hooksPath ${JSON.stringify(set)}, not ${JSON.stringify(expect.hooksPath)}`)
+      }
+      if (problems.length > 0) failures.push(`${name}: ${problems.join('; ')}`)
+    }
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true })
+  }
+  for (const line of failures) console.log(`FAIL ${line}`)
+  times.sort((a, b) => a - b)
+  const median = Math.round(times[Math.floor(times.length / 2)])
+  const max = Math.round(times[times.length - 1])
+  const passed = CASES.length - failures.length
+  console.log(
+    `brief self-test: ${passed}/${CASES.length} as expected; largest context ${largest} characters (cap 10,000);` +
+      ` spawn median ${median} ms, max ${max} ms`,
+  )
+  process.exitCode = failures.length > 0 ? 1 : 0
+}
+
+if (process.argv[2] === '--self-test') await selfTest()
+else await hook()

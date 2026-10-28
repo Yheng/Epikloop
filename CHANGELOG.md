@@ -35,6 +35,10 @@ All notable changes to Epikloop are recorded here.
   - `--self-test` runs known-bad and known-good samples for every gate, and mutations of the secret
     scan.
   - CI runs the self-test on Linux, macOS and Windows, and on Node 22.0.0.
+- The SessionStart briefing: a command hook that, inside an Epikloop project, arms the git hooks
+  when nothing else owns them and gives Claude one line on the stage and the next step, followed
+  by the pipeline protocol. Outside a project it gives one line. CI runs its self-test on Linux,
+  macOS and Windows.
 
 ### Removed
 
@@ -165,3 +169,15 @@ The rest come from the hook spike of 2026-10-21 and from failures the maintainer
   PowerShell would open a Git Bash window instead of running the gates in the session. This was
   read from the association and not run, because running it opens a window. From PowerShell the
   guard now allows `node .githooks/check.mjs`, and no longer allows `scripts/check.sh`.
+
+### Hook rules (adopted 2026-10-28)
+
+- **The protocol arrives by hook.** An earlier pipeline's prompt prose grew without bound (article
+  2), and its template-based setup copied the tool into every product repository (article 8). So
+  the protocol is injected at session start and never written into a product's `CLAUDE.md`. On
+  2026-10-28 the same text added 446 tokens to a session's first request as hook context, and 667
+  in `CLAUDE.md`.
+- **Session start arms the hooks and says when it can't.** The 2026-09-24 audit found that when
+  husky owned `core.hooksPath`, no gate ran and nothing said so. Each session now arms `.githooks/`
+  when nothing else owns git's hooks, using the plugin's own copy of the runner, and the briefing
+  names the owner when something does.

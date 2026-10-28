@@ -32,7 +32,8 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 - the PreToolUse guard (done; the active lane's UI test tool joins its allow list with the lanes)
   - baseline on 2026-10-20, on the maintainer's Windows 11 laptop: spawn median 128–133 ms, max
     175–209 ms; GitHub's windows-latest runner measures ~50 ms median
-- the SessionStart briefing
+- the SessionStart briefing (done for stages 1–5, the protocol and arming; the fuel gauge, the
+  queue and stages 6–10 join it as the files they read get their formats)
 - the project marker and project id
 - the living-spec format
 - skill bodies for `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`,
@@ -60,8 +61,13 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 
 - **Auto mode.** Does a PreToolUse `allow` skip the auto-mode classifier? Default, acceptEdits and
   dontAsk modes honour it; plan mode does not.
-- **Where the protocol lives.** It could be SessionStart `additionalContext` or a small committed
-  `CLAUDE.md` include. Measure the token cost of each. Hook text must stay under 10,000 characters.
+- **Where the protocol lives.** Settled on 2026-10-28: SessionStart `additionalContext`.
+  - A committed `CLAUDE.md` include can't name the plugin's files, whose install path differs by
+    machine and version, so the only alternative was pasting the text into `CLAUDE.md`.
+  - The same 1,334 characters of briefing and protocol added 446 tokens to a session's first
+    request as hook context, and 667 in `CLAUDE.md`. Measured headless on Claude Code 2.1.312
+    with Sonnet, against a session without them.
+  - Hook text must stay under 10,000 characters; the briefing's self-test checks every case.
 - **Cost-row fidelity.** Settled: the module reads the session's cost, so rows carry dollars. On a
   subscription they are a list-price equivalent, and with parallel workers an upper bound until
   M3 (see [architecture](architecture.md#the-emitter)).

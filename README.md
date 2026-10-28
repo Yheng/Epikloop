@@ -99,9 +99,9 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The emitter: the event log, cost rows, and each story-worker's effort set from its tier | **Available** |
 | JSON Schemas for the project marker, events, cost rows and user settings | **Available** |
 | The gate runner: `scripts/check.sh`, its git hooks, and the secret and token gates | **Available** |
-| CI: validation, the guard's and the gate runner's self-tests, and the emitter's tests on Linux, macOS and Windows | **Available** |
+| The SessionStart briefing: the stage, the next step, the protocol, and arming the git hooks | **Available**; the fuel gauge in M1 |
+| CI: validation, the guard's, the briefing's and the gate runner's self-tests, and the emitter's tests on Linux, macOS and Windows | **Available** |
 | The commands: `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`, `epic`, `next`, `story`, `decide`, `triage`, `retro`, `release` | Defined; full instructions in M1 |
-| The SessionStart briefing | M1 |
 | The `web` and `service` lanes | M1 |
 | `design`: direction variants, every screen, the gallery | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
@@ -221,6 +221,24 @@ after six weeks.
 | 8 | All MVP stories are done, queue Δ ≤ 0, the staging smoke is green, and there is no `mvp` tag | MVP sign-off |
 | 9 | There is an `mvp` tag but no production | `release` |
 | 10 | Released | Post-MVP mode: the backlog becomes visible, and `plan --extend` takes new work |
+
+### The session briefing
+
+> [!NOTE]
+> The briefing is available now for stages 1 to 5. The fuel gauge and the later stages join it in
+> M1, as the files they read get their formats.
+
+Every session in an Epikloop project starts with a briefing for Claude, from a SessionStart hook
+in the core plugin:
+
+- **One line on where things stand:** the project, its lane and mode, the stage, the next command,
+  and anything that needs you.
+- **The protocol:** where the project's state lives, how a batch parks questions, and how findings
+  are routed. It arrives by hook, so your `CLAUDE.md` keeps only your project's rules.
+- **Arming:** when the repository carries `.githooks/` and nothing else owns git's hooks, the hook
+  points `core.hooksPath` at `.githooks`. When another tool owns them, the briefing says so instead.
+
+Outside an Epikloop project, Claude gets one line: "Not an Epikloop project. `/epikloop` to start."
 
 ### Stories and risk tiers
 
@@ -833,7 +851,7 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 | `plugins/epikloop/skills/` | Sixteen skills: frontmatter and purpose now, full instructions in M1 | now |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard and the emitter now; `doctor` in M1 | now, M1 |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard, the emitter and the SessionStart briefing now; `doctor` in M1 | now, M1 |
 | `plugins/epikloop/lanes/` | `web` and `service`, then `mobile-expo` and `mobile-flutter` | M1, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, and `scripts/check.sh`, now; `project.json`, `CLAUDE.md` and the team-mode workflow in M1 | now, M1 |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project | M1 |
@@ -850,6 +868,7 @@ claude plugin validate . --strict
 claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
 node plugins/epikloop/bin/guard.mjs --self-test
+node plugins/epikloop/bin/brief.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
@@ -887,7 +906,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 
 | Milestone | Delivers |
 |---|---|
-| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing, the project marker, the living-spec format, the commands with sequential workers, the `web` and `service` lanes, and CI self-test, lint and evals |
+| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done for stages 1–5), the project marker, the living-spec format, the commands with sequential workers, the `web` and `service` lanes, and CI self-test, lint and evals |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: Harbor, then the Bridge** | Harbor's server and 3D scene, then the Bridge's review pages |
