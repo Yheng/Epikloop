@@ -19,8 +19,8 @@ This is the tool, not a product built with it.
 - This repository's own `docs/` is documentation about Epikloop.
 
 Skills currently have frontmatter and a purpose paragraph but no bodies. The git guard, the emitter,
-the gate runner and the SessionStart briefing are in place; the other hooks, scripts, lanes and
-templates arrive with M1 (`docs/roadmap.md`).
+the gate runner, the SessionStart briefing and project setup are in place; the other hooks,
+scripts, lanes and templates arrive with M1 (`docs/roadmap.md`).
 
 ## Map
 
@@ -33,6 +33,8 @@ templates arrive with M1 (`docs/roadmap.md`).
   - `hooks/emit.js` — the emitter, a hooks module, with its suite in `tests/emit.test.ts`
   - `bin/guard.mjs` — the git guard, the PreToolUse hook on `Bash|PowerShell`, with its self-test
   - `bin/brief.mjs` — the SessionStart briefing, which also arms a product's git hooks, with its
+    self-test
+  - `bin/init.mjs` — project setup: writes the marker with its id and the gate files, with its
     self-test
   - `bin/fold.mjs` — folds the emitter's files into `.jsonl` files, with its self-test
   - `templates/githooks/check.mjs` — the gate runner, which product repos carry as
@@ -107,6 +109,7 @@ claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
 node plugins/epikloop/bin/guard.mjs --self-test
 node plugins/epikloop/bin/brief.mjs --self-test
+node plugins/epikloop/bin/init.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
@@ -118,6 +121,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   line with spawn times.
 - **The briefing's self-test** spawns the hook once per case, in temporary folders and throwaway
   repos. It prints failures plus one summary line with the largest context and spawn times.
+- **The init self-test** runs setup in throwaway repos: remote forms, kept files, staged modes and
+  arming. Its last case commits through the real pre-commit hook.
 - **The plugin test** runs the emitter's suite against simulated events, with no login.
 - **The fold's self-test** folds sample files in a temporary folder.
 - **The gate runner's self-test** builds throwaway repos with bare remotes in a temporary folder.

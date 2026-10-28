@@ -54,6 +54,15 @@ Nothing else, ever.
 - **Project id.** It is derived once, when the project is created: the first 12 hex digits of the
   SHA-256 of the normalized git remote (`host/owner/repo`, lowercased), or of the repository path
   when there is no remote. It is committed, so a moved or re-cloned repo keeps its state.
+  - The remote is `origin`, or the first remote when there is no `origin`. A remote on the same
+    machine, such as a path or a `file://` URL, counts as no remote.
+  - Normalizing drops the scheme, credentials, port, trailing slash and `.git`, and keeps the full
+    path, so a GitLab subgroup stays distinct.
+- **Setup.** `bin/init.mjs --lane <lane> --mode solo|team` writes the marker and copies
+  `.githooks/` and `scripts/check.sh` from the plugin's templates, then stages them and arms the
+  hooks.
+  - The shims are staged as executable.
+  - It never overwrites a file and never commits.
 - **`CLAUDE.md`** holds project rules only and stays under 200 lines. The pipeline protocol is never
   written into it; the SessionStart hook injects it.
 - **Teammates are gated too.**
@@ -424,7 +433,7 @@ tool's name and docs are not nautical.
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | Hooks, the emitter, the guard, doctor | M1 |
 | `plugins/epikloop/lanes/` | `web` and `service`; then `mobile-expo` and `mobile-flutter` | M1, M3 |
-| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, and `scripts/check.sh`; then `project.json`, `CLAUDE.md`, the team-mode workflow | now, M1 |
+| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, and `scripts/check.sh`; then `CLAUDE.md` and the team-mode workflow | now, M1 |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project, inside the plugin where `claude plugin eval` reads it | M1 |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture, roadmap; the lane authoring guide with the first lanes | now, M1 |

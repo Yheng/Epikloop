@@ -39,6 +39,10 @@ All notable changes to Epikloop are recorded here.
   when nothing else owns them and gives Claude one line on the stage and the next step, followed
   by the pipeline protocol. Outside a project it gives one line. CI runs its self-test on Linux,
   macOS and Windows.
+- Project setup, `bin/init.mjs`: given a lane and a mode, it writes `.epikloop/project.json` with
+  the project id derived from the git remote, copies `.githooks/` and `scripts/check.sh` from the
+  plugin's templates, stages them and arms the hooks. It never overwrites a file and never
+  commits. CI runs its self-test on Linux, macOS and Windows.
 
 ### Removed
 
@@ -181,3 +185,13 @@ The rest come from the hook spike of 2026-10-21 and from failures the maintainer
   husky owned `core.hooksPath`, no gate ran and nothing said so. Each session now arms `.githooks/`
   when nothing else owns git's hooks, using the plugin's own copy of the runner, and the briefing
   names the owner when something does.
+
+### Setup rules (adopted 2026-10-28)
+
+- **Setup writes exactly the footprint.** An earlier pipeline's template-based setup copied the
+  tool's own source, changelog and license into every product repository (article 8). `init.mjs`
+  writes only the marker and the gate files, each from its own template, and never overwrites one
+  that exists.
+- **Setup stages the shims as executable.** On 2026-10-21, git on Windows added hooks written by
+  Node as `100644`, and the shims gate fails them. `init.mjs` stages the three shims with
+  `--chmod=+x`, so the first commit passes on every operating system.

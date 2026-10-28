@@ -34,7 +34,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
     175–209 ms; GitHub's windows-latest runner measures ~50 ms median
 - the SessionStart briefing (done for stages 1–5, the protocol and arming; the fuel gauge, the
   queue and stages 6–10 join it as the files they read get their formats)
-- the project marker and project id
+- the project marker and project id (done; `bin/init.mjs` writes the marker and the gate files)
 - the living-spec format
 - skill bodies for `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`,
   `epic`/`next`/`story` (sequential workers), `decide`, `triage`, `retro` and `release`
@@ -83,6 +83,8 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   `bin/`, whose files go on the Bash tool's `PATH`. The hooks call their scripts through
   `${CLAUDE_PLUGIN_ROOT}`, and `check.sh` lives in product repos. If nothing needs `PATH`, rename
   `bin/` to `scripts/` before the first release.
+  - Skills reach plugin scripts the same way: Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` in a
+    plugin skill's body and its `allowed-tools`. So far nothing needs `PATH`.
 
 **Done when:**
 

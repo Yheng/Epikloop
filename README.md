@@ -100,7 +100,8 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | JSON Schemas for the project marker, events, cost rows and user settings | **Available** |
 | The gate runner: `scripts/check.sh`, its git hooks, and the secret and token gates | **Available** |
 | The SessionStart briefing: the stage, the next step, the protocol, and arming the git hooks | **Available**; the fuel gauge in M1 |
-| CI: validation, the guard's, the briefing's and the gate runner's self-tests, and the emitter's tests on Linux, macOS and Windows | **Available** |
+| Project setup: the project marker with its id, and the gate files, staged and armed | **Available** |
+| CI: validation, the guard's, the briefing's, project setup's and the gate runner's self-tests, and the emitter's tests on Linux, macOS and Windows | **Available** |
 | The commands: `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`, `epic`, `next`, `story`, `decide`, `triage`, `retro`, `release` | Defined; full instructions in M1 |
 | The `web` and `service` lanes | M1 |
 | `design`: direction variants, every screen, the gallery | M2 |
@@ -567,11 +568,11 @@ node plugins/epikloop/bin/guard.mjs --self-test
 
 To watch it in a session, use a scratch repository so nothing real is touched:
 
-1. Create a new git repository and add `.epikloop/project.json` with this content (any 12 hex
-   digits will do as the id):
+1. Create a new git repository and make it an Epikloop project:
 
-   ```json
-   { "format": 1, "id": "000000000000", "lane": "web", "mode": "solo" }
+   ```
+   git init
+   node <your clone>/plugins/epikloop/bin/init.mjs --lane web --mode solo
    ```
 
 2. Start Claude Code there with the plugin installed, or with
@@ -629,6 +630,11 @@ Epikloop owns exactly these files in a product repository, and nothing else, eve
 The project id is derived once, when the project is created: the first 12 hex digits of the SHA-256
 of the normalized git remote (`host/owner/repo`, lowercased), or of the repository path when there
 is no remote. It is committed, so a moved or re-cloned repository keeps its state.
+
+`discover` and `adopt` create these files with the core plugin's `bin/init.mjs`. It writes the
+marker with its id, copies `.githooks/` and `scripts/check.sh` from the plugin's templates, stages
+them with the shims marked executable, and arms the hooks. It never overwrites a file and never
+commits.
 
 ### On your machine
 
@@ -851,9 +857,9 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 | `plugins/epikloop/skills/` | Sixteen skills: frontmatter and purpose now, full instructions in M1 | now |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard, the emitter and the SessionStart briefing now; `doctor` in M1 | now, M1 |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard, the emitter, the SessionStart briefing and project setup now; `doctor` in M1 | now, M1 |
 | `plugins/epikloop/lanes/` | `web` and `service`, then `mobile-expo` and `mobile-flutter` | M1, M3 |
-| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, and `scripts/check.sh`, now; `project.json`, `CLAUDE.md` and the team-mode workflow in M1 | now, M1 |
+| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, and `scripts/check.sh`, now; `CLAUDE.md` and the team-mode workflow in M1 | now, M1 |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project | M1 |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture and roadmap; the lane authoring guide with the first lanes | now, M1 |
@@ -869,6 +875,7 @@ claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
 node plugins/epikloop/bin/guard.mjs --self-test
 node plugins/epikloop/bin/brief.mjs --self-test
+node plugins/epikloop/bin/init.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
@@ -906,7 +913,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 
 | Milestone | Delivers |
 |---|---|
-| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done for stages 1–5), the project marker, the living-spec format, the commands with sequential workers, the `web` and `service` lanes, and CI self-test, lint and evals |
+| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done for stages 1–5), the project marker (done), the living-spec format, the commands with sequential workers, the `web` and `service` lanes, and CI self-test, lint and evals |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: Harbor, then the Bridge** | Harbor's server and 3D scene, then the Bridge's review pages |
