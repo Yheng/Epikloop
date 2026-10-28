@@ -1,9 +1,11 @@
 // Epikloop's reader of a project's state. It parses the four project files in their formats
 // (docs/formats.md) and reads git, then derives what the stage machine and the fuel gauge need:
 // which stories are done, the current phase, the stage and its next step, and the gauge. Nothing
-// is stored; every read derives it again. The briefing imports it.
+// is stored; every read derives it again. The briefing imports it, and skills run it:
 //
-// `node state.mjs --self-test` runs every case below against throwaway repositories.
+//   node state.mjs                                          the state of the project here
+//   node state.mjs --example spec|stories|queue|decisions   a project file's example, its format
+//   node state.mjs --self-test                              every case below, in throwaway repos
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -316,9 +318,8 @@ function stageOf(root, project, s) {
   }
   const observed = current.filter((r) => r.status === 'observed').length
   if (observed > 0) return { n: 2, why: `${plural(observed, 'requirement')} in spec/ ${observed === 1 ? 'is' : 'are'} still observed`, next: '/epikloop:adopt' }
-  if (project.lane !== 'service' && !has('design', 'manifest.md')) {
-    return { n: 3, why: `the ${project.lane} lane has a UI, and design/manifest.md is missing`, next: '/epikloop:design' }
-  }
+  // Stage 3, design for a lane with a UI, returns with design's body in M2. Until then a UI lane
+  // goes on to architect.
   if (!has('spec', 'architecture.md')) return { n: 4, why: 'spec/architecture.md is missing', next: '/epikloop:architect' }
   if (s.stories.size === 0) return { n: 5, why: 'docs/stories/ holds no stories yet', next: '/epikloop:plan' }
   if (!project.mvp_frozen) return { n: 5, why: "the MVP set isn't frozen", next: '/epikloop:plan' }
@@ -339,6 +340,49 @@ function stageOf(root, project, s) {
   }
   if (s.questions.length >= MANY_QUESTIONS) return { n: 6, why: `${why}, and ${s.questions.length} questions wait`, next: `/epikloop:decide, then /epikloop:epic ${epic}` }
   return { n: 6, why, next: `/epikloop:epic ${epic}` }
+}
+
+// What is wrong with the project marker, by the fields its schema requires, or null.
+function markerProblem(project) {
+  if (project === null || typeof project !== 'object' || Array.isArray(project)) return 'is not a JSON object'
+  if (project.format !== 1) return 'has an unknown format'
+  if (typeof project.id !== 'string' || !/^[0-9a-f]{12}$/.test(project.id)) return 'has no valid id'
+  if (typeof project.lane !== 'string' || !/^[a-z][a-z0-9-]*$/.test(project.lane)) return 'has no valid lane'
+  if (project.mode !== 'solo' && project.mode !== 'team') return 'has no valid mode'
+  return null
+}
+
+// The Epikloop project at or above `dir`, the one whose folder holds .epikloop/project.json:
+// { root, project, problem }, where `problem` says what is wrong with the marker. Null outside one.
+export function openProject(dir) {
+  let root = path.resolve(dir)
+  while (!fs.existsSync(path.join(root, '.epikloop', 'project.json'))) {
+    if (path.dirname(root) === root) return null
+    root = path.dirname(root)
+  }
+  try {
+    const project = JSON.parse(fs.readFileSync(path.join(root, '.epikloop', 'project.json'), 'utf8').replace(/^﻿/, ''))
+    const problem = markerProblem(project)
+    return { root, project: problem === null ? project : null, problem }
+  } catch (error) {
+    return { root, project: null, problem: `doesn't parse (${String(error?.message ?? error).split('\n')[0]})` }
+  }
+}
+
+// What the briefing and the CLI both say: the gauge, the project and its stage as `parts`, and
+// `needs`, what needs the human. `state` is null when the marker has a problem.
+export function summary(opened, state) {
+  if (opened.problem !== null) return { parts: ['Epikloop project.'], needs: [`.epikloop/project.json ${opened.problem}`] }
+  const { project } = opened
+  const { n, why, next } = state.stage
+  const parts = [
+    ...(state.gauge === null ? [] : [`${state.gauge}.`]),
+    `Epikloop project ${project.id} (${project.lane}, ${project.mode}).`,
+    `${n === 8 ? 'Stage 8 or later' : `Stage ${n} of 10`}: ${why}. Next: ${next}.`,
+  ]
+  const waiting = state.questions.length
+  const needs = waiting > 0 ? [`${waiting} ${waiting === 1 ? 'question waits' : 'questions wait'} in docs/queue.md`] : []
+  return { parts, needs }
 }
 
 // The project's state, derived from its files and git. `project` is its parsed marker.
@@ -372,10 +416,40 @@ export function readState(root, project, { now = Date.now(), home = os.homedir()
   return { ...s, stage, gauge }
 }
 
+const TEMPLATES = path.join(import.meta.dirname, '..', 'templates')
+const EXAMPLES = { spec: 'spec/capability.md', stories: 'docs/stories/epic.md', queue: 'docs/queue.md', decisions: 'docs/decisions.md' }
+const USAGE = 'usage: node state.mjs [--example spec|stories|queue|decisions]'
+
+// The state of the project in the current folder, as lines a skill reads, or one example.
+function cli(argv) {
+  const [flag, name, ...rest] = argv
+  if (flag === '--example' && EXAMPLES[name] !== undefined && rest.length === 0) {
+    return process.stdout.write(fs.readFileSync(path.join(TEMPLATES, ...EXAMPLES[name].split('/')), 'utf8'))
+  }
+  if (flag !== undefined) {
+    process.exitCode = 1
+    return console.log(USAGE)
+  }
+  const opened = openProject(process.cwd())
+  if (opened === null) return console.log('Not an Epikloop project.')
+  const state = opened.problem === null ? readState(opened.root, opened.project) : null
+  const { parts, needs } = summary(opened, state)
+  const lines = [...parts]
+  if (needs.length > 0) lines.push(`Needs the human: ${needs.join('; ')}.`)
+  if (state?.questions.length > 0) {
+    lines.push('Waiting questions:')
+    for (const q of state.questions) lines.push(`- ${q.id} ${q.title} (${q.date}), blocks ${q.blocks.length > 0 ? q.blocks.join(', ') : 'nothing'}`)
+  }
+  if (state?.problems.length > 0) {
+    lines.push('Unreadable lines:')
+    for (const problem of state.problems) lines.push(`- ${problem}`)
+  }
+  console.log(lines.join('\n'))
+}
+
 // ---- The self-test
 
 const NOW = Date.UTC(2026, 10, 15, 12)
-const TEMPLATES = path.join(import.meta.dirname, '..', 'templates')
 const MARKER = { format: 1, id: '000000000000', lane: 'web', mode: 'solo' }
 
 // A stories file for epic `n`: each story is [m, tier, mvp, after?].
@@ -510,6 +584,15 @@ const CASES = [
     },
   ],
   [
+    'a UI lane goes on to architect until design arrives in M2',
+    (k) => {
+      const files = planned({ 1: [[1, 'T1', true]] })
+      delete files['design/manifest.md']
+      delete files['spec/architecture.md']
+      return k.stage(k.repo(files), '4 spec/architecture.md is missing → /epikloop:architect')
+    },
+  ],
+  [
     'stage 5 without an MVP story',
     (k) => k.stage(k.repo(planned({ 1: [[1, 'T1', false]] })), '5 no story is in the MVP set → /epikloop:plan'),
   ],
@@ -612,6 +695,43 @@ const CASES = [
       return k.expect([[s.gauge, null]])
     },
   ],
+  [
+    'the CLI reports the state, its questions and its unreadable lines',
+    (k) => {
+      const files = planned({ 1: [[1, 'T1', true], [2, 'T1', true]] }, { questions: [['Q-001', '1.2']] })
+      files['docs/stories/2-more.md'] = '# Epic 2: More\n\n## 2.1 No fields\n\n### Spec delta\n- none\n'
+      const dir = k.repo(files, { freeze: true, frozenAgo: 3 })
+      const run = k.cli(path.join(dir, 'docs'))
+      return k.expect([
+        [run.status, 0],
+        [
+          run.stdout,
+          [
+            'MVP 0/2 · 0.0 stories/day · ETA unknown · queue Δ 0.',
+            'Epikloop project 000000000000 (web, solo).',
+            'Stage 6 of 10: epic 1 has 2 MVP stories left, and Q-001 blocks 1.2. Next: /epikloop:decide, then /epikloop:epic 1.',
+            'Needs the human: 1 question waits in docs/queue.md.',
+            'Waiting questions:',
+            '- Q-001 Question (2026-11-01), blocks 1.2',
+            'Unreadable lines:',
+            '- docs/stories/2-more.md:3: 2.1 has no Tier',
+            '- docs/stories/2-more.md:3: 2.1 has no MVP',
+            '- docs/stories/2-more.md:3: 2.1 has no Requirements',
+            '',
+          ].join('\n'),
+        ],
+      ])
+    },
+  ],
+  [
+    'the CLI prints each example, and says so outside a project',
+    (k) => {
+      const dir = k.folder()
+      const pairs = Object.entries(EXAMPLES).map(([name, file]) => [k.cli(dir, ['--example', name]).stdout, k.template(file)])
+      const usage = k.cli(dir, ['--example', 'nope'])
+      return k.expect([...pairs, [k.cli(dir).stdout, 'Not an Epikloop project.\n'], [`${usage.status} ${usage.stdout}`, `1 ${USAGE}\n`]])
+    },
+  ],
 ]
 
 async function selfTest() {
@@ -679,6 +799,9 @@ async function selfTest() {
       }
     },
     read: (dir, fields = {}) => readState(dir, { ...(k.project ?? MARKER), ...fields }, { now: NOW, home }),
+    // The CLI, run as a skill runs it, from `cwd`, with this case's home.
+    cli: (cwd, args = []) =>
+      spawnSync(process.execPath, [import.meta.filename, ...args], { cwd, env: { ...env, HOME: home, USERPROFILE: home }, encoding: 'utf8', windowsHide: true }),
     expect: (pairs) => pairs.filter(([actual, wanted]) => actual !== wanted).map(([actual, wanted]) => `got ${JSON.stringify(actual)}, not ${JSON.stringify(wanted)}`),
     contains: (problems, wanted) => {
       const missing = wanted.filter((text) => !problems.some((problem) => problem.startsWith(text)))
@@ -715,4 +838,7 @@ async function selfTest() {
   process.exitCode = failures.length > 0 ? 1 : 0
 }
 
-if (process.argv[2] === '--self-test' && path.resolve(process.argv[1] ?? '') === import.meta.filename) await selfTest()
+if (path.resolve(process.argv[1] ?? '') === import.meta.filename) {
+  if (process.argv[2] === '--self-test') await selfTest()
+  else cli(process.argv.slice(2))
+}

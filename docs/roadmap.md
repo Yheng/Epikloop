@@ -39,7 +39,12 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   reads them)
 - skill bodies for `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`,
   `epic`/`next`/`story` (sequential workers), `decide`, `triage`, `retro` and `release`
+  - slice 1, the path to a frozen plan, is done: `/epikloop`, `discover`, `architect` and `plan`
+  - slice 2 is the batch: `epic`/`next`/`story`, the `story-worker` body, `spec-delta`, `decide`
+    and `triage`; slice 3 is `retro`, `release`, `adopt` and `doctor`
   - `doctor` also reports drift between a product's `.githooks/check.mjs` and the plugin's template
+  - stage 3, design, is held until M2 brings design's body; until then a UI lane goes on to
+    `architect`
 - the `web` and `service` lanes
 - CI self-test, lint and evals, on top of validation
 - CI mutation check — break one guard rule in a copy and expect the self-test to fail
@@ -85,7 +90,8 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   `${CLAUDE_PLUGIN_ROOT}`, and `check.sh` lives in product repos. If nothing needs `PATH`, rename
   `bin/` to `scripts/` before the first release.
   - Skills reach plugin scripts the same way: Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` in a
-    plugin skill's body and its `allowed-tools`. So far nothing needs `PATH`.
+    plugin skill's body and its `allowed-tools`. The slice-1 skill bodies do so, and nothing needs
+    `PATH` so far.
 
 **Done when:**
 

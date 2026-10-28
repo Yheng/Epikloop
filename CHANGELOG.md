@@ -51,6 +51,16 @@ All notable changes to Epikloop are recorded here.
   fuel gauge, and reports each line it can't place as `file:line what`. The briefing now opens
   with the fuel gauge, covers stages 1 to 7, and names waiting questions and format problems. CI
   runs the reader's self-test on Linux, macOS and Windows.
+- The state reader's command line: `node state.mjs` prints the project's state, its waiting
+  questions and its unreadable lines, and `--example <name>` prints a project file's template.
+- Skill bodies for the path to a frozen plan: `/epikloop`, `discover`, `architect` and `plan`. They
+  run the plugin's scripts through `${CLAUDE_PLUGIN_ROOT}`, pre-approved for Bash and PowerShell,
+  and receive each format by injection.
+
+### Changed
+
+- Stage 3, design, is held until M2 brings design's body. Until then a UI lane goes from its spec
+  on to `architect`.
 
 ### Removed
 
@@ -219,3 +229,31 @@ The rest come from the hook spike of 2026-10-21 and from failures the maintainer
   stage, the next step and the fuel gauge are computed by `bin/state.mjs`, never by the model
   reading the files. The templates are the model's examples, and the reader's self-test parses
   them.
+
+### Skill rules (adopted 2026-10-28)
+
+Each entry names the doctrine principle the instruction carries. The principles were learned on an
+earlier pipeline's runs on real projects, from July to September 2026.
+
+- **The front door takes the state from the script** (article 5: the model talked itself past
+  checkable rules written as prose).
+- **The front door runs its sync and the state command separately.** On 2026-10-28, in a headless
+  check, it chained `git remote | grep … && git fetch; node …/state.mjs` into one command. The
+  `grep` part matched no rule, so the call needed approval in default mode.
+- **A writer gets its format from the script.** `discover`, `architect` and `plan` inject the
+  template the reader parses, so what the model writes is what the reader can count (article 5).
+- **Only `adopt` marks a requirement `observed`** (doctrine 6: state lives in files). A
+  requirement stays observed until a decide batch confirms it, and the stage machine sends
+  observed requirements back to `adopt`.
+- **`discover` lays down the project with `init.mjs`** (article 8: a template-based setup copied
+  the tool into every product repository).
+- **`architect` writes nothing until the human confirms the stack and the lane**, and records each
+  choice that closes off an alternative as a decision (doctrine 6).
+- **`plan`'s tiers** (doctrine 4, risk-tiered verification): most stories are T1. Auth, money,
+  migrations on live data and untrusted input are T3. T2 is for quoted business rules that need
+  tests of their own.
+- **`plan` opens epic 1 with scaffolding and gates, then staging**, a split carried over from the
+  earlier pipeline's runs.
+- **`plan` freezes the MVP set in a commit** (doctrine 5, a frozen finish line). The freeze date,
+  mode, hours per day and deadline are recorded with it. That commit is the queue's baseline, and
+  the set moves only through a recorded decision.

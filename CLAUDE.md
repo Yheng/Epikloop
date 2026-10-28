@@ -18,7 +18,8 @@ This is the tool, not a product built with it.
   `scripts/check.sh`, `.githooks/`) appear here only as templates and eval fixtures.
 - This repository's own `docs/` is documentation about Epikloop.
 
-Skills currently have frontmatter and a purpose paragraph but no bodies. The git guard, the emitter,
+`/epikloop`, `discover`, `architect` and `plan` have their bodies; the other skills have
+frontmatter and a purpose paragraph only. The git guard, the emitter,
 the gate runner, the SessionStart briefing, project setup and the project file formats are in
 place; the other hooks, scripts, lanes and templates arrive with M1 (`docs/roadmap.md`).
 

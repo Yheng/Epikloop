@@ -10,7 +10,7 @@
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { readState } from './state.mjs'
+import { openProject, readState, summary } from './state.mjs'
 
 const OUTSIDE = 'Not an Epikloop project. `/epikloop` to start.'
 
@@ -57,58 +57,21 @@ function arm(root) {
   return said[1].startsWith('not armed') ? { needs: `git hooks ${said[1]}` } : { fact: `Git hooks: ${said[1]}.` }
 }
 
-// What is wrong with the project marker, by the fields its schema requires, or null.
-function markerProblem(project) {
-  if (project === null || typeof project !== 'object' || Array.isArray(project)) return 'is not a JSON object'
-  if (project.format !== 1) return 'has an unknown format'
-  if (typeof project.id !== 'string' || !/^[0-9a-f]{12}$/.test(project.id)) return 'has no valid id'
-  if (typeof project.lane !== 'string' || !/^[a-z][a-z0-9-]*$/.test(project.lane)) return 'has no valid lane'
-  if (project.mode !== 'solo' && project.mode !== 'team') return 'has no valid mode'
-  return null
-}
-
 // Format problems the briefing names before it counts the rest.
 const SHOWN_PROBLEMS = 3
 
-function briefing(root) {
-  const hooks = arm(root)
-  const needs = []
-  let project = null
-  let problem = null
-  try {
-    project = JSON.parse(fs.readFileSync(path.join(root, '.epikloop', 'project.json'), 'utf8').replace(/^﻿/, ''))
-    problem = markerProblem(project)
-  } catch (error) {
-    problem = `doesn't parse (${firstLine(error)})`
-  }
-  const parts = []
-  if (problem === null) {
-    const state = readState(root, project)
-    if (state.gauge !== null) parts.push(`${state.gauge}.`)
-    parts.push(`Epikloop project ${project.id} (${project.lane}, ${project.mode}).`)
-    const { n, why, next } = state.stage
-    parts.push(`${n === 8 ? 'Stage 8 or later' : `Stage ${n} of 10`}: ${why}. Next: ${next}.`)
-    const waiting = state.questions.length
-    if (waiting > 0) needs.push(`${waiting} ${waiting === 1 ? 'question waits' : 'questions wait'} in docs/queue.md`)
-    const unread = state.problems
-    needs.push(...unread.slice(0, SHOWN_PROBLEMS))
-    if (unread.length > SHOWN_PROBLEMS) needs.push(`and ${unread.length - SHOWN_PROBLEMS} more`)
-  } else {
-    parts.push('Epikloop project.')
-    needs.push(`.epikloop/project.json ${problem}`)
+function briefing(opened) {
+  const hooks = arm(opened.root)
+  const state = opened.problem === null ? readState(opened.root, opened.project) : null
+  const { parts, needs } = summary(opened, state)
+  if (state !== null) {
+    needs.push(...state.problems.slice(0, SHOWN_PROBLEMS))
+    if (state.problems.length > SHOWN_PROBLEMS) needs.push(`and ${state.problems.length - SHOWN_PROBLEMS} more`)
   }
   if (hooks.fact) parts.push(hooks.fact)
   if (hooks.needs) needs.push(hooks.needs)
   if (needs.length > 0) parts.push(`Needs the human: ${needs.join('; ')}.`)
   return `${parts.join(' ')}\n\n${PROTOCOL}`
-}
-
-// An Epikloop project is a directory with .epikloop/project.json, here or above.
-function projectRoot(dir) {
-  for (let at = path.resolve(dir); ; at = path.dirname(at)) {
-    if (fs.existsSync(path.join(at, '.epikloop', 'project.json'))) return at
-    if (path.dirname(at) === at) return null
-  }
 }
 
 const firstLine = (error) => String(error?.message ?? error).split('\n')[0]
@@ -123,8 +86,8 @@ async function hook() {
     for await (const chunk of process.stdin.setEncoding('utf8')) raw += chunk
     // Windows PowerShell 5.1 starts piped text with a BOM.
     const input = JSON.parse(raw.replace(/^﻿/, ''))
-    const root = projectRoot(input.cwd || process.cwd())
-    context = root === null ? OUTSIDE : briefing(root)
+    const opened = openProject(input.cwd || process.cwd())
+    context = opened === null ? OUTSIDE : briefing(opened)
   } catch (error) {
     context = failure(firstLine(error))
   }
@@ -163,9 +126,9 @@ const CASES = [
     { cwd: 'src', says: ['Epikloop project 000000000000 (web, solo). Stage 2 of 10'] },
   ],
   [
-    'a UI lane without screens',
+    'a UI lane without screens, until design arrives in M2',
     { '.epikloop/project.json': marker(), 'spec/auth.md': SPEC },
-    { says: ['Stage 3 of 10: the web lane has a UI, and design/manifest.md is missing. Next: /epikloop:design.'] },
+    { says: ['Stage 4 of 10: spec/architecture.md is missing. Next: /epikloop:architect.'] },
   ],
   [
     'the service lane skipping design',

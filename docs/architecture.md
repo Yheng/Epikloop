@@ -357,6 +357,17 @@ fragments.
   of context.
 - Only the front door sets `name`, because a `name` also registers a bare command.
 
+**Scripts and formats in skill bodies:**
+
+- A skill runs the plugin's scripts as `node "${CLAUDE_PLUGIN_ROOT}/bin/…"`, which Claude Code
+  substitutes in the body and in `allowed-tools`. The same rule is written for `Bash` and
+  `PowerShell`, so the call runs without a prompt in either shell.
+- A skill that writes a project file gets its format by injecting
+  `` !`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --example <name>` ``, which prints the template
+  the reader's self-test parses.
+- The stage, the fuel gauge and what waits come from `node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs"`,
+  never from the model reading the files.
+
 ## Stage machine
 
 `/epikloop` walks a project from zero to production. Each stage has a mechanical done-test, and the
@@ -365,6 +376,7 @@ next step is the first one that fails, so the answer is the same after lunch or 
 1. Not a project → new product or existing code? → `discover` or `adopt`
 2. `spec/` missing, or `observed` requirements unconfirmed → finish `discover` or `adopt`
 3. The lane has a UI and `design/manifest.md` is missing, or `audit` reports gaps → `design`
+   (from M2, with design's body; until then a UI lane goes on to `architect`)
 4. `spec/architecture.md` missing → `architect`
 5. No stories, or the MVP set isn't frozen → `plan`
 6. The current phase has unticked MVP stories → `epic N`, or `decide` first when a question
@@ -434,7 +446,7 @@ tool's name and docs are not nautical.
 |---|---|---|
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
-| `plugins/epikloop/skills/` | Sixteen skills: frontmatter and purpose now, bodies in M1 | now |
+| `plugins/epikloop/skills/` | Sixteen skills: bodies for `/epikloop`, `discover`, `architect` and `plan` now, the rest in M1 | now, M1 |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | Hooks, the emitter, the guard, doctor | M1 |

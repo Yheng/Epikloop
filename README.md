@@ -103,14 +103,15 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The project file formats, their templates, and the reader that derives stage and gauge from them | **Available** |
 | Project setup: the project marker with its id, and the gate files, staged and armed | **Available** |
 | CI: validation, the guard's, the briefing's, project setup's and the gate runner's self-tests, and the emitter's tests on Linux, macOS and Windows | **Available** |
-| The commands: `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`, `epic`, `next`, `story`, `decide`, `triage`, `retro`, `release` | Defined; full instructions in M1 |
+| The path to a frozen plan: `/epikloop`, `discover`, `architect` and `plan`, with full instructions | **Available** |
+| The other commands: `doctor`, `adopt`, `epic`, `next`, `story`, `decide`, `triage`, `retro`, `release` | Defined; full instructions in M1 |
 | The `web` and `service` lanes | M1 |
 | `design`: direction variants, every screen, the gallery | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor (its server, its 3D view and the `harbor` command), then the Bridge | M4 |
 
-Until M1 lands, each command carries only a one-paragraph outcome, not its full instructions, so it
-is not ready for real projects. See the [roadmap](#roadmap).
+Until M1 lands, the commands past `plan` carry only a one-paragraph outcome, not their full
+instructions, so Epikloop is not ready for real projects. See the [roadmap](#roadmap).
 
 ## Install
 
@@ -215,7 +216,7 @@ after six weeks.
 |---|---|---|
 | 1 | The repository is not an Epikloop project yet | `discover` for a new product, or `adopt` for existing code |
 | 2 | `spec/` is missing, or `observed` requirements are unconfirmed | Finish `discover` or `adopt` |
-| 3 | The lane has a UI and `design/manifest.md` is missing, or `audit` reports gaps | `design` |
+| 3 | The lane has a UI and `design/manifest.md` is missing, or `audit` reports gaps | `design`, from M2; until then a UI lane goes on to `architect` |
 | 4 | `spec/architecture.md` is missing | `architect` |
 | 5 | There are no stories, or the MVP set isn't frozen | `plan` |
 | 6 | The current phase has unticked MVP stories | `epic N`, or `decide` first when a question blocks one of them or five or more wait |
@@ -864,7 +865,7 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 |---|---|---|
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
-| `plugins/epikloop/skills/` | Sixteen skills: frontmatter and purpose now, full instructions in M1 | now |
+| `plugins/epikloop/skills/` | Sixteen skills: full instructions for `/epikloop`, `discover`, `architect` and `plan` now, the rest in M1 | now, M1 |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard, the emitter, the SessionStart briefing, project setup and the state reader now; `doctor` in M1 | now, M1 |
