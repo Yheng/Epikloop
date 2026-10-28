@@ -105,10 +105,12 @@ What each event does:
     `git push … -f/--force/+ref/--delete`, `git reset --hard`,
     `git switch -f/--discard-changes`, hooks-path overrides, `git clean -f`, `git checkout -- .`
     and `git restore .`.
-  - It then allows the pipeline's own ceremony: `scripts/check.sh`,
+  - It then allows the pipeline's own ceremony: the gate runner,
     `git status/diff/log/fetch/add/commit/push/switch/tag/branch`, `gh issue/pr`, and the active
     lane's UI test tool. Merging and deleting are left out: `gh pr merge/close`,
     `git branch -d/-D` and `git tag -d`.
+  - The gate runner is `scripts/check.sh` from Bash, and `node .githooks/check.mjs` from
+    PowerShell, which on Windows opens a `.sh` file in Git Bash instead of running it.
   - It allows a command only when every part of it is on that list, and nothing in it substitutes
     or redirects, gives git a global option or a URL, or runs a program through a git option.
   - A plugin can't ship a permissions allowlist, so this hook is how the pipeline runs without

@@ -157,3 +157,11 @@ The rest come from the hook spike of 2026-10-21 and from failures the maintainer
     that throws is a harness error, and fails the self-test. On 2026-10-21 a CI run had a case throw
     while its test repo was being copied; inside the mutation check, that throw would have counted
     as a catch. The self-test also turns off git's background maintenance, the likely cause.
+
+### Gate rules (adopted 2026-10-28)
+
+- **The guard runs the gate runner directly from PowerShell.** On 2026-10-21, on the maintainer's
+  Windows machine, `.sh` files were associated with Git Bash, so `scripts/check.sh` typed in
+  PowerShell would open a Git Bash window instead of running the gates in the session. This was
+  read from the association and not run, because running it opens a window. From PowerShell the
+  guard now allows `node .githooks/check.mjs`, and no longer allows `scripts/check.sh`.

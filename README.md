@@ -418,7 +418,8 @@ The runner lives in your repository, so it works in a plain clone without the pl
 
 - `.githooks/check.mjs` is the runner, in Node.
 - `.githooks/pre-commit` and `.githooks/pre-push` are two-line hooks that run it.
-- `scripts/check.sh` is a two-line sh shim that runs it by hand and in CI.
+- `scripts/check.sh` is a two-line sh shim that runs it by hand and in CI. From PowerShell, run
+  `node .githooks/check.mjs` instead, since on Windows a `.sh` file opens in Git Bash.
 
 | Mode | When | Runs |
 |---|---|---|
@@ -480,7 +481,8 @@ names the rule and what to do instead, and parking a question is always one of t
 
 **Allow.** The pipeline's own commands run without a permission prompt:
 
-- `scripts/check.sh`
+- the gate runner: `scripts/check.sh` from Bash, and `node .githooks/check.mjs` from PowerShell,
+  which on Windows opens a `.sh` file in Git Bash instead of running it
 - `git status`, `diff`, `log`, `fetch`, `add`, `commit`, `push`, `switch`, `tag` and `branch`
 - `gh issue …` and `gh pr …`
 

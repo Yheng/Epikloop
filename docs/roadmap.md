@@ -27,8 +27,8 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 - the emitter and the event log (done)
 - `check.sh` in Node, with its hook shims, the secret and token gates, and the self-test (done; the
   runner is `.githooks/check.mjs`)
-- next, before any skill body: the guard allows `node .githooks/check.mjs` in PowerShell, and
-  stops allowing `scripts/check.sh` there, where it opens Git Bash instead of running
+- the guard allows `node .githooks/check.mjs` in PowerShell, and stops allowing `scripts/check.sh`
+  there, where it opens Git Bash instead of running (done)
 - the PreToolUse guard (done; the active lane's UI test tool joins its allow list with the lanes)
   - baseline on 2026-10-20, on the maintainer's Windows 11 laptop: spawn median 128–133 ms, max
     175–209 ms; GitHub's windows-latest runner measures ~50 ms median

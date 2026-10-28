@@ -133,8 +133,11 @@ const GIT_ALLOWED = new Set(['status', 'diff', 'log', 'fetch', 'add', 'commit', 
 // Options that run a program or write a file, and URLs or network paths.
 const GIT_UNSAFE = / --(?:upload-pack|receive-pack|exec|output)[ =]|:\/\/|::|[^ @]+@[^ :]+:| (?:\/\/|\\\\)/
 const CHECK_SH = /^(?:(?:ba)?sh )?(?:\.[\/\\])?scripts[\/\\]check\.sh(?: |$)/
+// PowerShell hands a .sh file to its file association, which on Windows opens Git Bash instead of
+// running it, so from PowerShell the runner is called directly.
+const CHECK_MJS = /^node (?:\.[\/\\])?\.githooks[\/\\]check\.mjs(?: |$)/
 
-function isPipelineCommand(command) {
+function isPipelineCommand(tool, command) {
   const words = command.split(/\s+/)
   const [program, sub, verb] = words
   const args = ` ${words.slice(2).join(' ')} `
@@ -148,7 +151,7 @@ function isPipelineCommand(command) {
     if (sub === 'pr' && (verb === 'merge' || verb === 'close')) return false
     return !/ (?:--repo|-R)[ =]/.test(args)
   }
-  return CHECK_SH.test(words.join(' '))
+  return (tool === 'PowerShell' ? CHECK_MJS : CHECK_SH).test(words.join(' '))
 }
 
 function answer(decision, reason) {
@@ -166,7 +169,7 @@ function decide(tool, command) {
   }
   const plain = tool === 'PowerShell' ? PLAIN.PowerShell : PLAIN.Bash
   const commands = text.split(COMMANDS).map((c) => c.trim()).filter(Boolean)
-  if (!live && commands.length > 0 && commands.every((c) => plain.test(c) && isPipelineCommand(c))) {
+  if (!live && commands.length > 0 && commands.every((c) => plain.test(c) && isPipelineCommand(tool, c))) {
     return answer('allow')
   }
   return null
@@ -221,6 +224,10 @@ feat(1.2): add login
   ['deny:force-push', 'git push \\\n  --force origin main'],
   ['allow', 'git add src/login.ts && git commit -m "feat(1.2): add login" && git push'],
   ['allow', 'scripts/check.sh --fast'],
+  ['allow', 'node .githooks/check.mjs --fast', 'PowerShell'],
+  ['allow', 'node .\\.githooks\\check.mjs; git status', 'PowerShell'],
+  ['pass', 'scripts/check.sh --fast', 'PowerShell'],
+  ['pass', 'node --import ./x.mjs .githooks/check.mjs', 'PowerShell'],
   ['allow', `gh pr create --title "feat(1.2): login" --body "$(cat <<'EOF'
 ## Summary
 Adds login.
