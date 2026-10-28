@@ -882,7 +882,13 @@ async function stampKey(envFiles) {
   try {
     const scratch = await gitPath('check-index')
     const index = await gitPath('index')
-    if (fs.existsSync(index)) fs.copyFileSync(index, scratch)
+    if (fs.existsSync(index)) {
+      fs.copyFileSync(index, scratch)
+      // git tells a racily clean entry by the index file's own mtime, so the copy keeps it; a newer
+      // one would let a same-size rewrite in that second pass as unchanged.
+      const { atime, mtime } = fs.statSync(index)
+      fs.utimesSync(scratch, atime, mtime)
+    }
     const env = { ...process.env, GIT_INDEX_FILE: scratch }
     try {
       await git(['add', '-A'], { env })
@@ -2027,6 +2033,30 @@ function gateCases(k) {
         await g(r.dir, 'add', 'a.ts')
         const tip = await commitIndex(r.dir, 'v1')
         write(r.dir, 'a.ts', 'v2\n')
+        const full = await check(r, [])
+        const res = await push(r, refLine('refs/heads/main', tip))
+        return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'a stamp sees a same-size rewrite in the second the index was written',
+      async () => {
+        const r = await repoWith({ commands: true }, { 'a.ts': 'v1\n' })
+        // git compares only whole-second mtimes and sizes, as on a filesystem without trusted
+        // ctimes. One whole second, a minute back, then serves the file and the index alike: the
+        // entry is racily clean, as when a file is rewritten in the second its index was written,
+        // and a copy of the index that didn't keep its mtime would be newer. Linux and macOS
+        // copies don't keep it; Windows copies do.
+        await g(r.dir, 'config', 'core.trustCtime', 'false')
+        await g(r.dir, 'config', 'core.checkStat', 'minimal')
+        const second = Math.floor(Date.now() / 1000) - 60
+        const file = path.join(r.dir, 'a.ts')
+        fs.utimesSync(file, second, second)
+        await g(r.dir, 'add', 'a.ts')
+        const tip = await commitIndex(r.dir, 'v1')
+        fs.utimesSync(path.join(r.dir, '.git', 'index'), second, second)
+        write(r.dir, 'a.ts', 'v2\n')
+        fs.utimesSync(file, second, second)
         const full = await check(r, [])
         const res = await push(r, refLine('refs/heads/main', tip))
         return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)

@@ -173,6 +173,14 @@ The rest come from the hook spike of 2026-10-21 and from failures the maintainer
   PowerShell would open a Git Bash window instead of running the gates in the session. This was
   read from the association and not run, because running it opens a window. From PowerShell the
   guard now allows `node .githooks/check.mjs`, and no longer allows `scripts/check.sh`.
+- **The stamp's scratch index keeps the index's mtime.** On 2026-10-28 the gate runner's
+  self-test failed in CI on macOS: a push whose tip lacked the change the stamped run had tested
+  skipped its tests.
+  - The stamp builds the working tree in a copy of the index. On Linux and macOS a copy takes a
+    fresh mtime; on Windows it keeps the original's.
+  - git tells a racily clean entry by the index's own mtime. So, against a newer copy, a file
+    rewritten at the same size in the second its entry was written passed as unchanged.
+  - The copy now keeps the index's timestamps, and a self-test case pins that timing.
 
 ### Hook rules (adopted 2026-10-28)
 
