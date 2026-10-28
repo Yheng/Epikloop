@@ -286,12 +286,17 @@ only layers 2 and 3 gate them.
   delta. Closing a story applies its delta in the same commit as the code, so there is no separate
   document-sync step.
 - **`docs/queue.md`** holds parked questions and backlog lines, each dated.
+- **Formats.** Each file's format is in [formats](formats.md), with an example in the core
+  plugin's `templates/`. `bin/state.mjs` reads them, and the briefing's stage and fuel gauge come
+  from it.
 - **Where the spec comes from.** `discover` writes the initial spec. `adopt` reverse-engineers it,
   marking every requirement `observed` until a decide batch confirms it.
-- **The todo list is derived, never stored.**
-  - Solo: a story is done when a `feat(X.X):` commit exists on main.
-  - Team: a story is done when a merged pull request references it. Squash merges collapse
-    commits, so pull request titles and `Closes #` are what count.
+- **The todo list is derived, never stored.** A story is done when a commit reachable from the
+  default branch has a subject that starts `feat(N.M):`.
+  - In solo mode, that is the story's own commit.
+  - In team mode, squash merges collapse commits, so a pull request's title carries the prefix.
+- **Phases.** One epic is one phase. `retro` tags a closed phase `phase-N`, and MVP sign-off tags
+  `mvp`. The current phase is the lowest epic that has MVP stories and no `phase-N` tag.
 
 ## Lanes
 
@@ -362,8 +367,9 @@ next step is the first one that fails, so the answer is the same after lunch or 
 3. The lane has a UI and `design/manifest.md` is missing, or `audit` reports gaps → `design`
 4. `spec/architecture.md` missing → `architect`
 5. No stories, or the MVP set isn't frozen → `plan`
-6. Unticked MVP stories → `epic N`, or `decide` first when a question blocks or five or more wait
-7. Phase complete but not tagged → `retro`
+6. The current phase has unticked MVP stories → `epic N`, or `decide` first when a question
+   blocks one of them or five or more wait
+7. The current phase is complete but not tagged → `retro`
 8. All MVP stories done, queue Δ ≤ 0, staging smoke green, no `mvp` tag → MVP sign-off
 9. `mvp` tag, no production → `release`
 10. Released → post-MVP mode: the backlog becomes visible, and `plan --extend` takes new work
@@ -433,7 +439,7 @@ tool's name and docs are not nautical.
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | Hooks, the emitter, the guard, doctor | M1 |
 | `plugins/epikloop/lanes/` | `web` and `service`; then `mobile-expo` and `mobile-flutter` | M1, M3 |
-| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, and `scripts/check.sh`; then `CLAUDE.md` and the team-mode workflow | now, M1 |
+| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, and an example of each project file in `spec/` and `docs/`; then `CLAUDE.md` and the team-mode workflow | now, M1 |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project, inside the plugin where `claude plugin eval` reads it | M1 |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture, roadmap; the lane authoring guide with the first lanes | now, M1 |

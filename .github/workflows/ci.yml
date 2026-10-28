@@ -34,6 +34,7 @@ jobs:
       - run: node plugins/epikloop/bin/guard.mjs --self-test
       - run: node plugins/epikloop/bin/brief.mjs --self-test
       - run: node plugins/epikloop/bin/init.mjs --self-test
+      - run: node plugins/epikloop/bin/state.mjs --self-test
       - run: claude plugin test plugins/epikloop
       - run: node plugins/epikloop/bin/fold.mjs --self-test
       - run: node plugins/epikloop/templates/githooks/check.mjs --self-test

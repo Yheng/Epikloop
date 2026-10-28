@@ -19,8 +19,8 @@ This is the tool, not a product built with it.
 - This repository's own `docs/` is documentation about Epikloop.
 
 Skills currently have frontmatter and a purpose paragraph but no bodies. The git guard, the emitter,
-the gate runner, the SessionStart briefing and project setup are in place; the other hooks,
-scripts, lanes and templates arrive with M1 (`docs/roadmap.md`).
+the gate runner, the SessionStart briefing, project setup and the project file formats are in
+place; the other hooks, scripts, lanes and templates arrive with M1 (`docs/roadmap.md`).
 
 ## Map
 
@@ -36,6 +36,10 @@ scripts, lanes and templates arrive with M1 (`docs/roadmap.md`).
     self-test
   - `bin/init.mjs` — project setup: writes the marker with its id and the gate files, with its
     self-test
+  - `bin/state.mjs` — reads the project files and git into the stage and the fuel gauge, with its
+    self-test; the briefing imports it
+  - `templates/spec/` and `templates/docs/` — an example of each project file, in the formats
+    `docs/formats.md` defines; the state reader's self-test parses them
   - `bin/fold.mjs` — folds the emitter's files into `.jsonl` files, with its self-test
   - `templates/githooks/check.mjs` — the gate runner, which product repos carry as
     `.githooks/check.mjs`, with its self-test. Beside it are `templates/githooks/pre-commit` and
@@ -44,7 +48,8 @@ scripts, lanes and templates arrive with M1 (`docs/roadmap.md`).
   - later: `lanes/`, `evals/`, and the rest of `templates/`
 - `plugins/epikloop-harbor/` — a manifest only, until M4.
 - `CONSTITUTION.md` — the rules for changing Epikloop.
-- `docs/doctrine.md`, `docs/architecture.md` (the settled decisions) and `docs/roadmap.md`.
+- `docs/doctrine.md`, `docs/architecture.md` (the settled decisions), `docs/formats.md` (the
+  project file formats) and `docs/roadmap.md`.
 
 ## Rules for every change
 
@@ -110,6 +115,7 @@ claude plugin validate plugins/epikloop-harbor --strict
 node plugins/epikloop/bin/guard.mjs --self-test
 node plugins/epikloop/bin/brief.mjs --self-test
 node plugins/epikloop/bin/init.mjs --self-test
+node plugins/epikloop/bin/state.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
@@ -123,6 +129,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   repos. It prints failures plus one summary line with the largest context and spawn times.
 - **The init self-test** runs setup in throwaway repos: remote forms, kept files, staged modes and
   arming. Its last case commits through the real pre-commit hook.
+- **The state reader's self-test** parses the templates and malformed files, and reads dated
+  commits, tags and cost rows in throwaway repos into exact stages and gauges.
 - **The plugin test** runs the emitter's suite against simulated events, with no login.
 - **The fold's self-test** folds sample files in a temporary folder.
 - **The gate runner's self-test** builds throwaway repos with bare remotes in a temporary folder.

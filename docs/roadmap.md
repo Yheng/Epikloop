@@ -32,10 +32,11 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 - the PreToolUse guard (done; the active lane's UI test tool joins its allow list with the lanes)
   - baseline on 2026-10-20, on the maintainer's Windows 11 laptop: spawn median 128–133 ms, max
     175–209 ms; GitHub's windows-latest runner measures ~50 ms median
-- the SessionStart briefing (done for stages 1–5, the protocol and arming; the fuel gauge, the
-  queue and stages 6–10 join it as the files they read get their formats)
+- the SessionStart briefing (done for stages 1–7, the fuel gauge, the protocol and arming; stages
+  8–10 join it with the sign-off and release records that `retro` and `release` write)
 - the project marker and project id (done; `bin/init.mjs` writes the marker and the gate files)
-- the living-spec format
+- the living-spec format (done; [formats](formats.md), the templates, and `bin/state.mjs`, which
+  reads them)
 - skill bodies for `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`,
   `epic`/`next`/`story` (sequential workers), `decide`, `triage`, `retro` and `release`
   - `doctor` also reports drift between a product's `.githooks/check.mjs` and the plugin's template

@@ -3,13 +3,14 @@
 // followed by the pipeline protocol. Outside one it gives a single line. It prints only its JSON
 // answer and exits 0, whatever happens.
 //
-// The stage line runs the stage machine's tests that read only which files exist, up to stage 5.
-// The fuel gauge and the later stages join it as the files they read get their formats.
+// The fuel gauge, the stage and its next step come from state.mjs, which reads the project files in
+// their formats.
 //
 // `node brief.mjs --self-test` runs every case below through this file as a spawned hook.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { readState } from './state.mjs'
 
 const OUTSIDE = 'Not an Epikloop project. `/epikloop` to start.'
 
@@ -66,28 +67,8 @@ function markerProblem(project) {
   return null
 }
 
-// The first stage whose test fails, as [stage, what fails, next step], or null past stage 5.
-function stage(root, project) {
-  const has = (...parts) => fs.existsSync(path.join(root, ...parts))
-  const pages = (...parts) => {
-    const dir = path.join(root, ...parts)
-    if (!fs.existsSync(dir)) return []
-    return fs
-      .readdirSync(dir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
-      .map((entry) => entry.name)
-  }
-  if (!pages('spec').some((name) => name !== 'architecture.md')) {
-    return [2, 'spec/ holds no requirements yet', '/epikloop:discover for a new product, or /epikloop:adopt for existing code']
-  }
-  if (project.lane !== 'service' && !has('design', 'manifest.md')) {
-    return [3, `the ${project.lane} lane has a UI, and design/manifest.md is missing`, '/epikloop:design']
-  }
-  if (!has('spec', 'architecture.md')) return [4, 'spec/architecture.md is missing', '/epikloop:architect']
-  if (pages('docs', 'stories').length === 0) return [5, 'docs/stories/ holds no stories yet', '/epikloop:plan']
-  if (!project.mvp_frozen) return [5, "the MVP set isn't frozen", '/epikloop:plan']
-  return null
-}
+// Format problems the briefing names before it counts the rest.
+const SHOWN_PROBLEMS = 3
 
 function briefing(root) {
   const hooks = arm(root)
@@ -102,13 +83,16 @@ function briefing(root) {
   }
   const parts = []
   if (problem === null) {
+    const state = readState(root, project)
+    if (state.gauge !== null) parts.push(`${state.gauge}.`)
     parts.push(`Epikloop project ${project.id} (${project.lane}, ${project.mode}).`)
-    const at = stage(root, project)
-    parts.push(
-      at === null
-        ? `Stage 6 or later: stories are planned and the MVP set was frozen on ${project.mvp_frozen}. Next: /epikloop.`
-        : `Stage ${at[0]} of 10: ${at[1]}. Next: ${at[2]}.`,
-    )
+    const { n, why, next } = state.stage
+    parts.push(`${n === 8 ? 'Stage 8 or later' : `Stage ${n} of 10`}: ${why}. Next: ${next}.`)
+    const waiting = state.questions.length
+    if (waiting > 0) needs.push(`${waiting} ${waiting === 1 ? 'question waits' : 'questions wait'} in docs/queue.md`)
+    const unread = state.problems
+    needs.push(...unread.slice(0, SHOWN_PROBLEMS))
+    if (unread.length > SHOWN_PROBLEMS) needs.push(`and ${unread.length - SHOWN_PROBLEMS} more`)
   } else {
     parts.push('Epikloop project.')
     needs.push(`.epikloop/project.json ${problem}`)
@@ -148,13 +132,14 @@ async function hook() {
 }
 
 const marker = (fields = {}) => JSON.stringify({ format: 1, id: '000000000000', lane: 'web', mode: 'solo', ...fields })
+const SPEC = '# Auth\n\n## REQ-AUTH-001 Sign in\n\nPeople sign in.\n'
 // A web project that has passed stage 5.
 const PLANNED = {
   '.epikloop/project.json': marker({ mvp_frozen: '2026-11-02' }),
-  'spec/auth.md': '# Auth\n',
+  'spec/auth.md': SPEC,
   'spec/architecture.md': '# Architecture\n',
   'design/manifest.md': '# Screens\n',
-  'docs/stories/1-auth.md': '# Epic 1\n',
+  'docs/stories/1-auth.md': '# Epic 1: Auth\n\n## 1.1 Sign in\n- Tier: T1\n- MVP: yes\n- Requirements: REQ-AUTH-001\n\n### Spec delta\n- none\n',
 }
 const SILENT_HOOKS = ['git hooks', 'Git hooks']
 
@@ -179,12 +164,12 @@ const CASES = [
   ],
   [
     'a UI lane without screens',
-    { '.epikloop/project.json': marker(), 'spec/auth.md': '# Auth\n' },
+    { '.epikloop/project.json': marker(), 'spec/auth.md': SPEC },
     { says: ['Stage 3 of 10: the web lane has a UI, and design/manifest.md is missing. Next: /epikloop:design.'] },
   ],
   [
     'the service lane skipping design',
-    { '.epikloop/project.json': marker({ lane: 'service' }), 'spec/auth.md': '# Auth\n' },
+    { '.epikloop/project.json': marker({ lane: 'service' }), 'spec/auth.md': SPEC },
     { says: ['Stage 4 of 10: spec/architecture.md is missing. Next: /epikloop:architect.'] },
   ],
   ['stories missing', { ...PLANNED, 'docs/stories/1-auth.md': null }, { says: ['Stage 5 of 10: docs/stories/ holds no stories yet. Next: /epikloop:plan.'] }],
@@ -193,7 +178,25 @@ const CASES = [
     { ...PLANNED, '.epikloop/project.json': marker() },
     { says: ["Stage 5 of 10: the MVP set isn't frozen. Next: /epikloop:plan."] },
   ],
-  ['planned and frozen', PLANNED, { says: ['Stage 6 or later: stories are planned and the MVP set was frozen on 2026-11-02. Next: /epikloop.'] }],
+  [
+    'planned and frozen, with the gauge first',
+    PLANNED,
+    { exact_start: 'MVP 0/1 · 0.0 stories/day · ETA unknown · queue Δ unknown. Epikloop project 000000000000 (web, solo). Stage 6 of 10: epic 1 has 1 MVP story left. Next: /epikloop:epic 1.\n' },
+  ],
+  [
+    'waiting questions and format problems',
+    {
+      ...PLANNED,
+      'docs/queue.md': '# Queue\n\n## Questions\n\n### Q-001 One (2026-11-01)\n- Blocks: 1.1\n- Default taken: a\n\n### Q-002 Two (2026-11-01)\n- Blocks: nothing\n- Default taken: b\n',
+      'docs/stories/2-more.md': '# Epic 2: More\n\n## 2.1 No fields\n',
+    },
+    {
+      says: [
+        'Stage 6 of 10: epic 1 has 1 MVP story left, and Q-001 blocks 1.1. Next: /epikloop:decide, then /epikloop:epic 1.',
+        'Needs the human: 2 questions wait in docs/queue.md; docs/stories/2-more.md:3: 2.1 has no Tier; docs/stories/2-more.md:3: 2.1 has no MVP; docs/stories/2-more.md:3: 2.1 has no Requirements; and 1 more.',
+      ],
+    },
+  ],
   ['hooks to arm', { ...PLANNED, '.githooks/check.mjs': '' }, { git: true, says: ['Git hooks: armed (.githooks).'], hooksPath: '.githooks' }],
   ['hooks already armed', { ...PLANNED, '.githooks/check.mjs': '' }, { git: true, armed: true, silent: SILENT_HOOKS, hooksPath: '.githooks' }],
   [
@@ -271,6 +274,7 @@ async function selfTest() {
         largest = Math.max(largest, context.length)
         if (context.length >= 10_000) problems.push(`gave ${context.length} characters, past the 10,000 cap`)
         if (expect.exact !== undefined && context !== expect.exact) problems.push(`gave ${JSON.stringify(context)}`)
+        if (expect.exact_start !== undefined && !context.startsWith(expect.exact_start)) problems.push(`starts ${JSON.stringify(context.slice(0, 220))}`)
         for (const text of expect.says ?? []) if (!context.includes(text)) problems.push(`lacks ${JSON.stringify(text)}`)
         for (const text of expect.silent ?? []) if (context.includes(text)) problems.push(`holds ${JSON.stringify(text)}`)
         const inside = '.epikloop/project.json' in files && expect.input === undefined

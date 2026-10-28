@@ -43,6 +43,14 @@ All notable changes to Epikloop are recorded here.
   the project id derived from the git remote, copies `.githooks/` and `scripts/check.sh` from the
   plugin's templates, stages them and arms the hooks. It never overwrites a file and never
   commits. CI runs its self-test on Linux, macOS and Windows.
+- The project file formats, in `docs/formats.md`: `spec/<capability>.md`,
+  `docs/stories/<N>-<slug>.md`, `docs/queue.md` and `docs/decisions.md`. Each has an example in
+  `templates/spec/` or `templates/docs/`. One epic is one phase, tagged `phase-N`. A story is done
+  when a commit on the default branch starts `feat(N.M):`.
+- The state reader, `bin/state.mjs`. It parses those files and reads git into the stage and the
+  fuel gauge, and reports each line it can't place as `file:line what`. The briefing now opens
+  with the fuel gauge, covers stages 1 to 7, and names waiting questions and format problems. CI
+  runs the reader's self-test on Linux, macOS and Windows.
 
 ### Removed
 
@@ -203,3 +211,11 @@ The rest come from the hook spike of 2026-10-21 and from failures the maintainer
 - **Setup stages the shims as executable.** On 2026-10-21, git on Windows added hooks written by
   Node as `100644`, and the shims gate fails them. `init.mjs` stages the three shims with
   `--chmod=+x`, so the first commit passes on every operating system.
+
+### Format rules (adopted 2026-10-28)
+
+- **A script reads the project's state.** An earlier pipeline's model talked itself past
+  checkable rules written as prose (article 5). So each project file has a fixed format, and the
+  stage, the next step and the fuel gauge are computed by `bin/state.mjs`, never by the model
+  reading the files. The templates are the model's examples, and the reader's self-test parses
+  them.
