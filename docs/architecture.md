@@ -503,4 +503,5 @@ tool's name and docs are not nautical.
 | `plugins/epikloop/evals/` | The eval suite and its fixture project, inside the plugin where `claude plugin eval` reads it | M1 |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
-| `.github/workflows/ci.yml` | Validation on Linux, macOS and Windows; self-test, lint and evals as they arrive | now |
+| `tools/` | This repository's own checks: `laws.mjs` for the constitution's mechanical rules, and the self-tests' mutation check, `mutate.mjs` with `mutations.mjs` | now |
+| `.github/workflows/ci.yml` | Validation, every self-test and the laws on Linux, macOS and Windows; the mutation check on Linux; lint and evals as they arrive | now |

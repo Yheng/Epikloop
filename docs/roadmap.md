@@ -58,16 +58,17 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - the check runs the pre-push gates over every commit a pull request adds
   - story 1.1, or `adopt`, writes the stack's setup and install into it
   - the human makes it required in the default branch's protection
-- CI self-test, lint and evals, on top of validation
-- CI mutation check — break one guard rule in a copy and expect the self-test to fail
+- CI self-test (done), lint and evals, on top of validation
+- the CI mutation check (done): `tools/mutate.mjs` breaks each rule in a copy and expects its
+  self-test to fail, across every self-test, in its own job on Linux
 - a plugin eval suite with a fixture project
 - the lane authoring guide (done: [docs/lanes.md](lanes.md))
-- this repository's own law checks:
+- this repository's own law checks (done: `tools/laws.mjs`, in CI on all three systems):
   - prompt ceiling
   - no `.sh` beyond the shims
   - no network calls in hook or Harbor code
   - DCO sign-off on every commit
-  - no AI co-author trailers
+  - no AI co-author trailers, nor AI authors, committers or "Generated with" footers
 
 **Held until observed.** Each waits for the failure that would justify it:
 

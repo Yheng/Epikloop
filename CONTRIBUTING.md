@@ -53,7 +53,25 @@ node plugins/epikloop/bin/doctor.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
+node tools/laws.mjs --self-test
+node tools/laws.mjs
+node tools/mutate.mjs --self-test
+node tools/mutate.mjs
 ```
+
+- **`tools/laws.mjs`** checks this repository against the constitution's mechanical rules:
+  - the prompt ceiling
+  - the one shell file, `scripts/check.sh`
+  - no network call in hook or Harbor code
+  - a sign-off on every commit but a merge
+  - no AI credits
+
+  The two commit laws read the whole history, so they fail in a shallow clone.
+- **`tools/mutate.mjs`** breaks one rule at a time in a copy of the repository, and expects the
+  self-test that covers the rule to fail.
+  - The mutations live in `tools/mutations.mjs`. When you change code that a mutation breaks,
+    change the mutation with it: one that survives, or whose text no longer matches, fails CI.
+  - `node tools/mutate.mjs init` runs only the mutations that `init`'s self-test catches.
 
 To try a plugin:
 
@@ -75,7 +93,7 @@ Every commit is signed off under the Developer Certificate of Origin below. Use 
 which adds a `Signed-off-by:` line with your name and email. There is no CLA.
 
 Commits never carry AI co-author trailers such as `Co-Authored-By: Claude …`, and a commit's author
-and committer are people. This applies to every contributor.
+and committer are people. This applies to every contributor. CI checks every commit for both.
 
 ```
 Developer Certificate of Origin

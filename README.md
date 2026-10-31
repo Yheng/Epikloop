@@ -102,14 +102,14 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The SessionStart briefing: the fuel gauge, the stage, the next step, the protocol, and arming the git hooks | **Available** |
 | The project file formats, their templates, and the reader that derives stage and gauge from them | **Available** |
 | Project setup: the project marker with its id, and the gate files, staged and armed | **Available** |
-| CI: validation, every script's self-test and the emitter's tests on Linux, macOS and Windows, and the gate runner's self-test on Node 22.0.0, the floor | **Available** |
+| CI: validation, every script's self-test and the emitter's tests on Linux, macOS and Windows, the gate runner's self-test on Node 22.0.0, the floor, and the mutation check on Linux | **Available** |
 | The path to a frozen plan: `/epikloop`, `discover`, `architect` and `plan`, with full instructions | **Available** |
 | The batch: `epic`, `next`, `story`, the `story-worker`, `decide` and `triage`, with full instructions | **Available** |
 | Closing the loop: `retro`, `release`, `adopt` and `doctor`, with full instructions, the staging smoke, and `init.mjs --refresh` | **Available** |
 | The `web` and `service` lanes: Playwright tests as a web story's UI evidence, the guard allowing the lane's test runner, `doctor`'s lane checks, and the [lane authoring guide](docs/lanes.md) | **Available** |
 | The team-mode workflow, `.github/workflows/check.yml`, which runs the pre-push gates over every commit a pull request adds, and the `CLAUDE.md` template | **Available** |
+| This repository's own law checks in CI (the prompt ceiling, one shell file, no network calls in hook or Harbor code, a sign-off on every commit, no AI credits), and a mutation check for every self-test | **Available** |
 | The plugin eval suite with a fixture project, and lint and evals in CI | M1 |
-| This repository's own law checks in CI: the prompt ceiling, no `.sh` beyond the shims, no network calls in hook or Harbor code, DCO sign-off, no AI co-author trailers | M1 |
 | `design`: direction variants, every screen, the gallery, and with them a screenshot per touched screen and retro's visual compare | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor (its server, its 3D view and the `harbor` command), then the Bridge | M4 |
@@ -921,7 +921,8 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 | `plugins/epikloop/evals/` | The eval suite and its fixture project | M1 |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
-| `.github/workflows/ci.yml` | CI on Linux, macOS and Windows | now |
+| `tools/` | This repository's own checks: `laws.mjs`, and the mutation check, `mutate.mjs` with `mutations.mjs` | now |
+| `.github/workflows/ci.yml` | CI on Linux, macOS and Windows, with the mutation check on Linux | now |
 
 ### Checks
 
@@ -940,10 +941,22 @@ node plugins/epikloop/bin/doctor.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
+node tools/laws.mjs --self-test
+node tools/laws.mjs
 ```
 
 Validating the marketplace alone skips the plugins' own files, so run all three validations. The
 gate runner's self-test also runs on Node 22.0.0, the floor.
+
+- **`tools/laws.mjs`** holds this repository to the constitution's mechanical rules:
+  - the prompt ceiling of 700 lines
+  - `scripts/check.sh` as the one shell file
+  - no network call in hook or Harbor code
+  - a sign-off on every commit but a merge
+  - no commit crediting an AI tool
+- **The mutation check** runs in its own job on Ubuntu, as `node tools/mutate.mjs`. It breaks one
+  rule at a time in a copy of the repository, and expects the self-test that covers the rule to
+  fail. A self-test that would pass a broken rule fails CI.
 
 ### Trying a change
 
@@ -974,7 +987,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 
 | Milestone | Delivers |
 |---|---|
-| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), then the eval suite, lint and evals in CI, and this repository's own law checks |
+| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), this repository's own law checks and the CI mutation check (done), then the eval suite, and lint and evals in CI |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: Harbor, then the Bridge** | Harbor's server and 3D scene, then the Bridge's review pages |

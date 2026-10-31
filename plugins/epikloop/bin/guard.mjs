@@ -265,6 +265,9 @@ EOF
   ['pass', 'git tag -d v0.1.0'],
   ['pass', 'git stash push -- :/src'],
   ['pass', 'git config core.hooksPath 2>/dev/null'],
+  ['pass', 'git log | sh'],
+  ['pass', 'git status > status.txt'],
+  ['pass', 'git status > status.txt', 'PowerShell'],
   ['deny:hard-reset', 'echo $(git reset --hard)'],
   ['allow', 'git push -n origin main'],
   // The web lane adds its UI test tool's runner; installs fetch, so the human approves them.

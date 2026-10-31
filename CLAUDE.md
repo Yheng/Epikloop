@@ -22,7 +22,8 @@ Every skill has its body except `design` (M2) and `harbor` (M4), which have fron
 purpose paragraph only, and so does the worker. The git guard, the emitter, the gate runner, the
 SessionStart briefing, project setup, the state reader, the staging smoke, `doctor`, the project
 file formats, the `web` and `service` lanes, the team-mode workflow and the product `CLAUDE.md`
-template are in place; the eval suite arrives with M1 (`docs/roadmap.md`).
+template are in place, and CI checks this repository's laws and the self-tests' mutations. The
+eval suite arrives with M1 (`docs/roadmap.md`).
 
 ## Map
 
@@ -62,6 +63,9 @@ template are in place; the eval suite arrives with M1 (`docs/roadmap.md`).
     `requires`
   - later: `evals/`
 - `plugins/epikloop-harbor/` — a manifest only, until M4.
+- `tools/` — this repository's own checks, which no plugin ships:
+  - `laws.mjs` checks the constitution's mechanical rules
+  - `mutate.mjs`, with its list in `mutations.mjs`, is the self-tests' mutation check
 - `CONSTITUTION.md` — the rules for changing Epikloop.
 - `docs/doctrine.md`, `docs/architecture.md` (the settled decisions), `docs/formats.md` (the
   project file formats), `docs/lanes.md` (writing a lane) and `docs/roadmap.md`.
@@ -93,6 +97,8 @@ template are in place; the eval suite arrives with M1 (`docs/roadmap.md`).
   - Count non-blank lines, wrapped at 100 columns.
   - The count covers skill and agent bodies, their `description`s, supporting files, lane fragments
     and hook-injected text.
+  - `node tools/laws.mjs` counts it, with each `!` injection replaced by what it prints. It also
+    counts the product `CLAUDE.md` template, and CI fails above 700.
   - At the ceiling, delete before adding.
   - Skill text never carries history; history goes in `CHANGELOG.md`.
 - **Model-facing text** follows Anthropic's guidance for Opus 5 and later:
@@ -117,6 +123,8 @@ template are in place; the eval suite arrives with M1 (`docs/roadmap.md`).
 - Sign off every commit for the DCO: `git commit -s`. There is no CLA.
 - Never credit Claude: no `Co-Authored-By: Claude …` trailer, and no Claude author or committer
   identity. `.claude/settings.json` turns the trailer off. This applies to every contributor.
+- CI checks every commit for both: a sign-off with its author's email, unless it's a merge, and
+  no credit to an AI tool.
 - Stage files by explicit path.
 
 ## Checks (what CI runs)
@@ -136,6 +144,15 @@ node plugins/epikloop/bin/doctor.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
+node tools/laws.mjs --self-test
+node tools/laws.mjs
+```
+
+A separate job on Ubuntu runs the mutation check:
+
+```
+node tools/mutate.mjs --self-test
+node tools/mutate.mjs
 ```
 
 Validating the marketplace alone skips the plugins' own files, so run all three validations.
@@ -169,6 +186,22 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - It commits and pushes through the real hooks, and runs every gate's samples.
   - Then it checks that each mutation of the secret scan is caught.
   - CI runs it again on Node 22.0.0, the floor.
+- **The laws** check this repository:
+  - the prompt ceiling
+  - the one shell file, the `check.sh` shim
+  - no network call in hook code (what `hooks.json` runs, its imports and the git hooks) or in
+    Harbor
+  - a sign-off on every commit but a merge
+  - no AI credits
+
+  The commit laws read the whole history, so CI checks out with `fetch-depth: 0`. The laws'
+  self-test runs each one over samples in throwaway folders and repos.
+- **The mutation check** breaks one rule at a time in a copy of the repository and expects the
+  self-tests named for it to fail.
+  - It first runs those self-tests unmutated, so a failing one can't pass for a catch.
+  - A mutation that survives, or whose text no longer appears exactly once, fails CI, so
+    `tools/mutations.mjs` changes with the code it breaks.
+  - `node tools/mutate.mjs <test>` runs one self-test's mutations.
 
 To load a plugin for one session:
 

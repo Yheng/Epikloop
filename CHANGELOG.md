@@ -101,6 +101,20 @@ All notable changes to Epikloop are recorded here.
   - `doctor` reports a team-mode project without it.
 - The product `CLAUDE.md` template, `templates/CLAUDE.template.md`, which `init.mjs` writes where a
   repository has no `CLAUDE.md`.
+- This repository's law checks, `tools/laws.mjs`, which CI runs on Linux, macOS and Windows. They
+  make existing rules into laws (article 5), and add no rule:
+  - **the prompt ceiling** (article 2), counted with each injection replaced by what it prints
+  - **one shell file**, `scripts/check.sh` (article 7)
+  - **no network call** in what the hooks run, its imports, the git hooks or Harbor (article 6)
+  - **a sign-off** with the author's email on every commit but a merge (the DCO)
+  - **no AI credits** in any commit's author, committer, trailers or "Generated with" footer
+- The self-tests' mutation check, `tools/mutate.mjs`, in its own CI job on Linux.
+  - It breaks one rule at a time in a copy of the repository, and expects the self-test that
+    covers it to fail. The mutations are listed in `tools/mutations.mjs`.
+  - It covers every self-test, the emitter's suite and the laws.
+  - A mutation that survives, or whose text no longer matches, fails CI.
+  - Its first full run found a gap: no sample of the guard's showed that a pipe or a redirect after
+    an allowed command is refused. The guard's self-test now has three.
 
 ### Changed
 
