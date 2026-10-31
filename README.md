@@ -102,11 +102,14 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The SessionStart briefing: the fuel gauge, the stage, the next step, the protocol, and arming the git hooks | **Available** |
 | The project file formats, their templates, and the reader that derives stage and gauge from them | **Available** |
 | Project setup: the project marker with its id, and the gate files, staged and armed | **Available** |
-| CI: validation, the guard's, the briefing's, project setup's and the gate runner's self-tests, and the emitter's tests on Linux, macOS and Windows | **Available** |
+| CI: validation, every script's self-test and the emitter's tests on Linux, macOS and Windows, and the gate runner's self-test on Node 22.0.0, the floor | **Available** |
 | The path to a frozen plan: `/epikloop`, `discover`, `architect` and `plan`, with full instructions | **Available** |
 | The batch: `epic`, `next`, `story`, the `story-worker`, `decide` and `triage`, with full instructions | **Available** |
 | Closing the loop: `retro`, `release`, `adopt` and `doctor`, with full instructions, the staging smoke, and `init.mjs --refresh` | **Available** |
-| The `web` and `service` lanes | M1 |
+| The `web` and `service` lanes, with retro's visual compare and perf check, and the lane authoring guide | M1 |
+| The team-mode workflow (`.github/workflows/check.yml`) and the `CLAUDE.md` template | M1 |
+| The plugin eval suite with a fixture project, and lint and evals in CI | M1 |
+| This repository's own law checks in CI: the prompt ceiling, no `.sh` beyond the shims, no network calls in hook or Harbor code, DCO sign-off, no AI co-author trailers | M1 |
 | `design`: direction variants, every screen, the gallery | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor (its server, its 3D view and the `harbor` command), then the Bridge | M4 |
@@ -871,7 +874,8 @@ More in [Architecture → Harbor](docs/architecture.md#harbor).
   turns mods off, or while Claude Code's rollout switch for mods is off. Where an organization
   manages Claude Code, `classic.*` hooks in a plugin a person installs don't run, so
   `task.created`, `task.completed` and `notification` events are not emitted. `doctor` reports
-  both cases.
+  the first case, as a session whose events aren't being written. It can't see the second,
+  because those events are rare even where they run.
 - **Cost on a subscription.** On a subscription, a cost row's `cost` is a list-price equivalent,
   not money spent. With parallel workers it is an upper bound until M3 settles it.
 
@@ -949,7 +953,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 
 | Milestone | Delivers |
 |---|---|
-| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done for stages 1–7), the project marker (done), the living-spec format (done), the commands with sequential workers, the `web` and `service` lanes, and CI self-test, lint and evals |
+| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), then the `web` and `service` lanes, the team-mode workflow and `CLAUDE.md` templates, the eval suite, lint and evals in CI, the lane authoring guide, and this repository's own law checks |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: Harbor, then the Bridge** | Harbor's server and 3D scene, then the Bridge's review pages |

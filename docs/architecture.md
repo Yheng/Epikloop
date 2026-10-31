@@ -176,8 +176,9 @@ The module has these limits:
   while Claude Code's rollout switch for mods is off. There, no events or cost rows are written.
   Under `--bare` and `--safe-mode` no plugin hook runs at all, command hooks included.
 - Where an organization manages Claude Code, `classic.*` hooks in a plugin a person installs don't
-  run, so `task.created`, `task.completed` and `notification` are not emitted. `doctor` reports
-  this, and reports when mods can't load on the machine.
+  run, so `task.created`, `task.completed` and `notification` are not emitted.
+- `doctor` reports when mods can't load on the machine: its session's events aren't being written.
+  It can't see the missing `classic.*` events, which are rare even where they run.
 
 The gates' self-test measures two targets:
 
