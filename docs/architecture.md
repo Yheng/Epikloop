@@ -62,9 +62,15 @@ Nothing else, ever.
   `.githooks/` and `scripts/check.sh` from the plugin's templates, then stages them and arms the
   hooks.
   - The shims are staged as executable.
+  - It also lays down `CLAUDE.md` and, in team mode, `.github/workflows/check.yml`, each only where
+    the repository has none. Both are the project's from then on, so nothing compares them with
+    their templates again.
   - It never overwrites a file and never commits.
+  - `--refresh` brings the gate files up to the plugin's, and in team mode lays down a missing
+    workflow.
 - **`CLAUDE.md`** holds project rules only and stays under 200 lines. The pipeline protocol is never
-  written into it; the SessionStart hook injects it.
+  written into it; the SessionStart hook injects it. Its template says so, above an empty `Rules`
+  section.
 - **Teammates are gated too.**
   - `.githooks/` holds the gate runner, `check.mjs`, and the two-line `pre-commit` and `pre-push`
     hooks that run it. The stack's install step arms them.
@@ -75,6 +81,12 @@ Nothing else, ever.
 - **Solo or team.** Team mode is the standard; solo is supported.
   - Team mode adds exactly one GitHub workflow. It runs the same `check.sh` on pull requests
     (10-minute timeout, cancel-in-progress) as a required check under branch protection.
+    - It runs the pre-push gates over every commit the pull request adds. A plain run would scan
+      no commit, since a fresh checkout has nothing staged.
+    - The stack's setup and install are the project's: story 1.1, or `adopt`, writes them where
+      the template marks them.
+    - The human makes its check job required in the default branch's protection, a GitHub setting
+      that no file holds.
   - Solo mode creates no workflow, and `check.sh` fails if a workflow appears that
     `gates.allow_workflows` doesn't list.
 
@@ -272,7 +284,8 @@ Two laws:
 | 2. Local git hooks → `check.sh` | anyone who installed the project | `-n`, the web editor, unarmed hooks |
 | 3. GitHub required check (team mode) | everyone | nobody |
 
-Solo mode is layers 1 and 2; team mode is all three.
+Solo mode is layers 1 and 2; team mode is all three. A pull request runs the workflow as the pull
+request has it, so a change to `check.yml` is reviewed with the rest of its diff.
 
 Under `--bare` or `--safe-mode` no plugin hook runs, so layer 1 is absent in those sessions and
 only layers 2 and 3 gate them.
@@ -484,7 +497,7 @@ tool's name and docs are not nautical.
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke and doctor | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
-| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, and an example of each project file in `spec/` and `docs/`; then `CLAUDE.md` and the team-mode workflow | now, M1 |
+| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, an example of each project file in `spec/` and `docs/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project, inside the plugin where `claude plugin eval` reads it | M1 |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |

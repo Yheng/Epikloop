@@ -1,11 +1,12 @@
 // Epikloop's project setup. `node init.mjs --lane <lane> --mode solo|team` makes the git repository
 // it runs in an Epikloop project: it writes .epikloop/project.json with the project id, copies the
-// gate runner and its shims from the plugin's templates, stages what it wrote, and arms the hooks.
-// It never overwrites a file and never commits. It prints one summary line, and exits 1 only when
-// it couldn't do its job.
+// gate runner and its shims from the plugin's templates, lays down CLAUDE.md and, in team mode, the
+// required check's workflow, stages what it wrote, and arms the hooks. It never overwrites a file
+// and never commits. It prints one summary line, and exits 1 only when it couldn't do its job.
 //
 // `node init.mjs --refresh` brings an existing project's gate files up to the plugin's: it copies in
 // each one that is missing or differs from its template, and stages it, leaving the marker alone.
+// In team mode it also lays down the workflow when it is missing.
 // `node init.mjs --self-test` runs every case below against throwaway repositories.
 import { spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
@@ -25,6 +26,15 @@ export const GATE_FILES = [
   ['.githooks/pre-push', 'githooks/pre-push', true],
   ['scripts/check.sh', 'scripts/check.sh', true],
 ]
+// The files laid down once, where the repository lacks them, and the project's own from then on:
+// its rules in either mode, and in team mode the required check, whose install step the project
+// writes. Each one, its template, and the mode it needs, or null for either.
+export const PROJECT_FILES = [
+  ['CLAUDE.md', 'CLAUDE.template.md', null],
+  ['.github/workflows/check.yml', 'github/workflows/check.yml', 'team'],
+]
+const WORKFLOW = '.github/workflows/check.yml'
+const PROTECTION = "make the check job required in the default branch's protection on GitHub"
 const POSIX = process.platform !== 'win32'
 
 // Whether two copies of a file hold the same text, whatever their line endings: git on Windows may
@@ -37,6 +47,20 @@ export function staleGates(top) {
     const target = path.join(top, ...file.split('/'))
     return !fs.existsSync(target) || !sameText(fs.readFileSync(target), fs.readFileSync(path.join(TEMPLATES, ...template.split('/'))))
   })
+}
+
+// Writes each of `files` that a project in `mode` gets and the repository at `top` lacks, and
+// returns those it wrote.
+function layDown(top, mode, files = PROJECT_FILES) {
+  const wrote = []
+  for (const [file, template, needs] of files) {
+    const target = path.join(top, ...file.split('/'))
+    if ((needs !== null && needs !== mode) || fs.existsSync(target)) continue
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, fs.readFileSync(path.join(TEMPLATES, ...template.split('/'))))
+    wrote.push(file)
+  }
+  return wrote
 }
 
 function git(cwd, args, env) {
@@ -111,7 +135,7 @@ function init(argv) {
   if (fs.existsSync(marker)) {
     let kept
     try {
-      const project = JSON.parse(fs.readFileSync(marker, 'utf8'))
+      const project = JSON.parse(fs.readFileSync(marker, 'utf8').replace(/^﻿/, ''))
       mode = project.mode
       const own = [project.lane !== options.lane && `lane ${project.lane}`, project.mode !== options.mode && `mode ${project.mode}`]
       const keeps = own.filter(Boolean)
@@ -144,6 +168,9 @@ function init(argv) {
   const gates = GATE_FILES.map(([file]) => file).filter((file) => shims.includes(file) || wrote.includes(file))
   if (gates.length === GATE_FILES.length) parts.push('.githooks/ and scripts/check.sh written')
   else if (gates.length > 0) parts.push(`${gates.join(', ')} written`)
+  const laid = layDown(top, mode)
+  wrote.push(...laid)
+  if (laid.length > 0) parts.push(`${laid.join(' and ')} written`)
   if (differ.length > 0) {
     const one = differ.length === 1
     parts.push(`kept ${differ.join(', ')}, which ${one ? 'differs' : 'differ'} from the plugin's template; --refresh replaces ${one ? 'it' : 'them'}`)
@@ -157,36 +184,64 @@ function init(argv) {
 
   const armed = arm(top)
   if (armed) parts.push(armed)
-  if (mode === 'team') parts.push("the team-mode workflow isn't laid down yet")
+  if (laid.includes(WORKFLOW)) parts.push(PROTECTION)
   console.log(`init: ${parts.join(' · ')}`)
   process.exitCode = 0
 }
 
-// Copies the plugin's current gate files over a project's missing or stale copies, and stages them.
+// Copies the plugin's current gate files over a project's missing or stale copies, lays down a team
+// project's missing workflow, and stages them.
 function refresh(argv) {
   if (argv.length > 0) return console.log(USAGE)
   const inside = git(process.cwd(), ['rev-parse', '--show-toplevel'])
   if (inside.status !== 0) return console.log('init: not a git repository; run git init first')
   const top = inside.stdout.trim()
-  if (!fs.existsSync(path.join(top, '.epikloop', 'project.json'))) return console.log('init: not an Epikloop project, so there are no gate files to refresh')
+  const marker = path.join(top, '.epikloop', 'project.json')
+  if (!fs.existsSync(marker)) return console.log('init: not an Epikloop project, so there are no gate files to refresh')
+  let mode = null
+  try {
+    mode = JSON.parse(fs.readFileSync(marker, 'utf8').replace(/^﻿/, '')).mode
+  } catch {}
   const stale = staleGates(top)
-  if (stale.length > 0) {
-    for (const [file, template, shim] of stale) {
-      const target = path.join(top, ...file.split('/'))
-      fs.mkdirSync(path.dirname(target), { recursive: true })
-      fs.writeFileSync(target, fs.readFileSync(path.join(TEMPLATES, ...template.split('/'))))
-      if (POSIX && shim) fs.chmodSync(target, 0o755)
-    }
-    const plain = stale.filter(([, , shim]) => !shim).map(([file]) => file)
-    const shims = stale.filter(([, , shim]) => shim).map(([file]) => file)
-    if (plain.length > 0) gitOk(top, ['add', '--', ...plain])
-    if (shims.length > 0) gitOk(top, ['add', '--chmod=+x', '--', ...shims])
+  for (const [file, template, shim] of stale) {
+    const target = path.join(top, ...file.split('/'))
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, fs.readFileSync(path.join(TEMPLATES, ...template.split('/'))))
+    if (POSIX && shim) fs.chmodSync(target, 0o755)
   }
-  console.log(stale.length === 0 ? "init: the gate files already match the plugin's" : `init: refreshed ${stale.map(([file]) => file).join(', ')} · staged`)
+  const laid = layDown(top, mode, PROJECT_FILES.filter(([file]) => file === WORKFLOW))
+  const plain = [...stale.filter(([, , shim]) => !shim).map(([file]) => file), ...laid]
+  const shims = stale.filter(([, , shim]) => shim).map(([file]) => file)
+  if (plain.length > 0) gitOk(top, ['add', '--', ...plain])
+  if (shims.length > 0) gitOk(top, ['add', '--chmod=+x', '--', ...shims])
+  const parts = []
+  if (stale.length > 0) parts.push(`refreshed ${stale.map(([file]) => file).join(', ')}`)
+  if (laid.length > 0) parts.push(`${laid.join(' and ')} written`)
+  if (parts.length === 0) console.log("init: the gate files already match the plugin's")
+  else console.log(`init: ${[...parts, 'staged', ...(laid.length > 0 ? [PROTECTION] : [])].join(' · ')}`)
   process.exitCode = 0
 }
 
 const sha = (text) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 12)
+
+// The required check's settled parts, line by line, and its gates step, pinned: a change to either
+// changes what the check runs.
+const SETTLED = [
+  'on:',
+  '  pull_request:',
+  '  contents: read',
+  '  cancel-in-progress: true',
+  '    timeout-minutes: 10',
+  '          fetch-depth: 0',
+  '          persist-credentials: false',
+  '          node-version: 22',
+]
+const GATES_STEP = [
+  '        env:',
+  '          HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
+  '          BASE_SHA: ${{ github.event.pull_request.base.sha }}',
+  '        run: echo "pull-request $HEAD_SHA base $BASE_SHA" | scripts/check.sh --push origin origin',
+]
 
 // Each case: [name, check]. A check gets a kit and returns the problems it found.
 const CASES = [
@@ -238,7 +293,7 @@ const CASES = [
       k.write(dir, '.epikloop/project.json', before)
       const run = k.init(dir, ['--lane', 'web', '--mode', 'team'])
       const problems = k.says(run, '.epikloop/project.json kept (id abcdefabcdef; it keeps lane service and mode solo)')
-      if (run.stdout.includes('team-mode')) problems.push("speaks of team mode, which the kept marker doesn't use")
+      if (fs.existsSync(path.join(dir, '.github')) || run.stdout.includes('protection')) problems.push("laid down team mode's workflow, which the kept marker doesn't use")
       if (k.read(dir, '.epikloop/project.json') !== before) problems.push('changed the marker')
       return problems
     },
@@ -260,17 +315,16 @@ const CASES = [
     (k) => {
       const dir = k.repo()
       const run = k.init(dir)
-      const problems = k.says(run, '.githooks/ and scripts/check.sh written · staged · git hooks: armed (.githooks)')
-      for (const [file, template, shim] of GATE_FILES) {
-        if (!fs.readFileSync(path.join(dir, file)).equals(fs.readFileSync(path.join(TEMPLATES, template)))) {
-          problems.push(`${file} is not its template`)
-        }
+      const problems = k.says(run, '.githooks/ and scripts/check.sh written · CLAUDE.md written · staged · git hooks: armed (.githooks)')
+      for (const [file, template, shim] of [...GATE_FILES, ['CLAUDE.md', 'CLAUDE.template.md', false]]) {
+        if (!k.same(dir, file, template)) problems.push(`${file} is not its template`)
         if (POSIX && shim && (fs.statSync(path.join(dir, file)).mode & 0o111) === 0) problems.push(`${file} is not executable`)
       }
+      if (fs.existsSync(path.join(dir, '.github')) || run.stdout.includes('protection')) problems.push('laid down a workflow in solo mode')
       const staged = k.git(dir, 'ls-files', '-s').stdout
-      for (const [file, , shim] of GATE_FILES) {
+      for (const [file, , shim] of [...GATE_FILES, ['CLAUDE.md', null, false]]) {
         const mode = shim ? '100755' : '100644'
-        if (!new RegExp(`^${mode} \\S+ 0\\t${file.replace(/\./g, '\\.')}$`, 'm').test(staged)) problems.push(`${file} is not staged as ${mode}`)
+        if (!k.staged(staged, file, mode)) problems.push(`${file} is not staged as ${mode}`)
       }
       if (!/\t\.epikloop\/project\.json$/m.test(staged)) problems.push('the marker is not staged')
       const set = k.git(dir, 'config', '--local', '--get', 'core.hooksPath').stdout.trim()
@@ -288,7 +342,32 @@ const CASES = [
       return problems
     },
   ],
-  ['team mode', (k) => k.says(k.init(k.repo(), ['--lane', 'web', '--mode', 'team']), "the team-mode workflow isn't laid down yet")],
+  [
+    'team mode lays down the required check',
+    (k) => {
+      const dir = k.repo()
+      const run = k.init(dir, ['--lane', 'web', '--mode', 'team'])
+      const problems = k.says(run, `.githooks/ and scripts/check.sh written · CLAUDE.md and ${WORKFLOW} written · staged · git hooks: armed (.githooks) · ${PROTECTION}`)
+      if (!k.same(dir, WORKFLOW, 'github/workflows/check.yml')) problems.push('the workflow is not its template')
+      if (!k.staged(k.git(dir, 'ls-files', '-s').stdout, WORKFLOW, '100644')) problems.push('the workflow is not staged as 100644')
+      return problems
+    },
+  ],
+  [
+    "a repository's own CLAUDE.md and workflow",
+    (k) => {
+      const dir = k.repo()
+      k.write(dir, 'CLAUDE.md', 'Our rules.\n')
+      k.write(dir, WORKFLOW, 'name: ours\n')
+      const run = k.init(dir, ['--lane', 'web', '--mode', 'team'])
+      const problems = k.says(run, '.githooks/ and scripts/check.sh written · staged · git hooks: armed (.githooks)')
+      if (run.stdout.includes('protection')) problems.push('asked for branch protection, though it laid no workflow down')
+      if (k.read(dir, 'CLAUDE.md') !== 'Our rules.\n') problems.push('overwrote CLAUDE.md')
+      if (k.read(dir, WORKFLOW) !== 'name: ours\n') problems.push('overwrote the workflow')
+      if (/\t(?:CLAUDE\.md|\.github\/.*)$/m.test(k.git(dir, 'ls-files', '-s').stdout)) problems.push('staged a file it kept')
+      return problems
+    },
+  ],
   [
     'refresh copies in what is missing or stale, stages it, and leaves the marker',
     (k) => {
@@ -319,6 +398,71 @@ const CASES = [
       k.write(dir, '.githooks/check.mjs', crlf)
       const problems = k.says(k.init(dir, ['--refresh']), "init: the gate files already match the plugin's")
       if (k.read(dir, '.githooks/check.mjs') !== crlf) problems.push('rewrote the CRLF copy')
+      return problems
+    },
+  ],
+  [
+    "refresh lays down a team project's missing workflow, and leaves one that differs",
+    (k) => {
+      const dir = k.repo()
+      k.init(dir, ['--lane', 'web', '--mode', 'team'])
+      fs.rmSync(path.join(dir, '.github'), { recursive: true })
+      k.git(dir, 'rm', '-q', '--cached', '--', WORKFLOW)
+      // A marker saved with a byte-order mark still reads as team mode, as the state reader reads it.
+      k.write(dir, '.epikloop/project.json', `﻿${k.read(dir, '.epikloop/project.json')}`)
+      const problems = k.says(k.init(dir, ['--refresh']), `init: ${WORKFLOW} written · staged · ${PROTECTION}`)
+      if (!k.same(dir, WORKFLOW, 'github/workflows/check.yml')) problems.push('the workflow is not its template')
+      if (!k.staged(k.git(dir, 'ls-files', '-s').stdout, WORKFLOW, '100644')) problems.push('the workflow is not staged as 100644')
+      k.write(dir, WORKFLOW, 'name: ours\n')
+      problems.push(...k.says(k.init(dir, ['--refresh']), "init: the gate files already match the plugin's"))
+      if (k.read(dir, WORKFLOW) !== 'name: ours\n') problems.push('replaced a workflow that differs')
+      return problems
+    },
+  ],
+  [
+    'refresh lays down no workflow in solo mode, and never CLAUDE.md',
+    (k) => {
+      const dir = k.repo()
+      k.init(dir)
+      fs.rmSync(path.join(dir, 'CLAUDE.md'))
+      const problems = k.says(k.init(dir, ['--refresh']), "init: the gate files already match the plugin's")
+      if (fs.existsSync(path.join(dir, '.github'))) problems.push('laid down a workflow in solo mode')
+      if (fs.existsSync(path.join(dir, 'CLAUDE.md'))) problems.push('recreated CLAUDE.md')
+      return problems
+    },
+  ],
+  [
+    "the required check's settled parts",
+    () => {
+      const lines = fs.readFileSync(path.join(TEMPLATES, 'github', 'workflows', 'check.yml'), 'utf8').split(/\r?\n/)
+      const problems = SETTLED.filter((line) => !lines.includes(line)).map((line) => `lacks ${JSON.stringify(line.trim())}`)
+      if (!lines.join('\n').includes(GATES_STEP.join('\n'))) problems.push('lacks the gates step as pinned')
+      if (lines.some((line) => line.includes('pull_request_target'))) problems.push('runs on pull_request_target')
+      return problems
+    },
+  ],
+  [
+    'the required check reads every commit a pull request adds',
+    (k) => {
+      const dir = k.repo()
+      const problems = k.says(k.init(dir, ['--lane', 'web', '--mode', 'team']), PROTECTION)
+      k.commit(dir, 'set up')
+      const base = k.head(dir)
+      k.git(dir, 'switch', '-q', '-c', 'leak')
+      k.write(dir, 'config.txt', `url = ${'postgres'}://app:Tr0ub4dor@db.example.com/app\n`)
+      k.commit(dir, 'add the database', ['-n'])
+      const leaked = k.head(dir)
+      fs.rmSync(path.join(dir, 'config.txt'))
+      k.commit(dir, 'drop the database')
+      const leak = k.gates(dir, k.head(dir), base)
+      if (leak.status !== 1 || !leak.stdout.includes(`secrets: ${leaked.slice(0, 7)} config.txt:1 database URL with a password`)) {
+        problems.push(`missed the leak (exit ${leak.status}): ${leak.stdout.trim().split('\n').slice(-2).join(' | ')}`)
+      }
+      k.git(dir, 'switch', '-q', '-c', 'clean', base)
+      k.write(dir, 'notes.txt', 'Nothing to hide.\n')
+      k.commit(dir, 'add notes')
+      const clean = k.gates(dir, k.head(dir), base)
+      if (clean.status !== 0 || !/^check --push: PASS/m.test(clean.stdout)) problems.push(`failed a clean pull request (exit ${clean.status}): ${clean.stdout.trim().split('\n').slice(-2).join(' | ')}`)
       return problems
     },
   ],
@@ -408,6 +552,26 @@ async function selfTest() {
       fs.writeFileSync(path.join(dir, file), content)
     },
     read: (dir, file) => fs.readFileSync(path.join(dir, file), 'utf8'),
+    same(dir, file, template) {
+      const target = path.join(dir, ...file.split('/'))
+      return fs.existsSync(target) && fs.readFileSync(target).equals(fs.readFileSync(path.join(TEMPLATES, ...template.split('/'))))
+    },
+    staged: (listing, file, mode) => new RegExp(`^${mode} \\S+ 0\\t${file.replace(/\./g, '\\.')}$`, 'm').test(listing),
+    head: (dir) => gitOk(dir, ['rev-parse', 'HEAD'], env).trim(),
+    // Commits everything, through the hooks unless `flags` skips them.
+    commit(dir, message, flags = []) {
+      gitOk(dir, ['add', '-A'], env)
+      const run = git(dir, ['-c', 'user.name=Self Test', '-c', 'user.email=self-test@example.com', 'commit', '-q', ...flags, '-m', message], env)
+      if (run.status !== 0) throw new Error(`the commit "${message}" failed: ${`${run.stdout}${run.stderr}`.trim().split('\n').slice(-3).join(' | ')}`)
+    },
+    // The workflow's gates step as pinned: its echo's line on stdin, its arguments to the runner
+    // that scripts/check.sh hands them to, and CI set, as GitHub sets it.
+    gates(dir, head, base) {
+      const [, line, args] = /^ +run: echo "(.*)" \| scripts\/check\.sh (.*)$/.exec(GATES_STEP.at(-1))
+      const input = `${line.replace('$HEAD_SHA', head).replace('$BASE_SHA', base)}\n`
+      const runner = path.join(dir, '.githooks', 'check.mjs')
+      return spawnSync(process.execPath, [runner, ...args.split(' ')], { cwd: dir, env: { ...env, CI: 'true' }, input, encoding: 'utf8', windowsHide: true })
+    },
     init: (dir, args = ['--lane', 'web', '--mode', 'solo']) =>
       spawnSync(process.execPath, [import.meta.filename, ...args], { cwd: dir, env, encoding: 'utf8', windowsHide: true }),
     says(run, text) {

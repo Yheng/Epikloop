@@ -33,10 +33,12 @@ rule is quoted from the code or its documents, with its source.
 Where staging exists, its URL goes in `.epikloop/project.json` as `staging_url`. Run the full gates
 on the code as it stands: `scripts/check.sh` from Bash, or `node .githooks/check.mjs` from
 PowerShell. Set `gates.commands` for any of lint, typecheck, test, build and e2e that the project
-runs with a command auto-detection didn't find, and in solo mode list its existing workflows in
-`gates.allow_workflows`. A gate that fails on today's code stops the adoption before it commits:
-name the failing commands, and leave the choice to the human, to fix the code or narrow the
-command. Once the gates pass, commit and land the adoption.
+runs with a command auto-detection didn't find. In solo mode, list its existing workflows in
+`gates.allow_workflows`; in team mode, write the stack's setup and install, as its existing CI
+runs them, into `.github/workflows/check.yml` where it marks them, and tell the human to make its
+check job required in the default branch's protection. A gate that fails on today's code stops the
+adoption before it commits: name the failing commands, and leave the choice to the human, to fix
+the code or narrow the command. Once the gates pass, commit and land the adoption.
 
 The confirmation batch: while `spec/` holds observed requirements, put them to the human a few at a
 time. A confirmed one loses its `Status:` line, a corrected one is rewritten and then confirmed,

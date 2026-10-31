@@ -21,8 +21,8 @@ This is the tool, not a product built with it.
 Every skill has its body except `design` (M2) and `harbor` (M4), which have frontmatter and a
 purpose paragraph only, and so does the worker. The git guard, the emitter, the gate runner, the
 SessionStart briefing, project setup, the state reader, the staging smoke, `doctor`, the project
-file formats and the `web` and `service` lanes are in place; the team-mode workflow, the eval
-suite and the rest of the templates arrive with M1 (`docs/roadmap.md`).
+file formats, the `web` and `service` lanes, the team-mode workflow and the product `CLAUDE.md`
+template are in place; the eval suite arrives with M1 (`docs/roadmap.md`).
 
 ## Map
 
@@ -36,8 +36,9 @@ suite and the rest of the templates arrive with M1 (`docs/roadmap.md`).
   - `bin/guard.mjs` — the git guard, the PreToolUse hook on `Bash|PowerShell`, with its self-test
   - `bin/brief.mjs` — the SessionStart briefing, which also arms a product's git hooks, with its
     self-test
-  - `bin/init.mjs` — project setup: writes the marker with its id and the gate files, and
-    `--refresh` brings a project's gate files up to the plugin's, with its self-test
+  - `bin/init.mjs` — project setup, with its self-test: writes the marker with its id and the gate
+    files, and lays down `CLAUDE.md` and, in team mode, the workflow; `--refresh` brings a
+    project's gate files up to the plugin's
   - `bin/state.mjs` — reads the project files and git into the stage and the fuel gauge, and
     prints the briefs a batch, a retro and a release read, with its self-test; the briefing imports
     it
@@ -51,11 +52,15 @@ suite and the rest of the templates arrive with M1 (`docs/roadmap.md`).
     `.githooks/check.mjs`, with its self-test. Beside it are `templates/githooks/pre-commit` and
     `pre-push`, and `templates/scripts/check.sh`, the shims that run it. The rest of the plugin
     copies them verbatim.
+  - `templates/github/workflows/check.yml` — team mode's required check, which runs the pre-push
+    gates over a pull request's commits; and `templates/CLAUDE.template.md`, a product's
+    `CLAUDE.md` (named apart, since a `CLAUDE.md` here would load in this repo's sessions). The
+    project edits both once `init` lays them down.
   - `lanes/<name>.json` and `lanes/<name>.md` — each lane's profile and fragment
     (`schemas/lane.schema.json`, `docs/lanes.md`); the state reader prints a fragment's sections
     into the plan and the briefs, the guard reads the profile's `ui_test.allow`, and `doctor` its
     `requires`
-  - later: `evals/`, and the rest of `templates/`
+  - later: `evals/`
 - `plugins/epikloop-harbor/` — a manifest only, until M4.
 - `CONSTITUTION.md` — the rules for changing Epikloop.
 - `docs/doctrine.md`, `docs/architecture.md` (the settled decisions), `docs/formats.md` (the
@@ -141,7 +146,10 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
 - **The briefing's self-test** spawns the hook once per case, in temporary folders and throwaway
   repos. It prints failures plus one summary line with the largest context and spawn times.
 - **The init self-test** runs setup in throwaway repos: remote forms, kept files, staged modes,
-  arming, an unknown lane and `--refresh`. Its last case commits through the real pre-commit hook.
+  arming, an unknown lane, `CLAUDE.md`, the team workflow and `--refresh`.
+  - It holds the workflow template to its settled parts and its pinned gates step, and runs that
+    step over a pull request whose secret a later commit removed.
+  - Its last case commits through the real pre-commit hook.
 - **The state reader's self-test** parses the templates and malformed files, and reads dated
   commits, tags, records and cost rows in throwaway repos into exact stages and gauges, stage 10
   included.
@@ -153,7 +161,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   port, the marker's URL, and credentials sent but never printed.
 - **The doctor's self-test** runs the checks in process, against throwaway repos and homes, with a
   fake `claude`, git version and `npx`. It covers each floor, each account, the lanes this machine
-  can build, the UI test tool, the hooks, the gate files, this session's events and the fold.
+  can build, the UI test tool, the hooks, the gate files, team mode's workflow, this session's
+  events and the fold.
 - **The plugin test** runs the emitter's suite against simulated events, with no login.
 - **The fold's self-test** folds sample files in a temporary folder.
 - **The gate runner's self-test** builds throwaway repos with bare remotes in a temporary folder.

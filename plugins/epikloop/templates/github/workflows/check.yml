@@ -1,0 +1,38 @@
+# The required check on this repository's pull requests. It runs the gates the pre-push hook runs,
+# over every commit a pull request adds, so they hold for every contributor, hooks or no hooks. It
+# blocks a merge once the default branch's protection requires its check job. Epikloop laid this
+# file down; the stack's setup and install, where marked, are the project's.
+name: check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The whole history, so the secret scan can read each commit the pull request adds.
+          fetch-depth: 0
+          persist-credentials: false
+      # The gate runner needs Node 22 or later, and git.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # The stack's setup and install go here: the steps a fresh clone needs before its lint,
+      # typecheck, test and build commands can run.
+      - name: gates
+        # The pull request's commits reach the runner the way git hands a push to the pre-push hook.
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: echo "pull-request $HEAD_SHA base $BASE_SHA" | scripts/check.sh --push origin origin

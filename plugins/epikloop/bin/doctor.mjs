@@ -1,8 +1,9 @@
 // Epikloop's machine check. `node doctor.mjs` reports whether this machine can run Epikloop, one
 // line per check, each ending "ok" or with its fix: Node, git and Claude Code against their floors,
 // the account's prompt cache and, inside a project, its files, its git hooks, its gate files against
-// the plugin's templates, and whether this session's events are being written. It also folds the
-// emitter's files from past days into their .jsonl files. It fixes nothing; the human runs the fixes.
+// the plugin's templates, team mode's workflow, and whether this session's events are being written.
+// It also folds the emitter's files from past days into their .jsonl files. It fixes nothing; the
+// human runs the fixes.
 //
 // `node doctor.mjs --self-test` runs every case below in throwaway repositories and homes.
 import { spawnSync } from 'node:child_process'
@@ -179,6 +180,12 @@ export async function report({ cwd, env, home, node, exec, now }) {
     else {
       const names = stale.length === 1 ? `${stale[0]} isn't` : `${stale.slice(0, -1).join(', ')} and ${stale.at(-1)} aren't`
       fix(`Gate files: ${names} the plugin's current one${stale.length === 1 ? '' : 's'}`, `node "${path.join(HERE, 'init.mjs')}" --refresh, then commit ${stale.length === 1 ? 'it' : 'them'}`)
+    }
+    // Team mode's required check. Its content is the project's, and whether it is required is a
+    // GitHub setting, so only its presence is checked.
+    if (opened.project?.mode === 'team') {
+      if (fs.existsSync(path.join(opened.root, '.github', 'workflows', 'check.yml'))) ok('Team check: .github/workflows/check.yml is in place')
+      else fix('Team check: .github/workflows/check.yml is missing', `node "${path.join(HERE, 'init.mjs')}" --refresh, then commit it`)
     }
 
     // The lane's UI test tool, by the package a product installs it as: no spawn, no network.
@@ -368,6 +375,19 @@ async function selfTest() {
         return [
           ...k.has(await k.run({ cwd: stale }), `- Gate files: .githooks/check.mjs and .githooks/pre-push aren't the plugin's current ones. Fix: ${refresh}, then commit them.\n`),
           ...k.has(await k.run({ cwd: crlf }), "- Gate files: the same as the plugin's: ok.\n"),
+        ]
+      },
+    ],
+    [
+      "a team project's required check, there or missing",
+      async () => {
+        const team = k.project({ marker: { mode: 'team' } })
+        k.write(team, '.github/workflows/check.yml', 'name: check\n')
+        const events = { [today]: [mine] }
+        const there = await k.run({ cwd: team, home: k.home(events) })
+        return [
+          ...k.has(there, 'doctor: nothing to fix.\n', "- Gate files: the same as the plugin's: ok.\n- Team check: .github/workflows/check.yml is in place: ok.\n"),
+          ...k.has(await k.run({ cwd: k.project({ marker: { mode: 'team' } }), home: k.home(events) }), 'doctor: 1 thing to fix.\n', `- Team check: .github/workflows/check.yml is missing. Fix: ${refresh}, then commit it.\n`),
         ]
       },
     ],

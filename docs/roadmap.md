@@ -53,6 +53,11 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   lane's test runner, and `doctor` reports the lanes this machine can build
   - a web story's UI evidence is a Playwright test; the screenshot per touched screen and retro's
     full visual compare join with `design` in M2
+- the team-mode workflow and the `CLAUDE.md` template (done): `init.mjs` lays both down, and
+  `plan` lays the workflow down when it records team mode
+  - the check runs the pre-push gates over every commit a pull request adds
+  - story 1.1, or `adopt`, writes the stack's setup and install into it
+  - the human makes it required in the default branch's protection
 - CI self-test, lint and evals, on top of validation
 - CI mutation check — break one guard rule in a copy and expect the self-test to fail
 - a plugin eval suite with a fixture project

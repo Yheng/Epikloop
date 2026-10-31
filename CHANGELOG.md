@@ -93,6 +93,14 @@ All notable changes to Epikloop are recorded here.
   - In a web project, the guard allows `npx playwright test`.
   - `doctor` reports the lanes this machine can build, and whether the web lane's Playwright is
     installed.
+- The team-mode workflow, `templates/github/workflows/check.yml`. On each pull request it runs the
+  gates the pre-push hook runs, over every commit the pull request adds, with a 10-minute timeout
+  and cancel-in-progress. The stack's setup and install go where it marks them.
+  - `init.mjs` lays it down in team mode, and `--refresh` lays down a missing one.
+  - `plan` lays it down when it records team mode.
+  - `doctor` reports a team-mode project without it.
+- The product `CLAUDE.md` template, `templates/CLAUDE.template.md`, which `init.mjs` writes where a
+  repository has no `CLAUDE.md`.
 
 ### Changed
 
@@ -367,6 +375,16 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
 - **No skill names a lane** (the settled design: contributors add lanes without touching skills).
   The lanes' descriptions come from `--lanes`, and each lane's guidance comes from its fragment,
   printed into the briefs ([issue #2](https://github.com/Yheng/Epikloop/issues/2)).
+- **`plan` lays down the team-mode workflow when it records team mode.** `discover` sets every new
+  project up in solo mode and leaves the mode to `plan`. Nothing else would lay the required check
+  down for a project that chooses team mode. `--refresh` runs once the marker says team: on
+  2026-10-31, in a headless check, `plan` ran it before writing the mode, and it laid nothing down
+  until `plan` ran it again.
+- **Story 1.1, or `adopt`, writes the stack's setup and install into the workflow.** The workflow
+  is laid down before `architect` chooses the stack, so it can't know them. Without them, the
+  check's lint, test and build would run on a clone with nothing installed.
+- **`plan` and `adopt` tell the human to make the check job required.** A workflow blocks no merge
+  until the default branch's protection requires it, and that is a GitHub setting no file holds.
 
 ### Hook rules (adopted 2026-10-31)
 
@@ -400,3 +418,15 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   with CRLF, which would otherwise read as drift.
 - **`doctor`'s git floor is 2.23**, the first release with `git switch`, which the guard allows
   and team mode lands with.
+- **The required check runs the pre-push gates over every commit a pull request adds.** A plain run
+  in a fresh checkout scans no commit, since nothing is staged and nothing has changed.
+  - A secret that a teammate committed past the hooks, and removed in a later commit, would pass
+    unread.
+  - The workflow hands the runner the pull request's head and base the way git hands a push to the
+    pre-push hook, so the runner itself is unchanged.
+- **`CLAUDE.md` and the workflow are laid down once, and never compared with their templates
+  again.** The project edits both: its rules, and its stack's setup and install. `--refresh` lays
+  down a team project's missing workflow, and never `CLAUDE.md`, which a project may delete.
+- **The `CLAUDE.md` template isn't named `CLAUDE.md`.** Claude Code loads a `CLAUDE.md` from any
+  folder whose files it reads, so one among the plugin's templates would load in sessions on
+  Epikloop itself.

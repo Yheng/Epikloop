@@ -107,15 +107,15 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The batch: `epic`, `next`, `story`, the `story-worker`, `decide` and `triage`, with full instructions | **Available** |
 | Closing the loop: `retro`, `release`, `adopt` and `doctor`, with full instructions, the staging smoke, and `init.mjs --refresh` | **Available** |
 | The `web` and `service` lanes: Playwright tests as a web story's UI evidence, the guard allowing the lane's test runner, `doctor`'s lane checks, and the [lane authoring guide](docs/lanes.md) | **Available** |
-| The team-mode workflow (`.github/workflows/check.yml`) and the `CLAUDE.md` template | M1 |
+| The team-mode workflow, `.github/workflows/check.yml`, which runs the pre-push gates over every commit a pull request adds, and the `CLAUDE.md` template | **Available** |
 | The plugin eval suite with a fixture project, and lint and evals in CI | M1 |
 | This repository's own law checks in CI: the prompt ceiling, no `.sh` beyond the shims, no network calls in hook or Harbor code, DCO sign-off, no AI co-author trailers | M1 |
 | `design`: direction variants, every screen, the gallery, and with them a screenshot per touched screen and retro's visual compare | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor (its server, its 3D view and the `harbor` command), then the Bridge | M4 |
 
-Until M1 lands, there is no team-mode workflow, and the loop hasn't yet taken a real project end to
-end, so Epikloop is not ready for real projects. See the [roadmap](#roadmap).
+Until M1 lands, the loop hasn't yet taken a real project end to end, so Epikloop is not ready for
+real projects. See the [roadmap](#roadmap).
 
 ## Install
 
@@ -173,12 +173,12 @@ files and `~/.epikloop/` in place.
 
 ### Check the install
 
-- `/epikloop:doctor` checks Node, git and Claude Code against their minimum versions, and your
-  account's prompt-cache setup. Inside a project, it also checks the project files, the git hooks,
-  the gate files against the plugin's current ones (`init.mjs --refresh` brings them up to date)
-  and whether the emitter is writing this session's events. It says how to fix what it finds. The
-  lanes this machine can build join the report with the lanes, and Harbor's reachability with
-  Harbor.
+- `/epikloop:doctor` checks Node, git and Claude Code against their minimum versions, your
+  account's prompt-cache setup, and the lanes this machine can build. Inside a project, it also
+  checks the project files, the git hooks, the gate files against the plugin's current ones
+  (`init.mjs --refresh` brings them up to date), the team-mode workflow, a web project's Playwright,
+  and whether the emitter is writing this session's events. It says how to fix what it finds.
+  Harbor's reachability joins the report with Harbor.
 - `claude plugin details epikloop` lists the plugin's components and its projected token cost.
 
 ## Quick start
@@ -413,6 +413,14 @@ Team mode is the standard; solo mode is supported. You choose during `plan`.
   hooks that run it, and one entry in the stack's install step arms them.
 - Team mode adds one workflow, `.github/workflows/check.yml`. It runs the same `check.sh` on pull
   requests (10-minute timeout, cancel-in-progress) as a required check under branch protection.
+  - It runs the gates your pre-push hook runs, over every commit the pull request adds, so a
+    secret in a commit that a later commit removed still fails it.
+  - `adopt` lays it down for an existing repository in team mode. For a new product, `plan` lays
+    it down when you choose team mode.
+  - Your stack's setup and install go where the file marks them. The first story writes them, or
+    `adopt` copies them from your existing CI.
+  - It blocks merges once you require it. On GitHub, protect the default branch with a branch
+    protection rule or a ruleset, and add `check` as a required status check.
 - Solo mode creates no workflow, and `check.sh` fails if a workflow appears that
   `gates.allow_workflows` doesn't list.
 - Progress is derived, never stored. In solo mode a story is done when a `feat(X.X):` commit exists
@@ -664,7 +672,7 @@ Epikloop owns exactly these files in a product repository, and nothing else, eve
 | `scripts/check.sh` and `.githooks/` | The gate runner, `.githooks/check.mjs`; the two-line hooks that run it; and a two-line sh shim that runs it by hand and in CI |
 | `CLAUDE.md` | Project rules only, under 200 lines; the pipeline protocol arrives by hook instead |
 | One entry in the stack's install step | It arms `.githooks/` |
-| `.github/workflows/check.yml` | The required check, in team mode only |
+| `.github/workflows/check.yml` | The required check, in team mode only: the pre-push gates over every commit a pull request adds |
 
 Each project file has a fixed format, with an example in the core plugin's `templates/`; see
 [the formats](docs/formats.md). Which stories are done is read from git: a commit on the default
@@ -675,9 +683,11 @@ of the normalized git remote (`host/owner/repo`, lowercased), or of the reposito
 is no remote. It is committed, so a moved or re-cloned repository keeps its state.
 
 `discover` and `adopt` create these files with the core plugin's `bin/init.mjs`. It writes the
-marker with its id, copies `.githooks/` and `scripts/check.sh` from the plugin's templates, stages
-them with the shims marked executable, and arms the hooks. It never overwrites a file and never
-commits.
+marker with its id and copies `.githooks/` and `scripts/check.sh` from the plugin's templates. It
+lays down `CLAUDE.md` and, in team mode, `.github/workflows/check.yml`, wherever the repository has
+none. It stages what it wrote, with the shims marked executable, and arms the hooks. It never
+overwrites a file and never commits. From then on `CLAUDE.md` and the workflow are your project's
+to edit, and `init.mjs --refresh` replaces only the gate files.
 
 ### On your machine
 
@@ -877,7 +887,8 @@ More in [Architecture → Harbor](docs/architecture.md#harbor).
   names are not caught; the git hooks and the required check are the backstop.
 - **Each layer's bypass.** A hooks module you install can approve a call the guard denied. Local
   git hooks can be skipped with `-n`, by the web editor, or by leaving them unarmed. The required
-  check in team mode can't be bypassed.
+  check in team mode can't be skipped. A pull request runs the workflow as the pull request has
+  it, so a change to `check.yml` needs the same review as the code.
 - **The emitter.** It is a hooks module, so it also doesn't load under a managed policy that
   turns mods off, or while Claude Code's rollout switch for mods is off. Where an organization
   manages Claude Code, `classic.*` hooks in a plugin a person installs don't run, so
@@ -904,7 +915,7 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke and `doctor` | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
-| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, and the examples of each project file in `spec/` and `docs/`, now; `CLAUDE.md` and the team-mode workflow in M1 | now, M1 |
+| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, the examples of each project file in `spec/` and `docs/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project | M1 |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
@@ -961,7 +972,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 
 | Milestone | Delivers |
 |---|---|
-| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), the `web` and `service` lanes and the lane authoring guide (done), then the team-mode workflow and `CLAUDE.md` templates, the eval suite, lint and evals in CI, and this repository's own law checks |
+| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), then the eval suite, lint and evals in CI, and this repository's own law checks |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: Harbor, then the Bridge** | Harbor's server and 3D scene, then the Bridge's review pages |
