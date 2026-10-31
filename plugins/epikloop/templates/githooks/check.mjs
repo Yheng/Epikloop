@@ -811,9 +811,14 @@ function resolveCommands(config) {
   return Object.fromEntries(COMMAND_GATES.map((name) => [name, pick(name)]))
 }
 
+// The gates' own files, which a project carries as they ship. Output names one where a path segment
+// starts with it, once backslashes are read as slashes.
+const OWN_FILES = /(?<![\w.-])(?:\.githooks\/|scripts\/check\.sh(?![\w.-]))/
+
 // One stack command, capped, run the way npm runs scripts. It gets the environment a person would
 // have, without the repository variables git sets for a hook, and an auto-detected command can't
 // fetch. A failure shows the last 40 lines, redacted, and the full log stays in git's own directory.
+// A failure whose output names the gates' own files also says to leave them out of what it checks.
 async function commandGate(name, spec) {
   if (spec === null) return { status: 'none' }
   const env = { ...process.env }
@@ -834,7 +839,10 @@ async function commandGate(name, spec) {
         ? `exited ${r.code}`
         : `was stopped by ${r.signal}`
   const tail = output.split(/\r?\n/).filter((line) => line.trim() !== '').slice(-40)
-  return { status: 'fail', lines: [`${name}: ${spec.command} ${why}`, ...tail.map((line) => `  ${line}`), ...(log ? [`  full log: ${log}`] : [])] }
+  const own = OWN_FILES.test(output.replace(/\\/g, '/'))
+    ? [`${name}: the failures include the gates' own files, which ship as they are; leave .githooks/ and scripts/check.sh out of what ${name} checks`]
+    : []
+  return { status: 'fail', lines: [`${name}: ${spec.command} ${why}`, ...tail.map((line) => `  ${line}`), ...(log ? [`  full log: ${log}`] : []), ...own] }
 }
 
 async function saveLog(name, output) {
@@ -1989,6 +1997,27 @@ function gateCases(k) {
         const r = await makeRepo({ commands: true })
         setState(r, 'lint', 'exit', '1')
         return blocked(await check(r, ['--fast']), 'lint: node gates/cmd.mjs lint exited 1', 'lint ran', 'lint FAIL')
+      },
+    ],
+    [
+      "a command that fails on the gates' own files is told to leave them out",
+      async () => {
+        const hint = "lint: the failures include the gates' own files, which ship as they are; leave .githooks/ and scripts/check.sh out of what lint checks"
+        const failing = async (print) => {
+          const r = await makeRepo({ commands: true })
+          setState(r, 'lint', 'print', print)
+          setState(r, 'lint', 'exit', '1')
+          return check(r, ['--fast'])
+        }
+        const runner = await failing('C:\\work\\app\\.githooks\\check.mjs\n  45:19  error  Unnecessary escape character  no-useless-escape\n')
+        const shim = await failing('scripts/check.sh:2:1: warning: quote this to prevent word splitting\n')
+        const elsewhere = await failing('src/app.mjs\n  3:1  error  no-undef\nsee my.githooks/notes and myscripts/check.sh\n')
+        return every(
+          blocked(runner, hint),
+          blocked(shim, hint),
+          blocked(elsewhere, 'lint: node gates/cmd.mjs lint exited 1'),
+          !elsewhere.out.includes("the gates' own files") || "named the gates' own files for a failure elsewhere",
+        )
       },
     ],
     [

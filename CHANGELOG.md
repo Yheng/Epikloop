@@ -116,6 +116,8 @@ All notable changes to Epikloop are recorded here.
 - In M1 a web story's UI evidence is a Playwright test. The screenshot per touched screen and
   retro's full visual compare join with `design` in M2. Perf budgets are held until a project
   needs them.
+- When a stack command fails and its output names `.githooks/` or `scripts/check.sh`, the gate
+  runner adds a line: those ship as they are, so leave them out of what the command checks.
 
 ### Removed
 
@@ -385,6 +387,16 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   check's lint, test and build would run on a clone with nothing installed.
 - **`plan` and `adopt` tell the human to make the check job required.** A workflow blocks no merge
   until the default branch's protection requires it, and that is a GitHub setting no file holds.
+
+### Gate rules (adopted 2026-10-31)
+
+- **A stack command that fails on the gates' own files is told to leave them out.** On
+  2026-10-31, in a headless check, story 1.1 set up ESLint, and its recommended rules failed on
+  `.githooks/check.mjs`: 15 errors, with Node's globals declared.
+  - A project's lint, format check or type check can cover the runner and its shim, which ship
+    as they are, and `adopt` stops on a failing gate.
+  - The line serves any tool that names the files it fails on. Making the runner ESLint-clean
+    was rejected, since other tools and stricter configs would still flag it.
 
 ### Hook rules (adopted 2026-10-31)
 

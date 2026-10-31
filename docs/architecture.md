@@ -243,6 +243,8 @@ How the gates run:
 - **Output.**
   - Failures, then one summary line.
   - A failing command shows its last 40 lines, and its full log stays in git's own directory.
+  - When a failing command's output names `.githooks/` or `scripts/check.sh`, the runner adds that
+    those ship as they are, to be left out of what the command checks.
   - Everything printed is redacted: key formats, URL userinfo, and the values of ignored `.env`
     files.
 - **The stamp.** A green full run stamps the working state. A push whose tips have exactly that

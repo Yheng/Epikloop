@@ -504,6 +504,8 @@ The runner lives in your repository, so it works in a plain clone without the pl
 - **Limits.**
   - Every command is capped at 10 minutes.
   - The output is failures and a one-line summary, never full logs.
+  - A command that fails on `.githooks/` or `scripts/check.sh` is told to leave them out of what
+    it checks. Your lint or formatter may cover them, but they ship as they are.
   - Everything printed is redacted.
 - **The stamp.** A green full run stamps the working state, so a push of exactly that tree skips
   tests and build. The secret scan always runs.
