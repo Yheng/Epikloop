@@ -32,8 +32,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 - the PreToolUse guard (done; the active lane's UI test tool joins its allow list with the lanes)
   - baseline on 2026-10-20, on the maintainer's Windows 11 laptop: spawn median 128–133 ms, max
     175–209 ms; GitHub's windows-latest runner measures ~50 ms median
-- the SessionStart briefing (done for stages 1–7, the fuel gauge, the protocol and arming; stages
-  8–10 join it with the sign-off and release records that `retro` and `release` write)
+- the SessionStart briefing (done: stages 1–10, the fuel gauge, the protocol and arming)
 - the project marker and project id (done; `bin/init.mjs` writes the marker and the gate files)
 - the living-spec format (done; [formats](formats.md), the templates, and `bin/state.mjs`, which
   reads them)
@@ -42,10 +41,14 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - slice 1, the path to a frozen plan, is done: `/epikloop`, `discover`, `architect` and `plan`
   - slice 2, the batch, is done: `epic`/`next`/`story`, the `story-worker` body, `spec-delta`,
     `decide` and `triage`
-  - slice 3 is `retro`, `release`, `adopt` and `doctor`
-  - `doctor` also reports drift between a product's `.githooks/check.mjs` and the plugin's template
+  - slice 3, closing the loop, is done: `retro`, `release`, `adopt` and `doctor`, with the
+    staging smoke, stages 8–10 and `init.mjs --refresh`, which `doctor` names when a product's gate
+    files differ from the plugin's
   - stage 3, design, is held until M2 brings design's body; until then a UI lane goes on to
     `architect`
+  - retro's full visual compare and perf check, and `doctor`'s report of the lanes this machine
+    can build, join with the `web` lane; `adopt`'s token extraction joins with `design` in M2, and
+    `doctor`'s Harbor check with Harbor in M4
 - the `web` and `service` lanes
 - CI self-test, lint and evals, on top of validation
 - CI mutation check — break one guard rule in a copy and expect the self-test to fail
@@ -61,7 +64,9 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 **Held until observed.** Each waits for the failure that would justify it:
 
 - **The ratchet:** brownfield baselines, held for an adoption whose old errors would fail every
-  commit.
+  commit. Until then `adopt` stops on a gate that fails on today's code.
+- **Converting repositories on an earlier template layout,** behind a rollback tag, held for the
+  adoption of one.
 - **Literal spacing in the token gate,** and Tailwind's spacing utilities.
 
 **Open questions to settle along the way:**

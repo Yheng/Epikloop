@@ -29,9 +29,9 @@
 
 > [!IMPORTANT]
 > **Epikloop is in pre-release.** This README describes the loop as it is designed. Today the
-> marketplace installs and the [git guard](#the-git-guard) protects Epikloop projects; the commands
-> are defined, and their full instructions arrive with milestone 1. [Status](#status) shows what
-> works now and when the rest lands.
+> marketplace installs, the [git guard](#the-git-guard) and the gates protect Epikloop projects,
+> and every command but `design` and `harbor` has its full instructions. The lanes arrive with
+> milestone 1. [Status](#status) shows what works now and when the rest lands.
 
 ## Contents
 
@@ -99,20 +99,20 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The emitter: the event log, cost rows, and each story-worker's effort set from its tier | **Available** |
 | JSON Schemas for the project marker, events, cost rows and user settings | **Available** |
 | The gate runner: `scripts/check.sh`, its git hooks, and the secret and token gates | **Available** |
-| The SessionStart briefing: the fuel gauge, the stage, the next step, the protocol, and arming the git hooks | **Available** for stages 1 to 7; stages 8 to 10 in M1 |
+| The SessionStart briefing: the fuel gauge, the stage, the next step, the protocol, and arming the git hooks | **Available** |
 | The project file formats, their templates, and the reader that derives stage and gauge from them | **Available** |
 | Project setup: the project marker with its id, and the gate files, staged and armed | **Available** |
 | CI: validation, the guard's, the briefing's, project setup's and the gate runner's self-tests, and the emitter's tests on Linux, macOS and Windows | **Available** |
 | The path to a frozen plan: `/epikloop`, `discover`, `architect` and `plan`, with full instructions | **Available** |
 | The batch: `epic`, `next`, `story`, the `story-worker`, `decide` and `triage`, with full instructions | **Available** |
-| The other commands: `doctor`, `adopt`, `retro`, `release` | Defined; full instructions in M1 |
+| Closing the loop: `retro`, `release`, `adopt` and `doctor`, with full instructions, the staging smoke, and `init.mjs --refresh` | **Available** |
 | The `web` and `service` lanes | M1 |
 | `design`: direction variants, every screen, the gallery | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor (its server, its 3D view and the `harbor` command), then the Bridge | M4 |
 
-Until M1 lands, the commands past `plan` carry only a one-paragraph outcome, not their full
-instructions, so Epikloop is not ready for real projects. See the [roadmap](#roadmap).
+Until M1 lands, there are no lanes and no team-mode workflow, and the loop hasn't yet taken a real
+project end to end, so Epikloop is not ready for real projects. See the [roadmap](#roadmap).
 
 ## Install
 
@@ -170,8 +170,12 @@ files and `~/.epikloop/` in place.
 
 ### Check the install
 
-- `/epikloop:doctor` checks Node, git, the git hooks, the lanes this machine can build and your
-  account's prompt-cache setup, and says how to fix what is missing (M1).
+- `/epikloop:doctor` checks Node, git and Claude Code against their minimum versions, and your
+  account's prompt-cache setup. Inside a project, it also checks the project files, the git hooks,
+  the gate files against the plugin's current ones (`init.mjs --refresh` brings them up to date)
+  and whether the emitter is writing this session's events. It says how to fix what it finds. The
+  lanes this machine can build join the report with the lanes, and Harbor's reachability with
+  Harbor.
 - `claude plugin details epikloop` lists the plugin's components and its projected token cost.
 
 ## Quick start
@@ -222,21 +226,18 @@ after six weeks.
 | 5 | There are no stories, or the MVP set isn't frozen | `plan` |
 | 6 | The current phase has unticked MVP stories | `epic N`, or `decide` first when a question blocks one of them or five or more wait |
 | 7 | The current phase is complete but not tagged | `retro` |
-| 8 | All MVP stories are done, queue Δ ≤ 0, the staging smoke is green, and there is no `mvp` tag | MVP sign-off |
-| 9 | There is an `mvp` tag but no production | `release` |
-| 10 | Released | Post-MVP mode: the backlog becomes visible, and `plan --extend` takes new work |
+| 8 | Every MVP epic is tagged, and there is no `mvp` tag | `retro` for the MVP sign-off, which waits until queue Δ ≤ 0 and the staging smoke is green |
+| 9 | There is an `mvp` tag but no `live` tag | `release` |
+| 10 | There is a `live` tag | Post-MVP mode: the backlog becomes visible, `epic N` runs planned work, and `plan --extend` takes new work |
 
 ### The session briefing
-
-> [!NOTE]
-> The briefing is available now for stages 1 to 5. The fuel gauge and the later stages join it in
-> M1, as the files they read get their formats.
 
 Every session in an Epikloop project starts with a briefing for Claude, from a SessionStart hook
 in the core plugin:
 
-- **One line on where things stand:** the project, its lane and mode, the stage, the next command,
-  and anything that needs you.
+- **One line on where things stand:** the fuel gauge, the project, its lane and mode, the stage,
+  the next command, and anything that needs you. When the next command is one only you start,
+  such as `retro` or `release`, the line says so, and Claude asks you to type it.
 - **The protocol:** where the project's state lives, how a batch parks questions, and how findings
   are routed. It arrives by hook, so your `CLAUDE.md` keeps only your project's rules.
 - **Arming:** when the repository carries `.githooks/` and nothing else owns git's hooks, the hook
@@ -309,7 +310,8 @@ MVP done/total · velocity · ETA · queue Δ
 
 One epic is one phase: `retro` closes it and tags it `phase-N`. Velocity counts MVP stories closed
 over the last 14 days. The ETA divides the remaining stories' average worker wall time per tier by
-your hours per day. Queue Δ counts from the start of the current phase. The exact rules are in
+your hours per day. Queue Δ counts from the start of the current phase, and at MVP sign-off from
+the start of the final phase. The exact rules are in
 [the formats](docs/formats.md#the-fuel-gauge).
 
 ### Lanes
@@ -360,13 +362,20 @@ step is also a command you can run directly.
    `/epikloop` recommends it when a question blocks a story or five or more are waiting.
 8. **Report what you find.** `/epikloop:triage "<what you found>"` routes your own findings through
    the same threshold router the batch uses.
-9. **Close each phase.** `/epikloop:retro` runs the scripted staging smoke and a click-through, the
-   deep gates with end-to-end tests, the full visual compare and perf check, and the gates'
-   self-test. It prunes the queue, reviews the cost rows, deletes something from the pipeline (or
-   records why nothing qualified) and tags the phase. In the final phase it takes you through MVP
-   sign-off.
+9. **Close each phase.** `/epikloop:retro` gathers the phase's evidence:
+   - the scripted staging smoke and your click-through
+   - the deep gates, with end-to-end tests
+   - the gates' self-test
+
+   The full visual compare and the perf check join it with the web lane. The retro then prunes the
+   queue with you, reviews the cost rows, and deletes something from the pipeline, or records why
+   nothing qualified. It records all this in `docs/decisions.md` and tags the phase.
+
+   In the final phase, it also takes you through MVP sign-off. Sign-off waits until queue Δ is 0 or
+   below and the staging smoke is green.
 10. **Release.** `/epikloop:release` runs the go-live story: the production environment, promotion
-    from staging, a rollback note and a post-launch checklist.
+    from staging, a rollback note and a post-launch checklist. Production follows the hosting that
+    `spec/architecture.md` describes, and the release is tagged `live`.
 11. **Keep going.** After release the project is in post-MVP mode. The backlog becomes visible, and
     `/epikloop:plan --extend` plans new work without touching the frozen set.
 
@@ -374,10 +383,14 @@ step is also a command you can run directly.
 
 `/epikloop:adopt` brings existing code into Epikloop without breaking its build:
 
-- The code is read into `spec/`, with every requirement marked `observed`.
-- Design tokens are extracted from the existing UI.
-- Gate commands come from the project's own scripts.
-- It ends with one confirmation batch, in which you confirm or correct the observed requirements.
+- The code is read into `spec/`, with every requirement marked `observed`, and
+  `spec/architecture.md` describes the system as built.
+- Gate commands come from the project's own scripts. If a gate fails on today's code, the adoption
+  stops before it commits and names the failing commands, so you can fix the code or narrow the
+  command.
+- It ends with one confirmation batch, in which you confirm, correct or retire the observed
+  requirements.
+- Design tokens will be extracted from the existing UI once `design` arrives in M2.
 
 From there, `/epikloop` walks the same stages as for a new product.
 
@@ -408,7 +421,7 @@ The front door is `/epikloop`. Every other command is namespaced as `/epikloop:<
 | `/epikloop` | The front door: syncs, detects the stage, shows the fuel gauge and what needs you, recommends one step and starts it on "go" | low | you or Claude |
 | `/epikloop:doctor [--check]` | Checks that this machine can run Epikloop and says how to fix what is missing; `--check` also runs the gates | low | you or Claude |
 | `/epikloop:discover [brief]` | Greenfield: turns an interview, or a pasted brief with only the gaps asked, into `spec/` | xhigh | you or Claude |
-| `/epikloop:adopt` | Brownfield: an observed spec, extracted tokens, gate config and a confirmation batch | xhigh | you or Claude |
+| `/epikloop:adopt` | Brownfield: an observed spec and architecture, gate config and a confirmation batch; extracted tokens from M2 | xhigh | you or Claude |
 | `/epikloop:design [amend <screen> "<change>" \| add <screen> \| audit \| ingest]` | Three directions, your pick, then every screen as HTML, with tokens, a manifest and a gallery | high | you or Claude |
 | `/epikloop:architect` | The stack, the schema as code, the API contract, a pre-mortem, `spec/architecture.md` and the lane | max | you or Claude |
 | `/epikloop:plan [--extend]` | Epics and tiered stories with requirement IDs and spec deltas, and the frozen MVP set; `--extend` plans later work | high | you or Claude |
@@ -421,7 +434,7 @@ The front door is `/epikloop`. Every other command is namespaced as `/epikloop:<
 | `/epikloop:release` | The go-live story: production, promotion, a rollback note and a post-launch checklist | high | you only |
 | `/epikloop:harbor on\|off\|open` | Harbor's switch and its view | low | you only |
 
-Every command arrives with M1, except `design` (M2) and `harbor` (M4).
+Every command has its full instructions now, except `design` (M2) and `harbor` (M4).
 
 - **Started by.** Claude may start a "you or Claude" command when it fits. A "you only" command is
   a ceremony Claude never starts on its own, and its description stays out of Claude's context.
@@ -874,10 +887,10 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 |---|---|---|
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
-| `plugins/epikloop/skills/` | Sixteen skills: full instructions for `/epikloop`, `discover`, `architect` and `plan` now, the rest in M1 | now, M1 |
+| `plugins/epikloop/skills/` | Sixteen skills, with full instructions for all but `design` (M2) and `harbor` (M4) | now, M2, M4 |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard, the emitter, the SessionStart briefing, project setup and the state reader now; `doctor` in M1 | now, M1 |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke and `doctor` | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, then `mobile-expo` and `mobile-flutter` | M1, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, and the examples of each project file in `spec/` and `docs/`, now; `CLAUDE.md` and the team-mode workflow in M1 | now, M1 |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project | M1 |
@@ -897,6 +910,8 @@ node plugins/epikloop/bin/guard.mjs --self-test
 node plugins/epikloop/bin/brief.mjs --self-test
 node plugins/epikloop/bin/init.mjs --self-test
 node plugins/epikloop/bin/state.mjs --self-test
+node plugins/epikloop/bin/smoke.mjs --self-test
+node plugins/epikloop/bin/doctor.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test

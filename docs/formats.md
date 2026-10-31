@@ -67,6 +67,9 @@ Example: [`templates/docs/decisions.md`](../plugins/epikloop/templates/docs/deci
 - **Entries.** Each entry is `## DECISION-NNN Title (YYYY-MM-DD)`, with these fields: `- Context:`,
   `- Decision:`, `- Rejected:`, `- Trade-offs:` and `- Implementation note:`.
 - **Answers.** An entry that answers a parked question also carries `- Answers: Q-NNN`.
+- **Records.** The closing ceremonies record themselves as entries with fixed titles: `retro`
+  writes `Phase N retro`, the MVP sign-off `MVP sign-off`, and `release` `Go live`. The reader
+  finds them by title.
 - **Append-only.** The file is never edited above its last entry.
 
 ## What is read from git
@@ -75,7 +78,8 @@ Example: [`templates/docs/decisions.md`](../plugins/epikloop/templates/docs/deci
   starts `feat(N.M):`.
   - The default branch is `origin/HEAD`, else `main`, else `master`, else `HEAD`.
   - In team mode, a squash-merged pull request's title carries the same prefix.
-- **Tags.** `retro` tags a closed phase `phase-N`, and MVP sign-off tags `mvp`.
+- **Tags.** `retro` tags a closed phase `phase-N`, MVP sign-off tags `mvp`, and `release` tags
+  `live`. Each tag goes on the default branch once the ceremony's record has landed there.
 - **The current phase** is the lowest epic that has MVP stories and no `phase-N` tag.
 - **In review.** A story whose `feat(N.M):` commit is on another branch, local or remote, and not
   yet on the default branch is in review.
@@ -100,6 +104,24 @@ in plan order. That line is the worker's spawn description.
   remote. In team mode it goes on `story/N.M`, with a pull request titled like the commit, which
   the human merges.
 
+## What a ceremony reads
+
+`state.mjs --retro` and `state.mjs --release` print the closing ceremonies' briefs. Each starts
+only at its stages, 7 and 8 for a retro and 9 for a release, and only where a batch would.
+
+- **The retro's brief.** At stage 7: the phase's MVP stories, for the click-through; the evidence,
+  which is the deep gates, the gates' self-test, the staging smoke and the click-through; the
+  queue and its Δ; this machine's cost rows per tier and effort; the record; and how it lands, as
+  `chore(phase-N): retro`. When the phase is the last MVP epic, the retro is also the MVP
+  sign-off, and the brief says what sign-off needs. At stage 8, the brief is the sign-off's alone,
+  landing as `chore(mvp): sign-off`.
+- **The release's brief.** Staging, where the hosting is described, the production smoke, the
+  record, and how it lands, as `chore(release): go live`.
+- **Tags.** Once a record is on the default branch, the brief prints only the tags it leaves. It
+  prints `mvp` only while queue Δ is at 0 or below.
+- **The staging smoke.** `smoke.mjs` sends one GET to `staging_url`, or to the URL it is given,
+  and passes on a 2xx answer within 15 seconds.
+
 ## The fuel gauge
 
 `MVP done/total · velocity · ETA · queue Δ`, shown once the MVP set is frozen.
@@ -111,6 +133,9 @@ in plan order. That line is the worker's spawn description.
   cost rows, divided by `hours_per_day`.
   - A tier with no rows takes the average of all rows.
   - With no rows, or no `hours_per_day`, the ETA is unknown.
-- **Queue Δ.** The open entries now minus the open entries at the last `phase-N` tag. Before the
-  first tag, the base is the commit that froze the MVP set. While queue Δ is positive, the ETA is
-  called fiction.
+- **Queue Δ.** The open entries now minus the open entries at the start of the current phase:
+  the highest `phase-N` tag below it, else the commit that froze the MVP set. While queue Δ is
+  positive, the ETA is called fiction.
+  - Until the `mvp` tag, once every MVP epic is tagged, the current phase is still the last MVP
+    epic, so sign-off weighs the queue over the whole final phase.
+  - After the `mvp` tag, the base is the highest `phase-N` tag.

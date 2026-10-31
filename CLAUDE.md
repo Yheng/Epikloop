@@ -18,11 +18,11 @@ This is the tool, not a product built with it.
   `scripts/check.sh`, `.githooks/`) appear here only as templates and eval fixtures.
 - This repository's own `docs/` is documentation about Epikloop.
 
-`/epikloop`, `discover`, `architect`, `plan` and the batch's skills (`epic`, `next`, `story`,
-`spec-delta`, `decide`, `triage`) have their bodies, and so does the worker; the other skills have
-frontmatter and a purpose paragraph only. The git guard, the emitter,
-the gate runner, the SessionStart briefing, project setup and the project file formats are in
-place; the other hooks, scripts, lanes and templates arrive with M1 (`docs/roadmap.md`).
+Every skill has its body except `design` (M2) and `harbor` (M4), which have frontmatter and a
+purpose paragraph only, and so does the worker. The git guard, the emitter, the gate runner, the
+SessionStart briefing, project setup, the state reader, the staging smoke, `doctor` and the
+project file formats are in place; the lanes, the team-mode workflow and the rest of the templates
+arrive with M1 (`docs/roadmap.md`).
 
 ## Map
 
@@ -36,10 +36,14 @@ place; the other hooks, scripts, lanes and templates arrive with M1 (`docs/roadm
   - `bin/guard.mjs` — the git guard, the PreToolUse hook on `Bash|PowerShell`, with its self-test
   - `bin/brief.mjs` — the SessionStart briefing, which also arms a product's git hooks, with its
     self-test
-  - `bin/init.mjs` — project setup: writes the marker with its id and the gate files, with its
-    self-test
-  - `bin/state.mjs` — reads the project files and git into the stage and the fuel gauge, with its
-    self-test; the briefing imports it
+  - `bin/init.mjs` — project setup: writes the marker with its id and the gate files, and
+    `--refresh` brings a project's gate files up to the plugin's, with its self-test
+  - `bin/state.mjs` — reads the project files and git into the stage and the fuel gauge, and
+    prints the briefs a batch, a retro and a release read, with its self-test; the briefing imports
+    it
+  - `bin/smoke.mjs` — the staging smoke that `retro` and `release` run, with its self-test
+  - `bin/doctor.mjs` — the machine check behind `doctor`, which also folds the emitter's files,
+    with its self-test
   - `templates/spec/` and `templates/docs/` — an example of each project file, in the formats
     `docs/formats.md` defines; the state reader's self-test parses them
   - `bin/fold.mjs` — folds the emitter's files into `.jsonl` files, with its self-test
@@ -118,6 +122,8 @@ node plugins/epikloop/bin/guard.mjs --self-test
 node plugins/epikloop/bin/brief.mjs --self-test
 node plugins/epikloop/bin/init.mjs --self-test
 node plugins/epikloop/bin/state.mjs --self-test
+node plugins/epikloop/bin/smoke.mjs --self-test
+node plugins/epikloop/bin/doctor.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
@@ -129,12 +135,18 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   line with spawn times.
 - **The briefing's self-test** spawns the hook once per case, in temporary folders and throwaway
   repos. It prints failures plus one summary line with the largest context and spawn times.
-- **The init self-test** runs setup in throwaway repos: remote forms, kept files, staged modes and
-  arming. Its last case commits through the real pre-commit hook.
+- **The init self-test** runs setup in throwaway repos: remote forms, kept files, staged modes,
+  arming and `--refresh`. Its last case commits through the real pre-commit hook.
 - **The state reader's self-test** parses the templates and malformed files, and reads dated
-  commits, tags and cost rows in throwaway repos into exact stages and gauges. It also runs the
-  batch's commands there: the ready list against branches, a bare remote and a team-mode review,
-  and a worker's exact brief.
+  commits, tags, records and cost rows in throwaway repos into exact stages and gauges, stage 10
+  included. It also runs the batch's and the ceremonies' commands there: the ready list against
+  branches, a bare remote and a team-mode review, a worker's exact brief, and the retro's and the
+  release's briefs and tags.
+- **The smoke's self-test** smokes a server on 127.0.0.1: answers, redirects, a timeout, a closed
+  port, the marker's URL, and credentials sent but never printed.
+- **The doctor's self-test** runs the checks in process, with a fake `claude` and git version,
+  against throwaway repos and homes: each floor, each account, the hooks, the gate files, this
+  session's events and the fold.
 - **The plugin test** runs the emitter's suite against simulated events, with no login.
 - **The fold's self-test** folds sample files in a temporary folder.
 - **The gate runner's self-test** builds throwaway repos with bare remotes in a temporary folder.

@@ -4,6 +4,8 @@
 // It never overwrites a file and never commits. It prints one summary line, and exits 1 only when
 // it couldn't do its job.
 //
+// `node init.mjs --refresh` brings an existing project's gate files up to the plugin's: it copies in
+// each one that is missing or differs from its template, and stages it, leaving the marker alone.
 // `node init.mjs --self-test` runs every case below against throwaway repositories.
 import { spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
@@ -11,18 +13,30 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 
-const USAGE = 'usage: node init.mjs --lane <lane> --mode solo|team'
-const TEMPLATES = path.join(import.meta.dirname, '..', 'templates')
+const USAGE = 'usage: node init.mjs --lane <lane> --mode solo|team | --refresh'
+export const TEMPLATES = path.join(import.meta.dirname, '..', 'templates')
 const RUNNER = path.join(TEMPLATES, 'githooks', 'check.mjs')
 // Each gate file, the template it is copied from, and whether it is a shim git must run as a
 // program.
-const GATE_FILES = [
+export const GATE_FILES = [
   ['.githooks/check.mjs', 'githooks/check.mjs', false],
   ['.githooks/pre-commit', 'githooks/pre-commit', true],
   ['.githooks/pre-push', 'githooks/pre-push', true],
   ['scripts/check.sh', 'scripts/check.sh', true],
 ]
 const POSIX = process.platform !== 'win32'
+
+// Whether two copies of a file hold the same text, whatever their line endings: git on Windows may
+// check a file out with CRLF.
+const sameText = (a, b) => a.toString('utf8').replace(/\r\n/g, '\n') === b.toString('utf8').replace(/\r\n/g, '\n')
+
+// The gate files in the repository at `top` that are missing, or differ from their templates.
+export function staleGates(top) {
+  return GATE_FILES.filter(([file, template]) => {
+    const target = path.join(top, ...file.split('/'))
+    return !fs.existsSync(target) || !sameText(fs.readFileSync(target), fs.readFileSync(path.join(TEMPLATES, ...template.split('/'))))
+  })
+}
 
 function git(cwd, args, env) {
   const run = spawnSync('git', args, { cwd, env, encoding: 'utf8', timeout: 60_000, windowsHide: true })
@@ -116,7 +130,7 @@ function init(argv) {
     const target = path.join(top, ...file.split('/'))
     const content = fs.readFileSync(path.join(TEMPLATES, ...template.split('/')))
     if (fs.existsSync(target)) {
-      if (!fs.readFileSync(target).equals(content)) differ.push(file)
+      if (!sameText(fs.readFileSync(target), content)) differ.push(file)
       continue
     }
     fs.mkdirSync(path.dirname(target), { recursive: true })
@@ -127,7 +141,10 @@ function init(argv) {
   const gates = GATE_FILES.map(([file]) => file).filter((file) => shims.includes(file) || wrote.includes(file))
   if (gates.length === GATE_FILES.length) parts.push('.githooks/ and scripts/check.sh written')
   else if (gates.length > 0) parts.push(`${gates.join(', ')} written`)
-  if (differ.length > 0) parts.push(`kept ${differ.join(', ')}, which ${differ.length === 1 ? 'differs' : 'differ'} from the plugin's template`)
+  if (differ.length > 0) {
+    const one = differ.length === 1
+    parts.push(`kept ${differ.join(', ')}, which ${one ? 'differs' : 'differ'} from the plugin's template; --refresh replaces ${one ? 'it' : 'them'}`)
+  }
 
   // Git on Windows adds a file Node wrote as 100644, and the shims gate wants 100755.
   const plain = wrote.filter((file) => !shims.includes(file))
@@ -139,6 +156,30 @@ function init(argv) {
   if (armed) parts.push(armed)
   if (mode === 'team') parts.push("the team-mode workflow isn't laid down yet")
   console.log(`init: ${parts.join(' · ')}`)
+  process.exitCode = 0
+}
+
+// Copies the plugin's current gate files over a project's missing or stale copies, and stages them.
+function refresh(argv) {
+  if (argv.length > 0) return console.log(USAGE)
+  const inside = git(process.cwd(), ['rev-parse', '--show-toplevel'])
+  if (inside.status !== 0) return console.log('init: not a git repository; run git init first')
+  const top = inside.stdout.trim()
+  if (!fs.existsSync(path.join(top, '.epikloop', 'project.json'))) return console.log('init: not an Epikloop project, so there are no gate files to refresh')
+  const stale = staleGates(top)
+  if (stale.length > 0) {
+    for (const [file, template, shim] of stale) {
+      const target = path.join(top, ...file.split('/'))
+      fs.mkdirSync(path.dirname(target), { recursive: true })
+      fs.writeFileSync(target, fs.readFileSync(path.join(TEMPLATES, ...template.split('/'))))
+      if (POSIX && shim) fs.chmodSync(target, 0o755)
+    }
+    const plain = stale.filter(([, , shim]) => !shim).map(([file]) => file)
+    const shims = stale.filter(([, , shim]) => shim).map(([file]) => file)
+    if (plain.length > 0) gitOk(top, ['add', '--', ...plain])
+    if (shims.length > 0) gitOk(top, ['add', '--chmod=+x', '--', ...shims])
+  }
+  console.log(stale.length === 0 ? "init: the gate files already match the plugin's" : `init: refreshed ${stale.map(([file]) => file).join(', ')} · staged`)
   process.exitCode = 0
 }
 
@@ -205,7 +246,7 @@ const CASES = [
       const dir = k.repo()
       k.write(dir, '.githooks/check.mjs', 'old\n')
       const run = k.init(dir)
-      const problems = k.says(run, "kept .githooks/check.mjs, which differs from the plugin's template")
+      const problems = k.says(run, "kept .githooks/check.mjs, which differs from the plugin's template; --refresh replaces it")
       if (k.read(dir, '.githooks/check.mjs') !== 'old\n') problems.push('overwrote the runner')
       problems.push(...k.says(run, '.githooks/pre-commit, .githooks/pre-push, scripts/check.sh written'))
       return problems
@@ -245,6 +286,46 @@ const CASES = [
     },
   ],
   ['team mode', (k) => k.says(k.init(k.repo(), ['--lane', 'web', '--mode', 'team']), "the team-mode workflow isn't laid down yet")],
+  [
+    'refresh copies in what is missing or stale, stages it, and leaves the marker',
+    (k) => {
+      const dir = k.repo()
+      k.init(dir)
+      const marker = k.read(dir, '.epikloop/project.json')
+      k.write(dir, '.githooks/check.mjs', 'old\n')
+      fs.rmSync(path.join(dir, '.githooks', 'pre-push'))
+      k.git(dir, 'rm', '-q', '--cached', '--', '.githooks/pre-push')
+      const problems = k.says(k.init(dir, ['--refresh']), 'init: refreshed .githooks/check.mjs, .githooks/pre-push · staged')
+      for (const [file, template] of GATE_FILES) {
+        if (!fs.readFileSync(path.join(dir, file)).equals(fs.readFileSync(path.join(TEMPLATES, template)))) problems.push(`${file} is not its template`)
+      }
+      const staged = k.git(dir, 'ls-files', '-s').stdout
+      if (!/^100644 \S+ 0\t\.githooks\/check\.mjs$/m.test(staged)) problems.push('the runner is not staged as 100644')
+      if (!/^100755 \S+ 0\t\.githooks\/pre-push$/m.test(staged)) problems.push('pre-push is not staged as 100755')
+      if (k.git(dir, 'diff', '--quiet').status !== 0) problems.push('left the refreshed files unstaged')
+      if (k.read(dir, '.epikloop/project.json') !== marker) problems.push('changed the marker')
+      return problems
+    },
+  ],
+  [
+    'refresh leaves a copy that differs only in its line endings',
+    (k) => {
+      const dir = k.repo()
+      k.init(dir)
+      const crlf = k.read(dir, '.githooks/check.mjs').replace(/\n/g, '\r\n')
+      k.write(dir, '.githooks/check.mjs', crlf)
+      const problems = k.says(k.init(dir, ['--refresh']), "init: the gate files already match the plugin's")
+      if (k.read(dir, '.githooks/check.mjs') !== crlf) problems.push('rewrote the CRLF copy')
+      return problems
+    },
+  ],
+  [
+    'refresh outside a project',
+    (k) => {
+      const dir = k.repo()
+      return k.fails(k.init(dir, ['--refresh']), 'init: not an Epikloop project, so there are no gate files to refresh', dir)
+    },
+  ],
   [
     'outside a repository',
     (k) => {
@@ -362,11 +443,14 @@ async function selfTest() {
   process.exitCode = failures.length > 0 ? 1 : 0
 }
 
-process.exitCode = 1
-try {
-  if (process.argv[2] === '--self-test') await selfTest()
-  else init(process.argv.slice(2))
-} catch (error) {
-  console.log(`init: ${String(error?.message ?? error).split('\n')[0]}`)
+if (path.resolve(process.argv[1] ?? '') === import.meta.filename) {
   process.exitCode = 1
+  try {
+    if (process.argv[2] === '--self-test') await selfTest()
+    else if (process.argv[2] === '--refresh') refresh(process.argv.slice(3))
+    else init(process.argv.slice(2))
+  } catch (error) {
+    console.log(`init: ${String(error?.message ?? error).split('\n')[0]}`)
+    process.exitCode = 1
+  }
 }

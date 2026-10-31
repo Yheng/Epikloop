@@ -72,4 +72,4 @@ async function selfTest() {
   process.exitCode = failures.length > 0 ? 1 : 0
 }
 
-if (process.argv[2] === '--self-test') await selfTest()
+if (path.resolve(process.argv[1] ?? '') === import.meta.filename && process.argv[2] === '--self-test') await selfTest()

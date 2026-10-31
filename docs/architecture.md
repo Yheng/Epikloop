@@ -295,8 +295,9 @@ only layers 2 and 3 gate them.
   default branch has a subject that starts `feat(N.M):`.
   - In solo mode, that is the story's own commit.
   - In team mode, squash merges collapse commits, so a pull request's title carries the prefix.
-- **Phases.** One epic is one phase. `retro` tags a closed phase `phase-N`, and MVP sign-off tags
-  `mvp`. The current phase is the lowest epic that has MVP stories and no `phase-N` tag.
+- **Phases.** One epic is one phase. `retro` tags a closed phase `phase-N`, MVP sign-off tags
+  `mvp`, and `release` tags `live`. The current phase is the lowest epic that has MVP stories and
+  no `phase-N` tag.
 
 ## Lanes
 
@@ -320,7 +321,7 @@ Native iOS and Android are community lanes. Contributors add lanes without touch
 | `/epikloop` | The front door: sync, detect the stage, fuel gauge, what needs you, recommend, launch on "go". The only command to remember. | low | user, Claude |
 | `/epikloop:doctor` | Verify the install and the machine; `--check` runs the gates. | low | user, Claude |
 | `/epikloop:discover` | Greenfield: an interview, or a pasted brief with only the gaps asked. Writes `spec/`. | xhigh | user, Claude |
-| `/epikloop:adopt` | Brownfield: observed spec, extracted tokens, gate config, confirmation batch. | xhigh | user, Claude |
+| `/epikloop:adopt` | Brownfield: observed spec and architecture, gate config, confirmation batch; extracted tokens with `design` in M2. | xhigh | user, Claude |
 | `/epikloop:design` | Three directions → pick → every screen as HTML, tokens, manifest, gallery; `amend`, `add`, `audit`, `ingest`. | high | user, Claude |
 | `/epikloop:architect` | Stack, schema as code, API contract, pre-mortem, `spec/architecture.md`, lane confirmation. | max | user, Claude |
 | `/epikloop:plan` | Epics, tiered stories with requirement IDs and spec deltas, the frozen MVP set; `--extend` for later work. | high | user, Claude |
@@ -390,9 +391,16 @@ next step is the first one that fails, so the answer is the same after lunch or 
 6. The current phase has unticked MVP stories → `epic N`, or `decide` first when a question
    blocks one of them or five or more wait
 7. The current phase is complete but not tagged → `retro`
-8. All MVP stories done, queue Δ ≤ 0, staging smoke green, no `mvp` tag → MVP sign-off
-9. `mvp` tag, no production → `release`
-10. Released → post-MVP mode: the backlog becomes visible, and `plan --extend` takes new work
+8. Every MVP epic is tagged, no `mvp` tag → `retro`, whose MVP sign-off waits until queue Δ ≤ 0
+   and the staging smoke is green
+9. `mvp` tag, no `live` tag → `release`
+10. `live` tag → post-MVP mode: the backlog becomes visible, the planned work runs epic by epic,
+    and `plan --extend` takes new work
+
+Each closing ceremony writes a record, a decision with a fixed title, and tags the default branch
+once the record has landed there: in team mode, after the human merges it. `state.mjs --retro`
+and `--release` print what each ceremony covers, and then the tags, so placing a tag is the
+script's call, not the model's.
 
 ## Token economy
 
@@ -454,10 +462,10 @@ tool's name and docs are not nautical.
 |---|---|---|
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
-| `plugins/epikloop/skills/` | Sixteen skills: bodies for `/epikloop`, `discover`, `architect`, `plan` and the batch now, the rest in M1 | now, M1 |
+| `plugins/epikloop/skills/` | Sixteen skills, with bodies for all but `design` and `harbor` | now, M2, M4 |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | Hooks, the emitter, the guard, doctor | M1 |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke and doctor | now |
 | `plugins/epikloop/lanes/` | `web` and `service`; then `mobile-expo` and `mobile-flutter` | M1, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, and an example of each project file in `spec/` and `docs/`; then `CLAUDE.md` and the team-mode workflow | now, M1 |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project, inside the plugin where `claude plugin eval` reads it | M1 |

@@ -66,11 +66,34 @@ All notable changes to Epikloop are recorded here.
   - The reader also reports a question number used twice, or one a decision already answers.
 - The protocol says how work lands: by a push in solo mode, and through a pull request in team
   mode.
+- Skill bodies for closing the loop:
+  - `retro` closes a phase and, in the final phase, signs off the MVP.
+  - `release` goes live.
+  - `adopt` brings in existing code with an observed spec and architecture.
+  - `doctor` checks the machine.
+- The stage machine's stages 8 to 10. The briefing covers all ten stages.
+- The state reader's ceremony commands: `--retro` and `--release` print the briefs of those two
+  skills, and, once their records have landed, the tags those records leave.
+- The staging smoke, `bin/smoke.mjs`: one GET to `staging_url` or a given URL, which passes on a
+  2xx answer. CI runs its self-test on Linux, macOS and Windows.
+- The machine check, `bin/doctor.mjs`. It checks:
+  - Node, git and Claude Code against their floors
+  - the account's prompt cache
+  - in a project: its files, its git hooks, its gate files and this session's events
+
+  It also folds the emitter's files. CI runs its self-test on Linux, macOS and Windows.
+- `init.mjs --refresh` copies the plugin's current gate files over a project's missing or stale
+  copies, and stages them.
 
 ### Changed
 
 - Stage 3, design, is held until M2 brings design's body. Until then a UI lane goes from its spec
   on to `architect`.
+- `adopt`'s design-token extraction is held until M2 brings `design`'s body. Converting
+  repositories on an earlier template layout is held until one is adopted.
+- `init.mjs` compares gate files without regard to line endings, so a CRLF checkout counts as the
+  plugin's own.
+- `fold.mjs` runs its self-test only when run itself, not when `doctor.mjs` imports it.
 
 ### Removed
 
@@ -289,9 +312,57 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
 - **The worker reports in one line**, which is all the batch keeps (article 10, as above).
 - **`decide` splits a story in place and adds rework as new stories.** Story IDs are never
   reused, and done is read from git, so a story that has landed can't be reopened.
+- **`retro` and `release` take their scope and their tags from the script** (article 5, as
+  above). Which phase closes, what sign-off needs, and when a tag may be placed are computed by
+  `state.mjs`, not judged by the model.
+- **A ceremony tags only after its record lands** (doctrine 6: state lives in the repository). A
+  tag placed before its record reaches the default branch would mark a phase closed, or a product
+  live, on a record that isn't there. In team mode the record waits for the human's merge.
+- **The MVP sign-off is refused while queue Δ is above 0, or while the staging smoke is red**
+  (doctrine 5: the ETA is fiction while the queue grows, and the finish line doesn't move without
+  a record). The human's word is needed as well.
+- **Every retro deletes one thing from the project's pipeline, or records why nothing qualified**
+  (constitution, article 3).
+- **Effort changes come from the cost rows** (article 10: measure before tuning). The retro
+  proposes an override only where the rows show a tier's effort too high or too low.
+- **`adopt` stops on a gate that fails on the code as it stands.** Its own commit would fail the
+  pre-commit hook otherwise, and the ratchet that would baseline the old errors is held until an
+  adoption needs it.
+- **`release` keeps credentials and paid resources with the human, and secrets in the host**
+  (doctrine 6, and the secret scan: a secret in the repository fails the gates).
+- **`doctor` reports and folds, and fixes nothing.** Its fixes change the human's machine or
+  settings, so the human runs them.
+- **The stage line marks a next step only the human starts.** On 2026-10-31, in a headless check
+  at stage 7, the front door was told "go" but couldn't start `retro`. Its frontmatter keeps the
+  model from invoking it, and the front door told the human the install seemed to lack a `retro`
+  skill. The state reader now reads the skill's frontmatter and adds "which only the human starts".
+  On the same check, the front door then named the command for the human to type.
+- **The next decision's number comes with its file.** On 2026-10-31, in a headless check, `adopt`
+  had the decisions format and the next number but not the file. It couldn't read the plugin's
+  files, and said it was assuming `docs/decisions.md`. `--ids` and the ceremony briefs now name
+  `docs/decisions.md`.
 
 ### Format rules (adopted 2026-10-31)
 
 - **A question number is never reused.** `decide` removes answered questions, so the queue alone
   can't tell which numbers are taken. A reused number would point a decision's `Answers` at the
   wrong question. `--ids` counts the decisions' answers too, and the reader reports a reuse.
+- **The closing ceremonies' records have fixed titles:** `Phase N retro`, `MVP sign-off` and
+  `Go live`. The reader finds them by title, so the stage machine can tell a recorded ceremony
+  that waits only for its tag.
+- **`release` tags `live`.** Without a tag, stage 9 couldn't tell a released product from one
+  awaiting release.
+- **Until the `mvp` tag, queue Δ counts from the start of the current phase, which is the last
+  MVP epic once all are tagged.** Counting from the highest tag would reset Δ to 0 the moment the
+  final phase is tagged, and the sign-off condition would pass by itself.
+
+### Setup rules (adopted 2026-10-31)
+
+- **`init.mjs --refresh` brings a project's gate files up to the plugin's.** `init.mjs` never
+  overwrites a file, so a project set up before a runner fix kept the old runner, with no way to
+  take the new one short of copying it by hand. `--refresh` touches only the four gate files, never
+  the marker, and doesn't commit.
+- **Gate files are compared without regard to line endings.** git on Windows may check them out
+  with CRLF, which would otherwise read as drift.
+- **`doctor`'s git floor is 2.23**, the first release with `git switch`, which the guard allows
+  and team mode lands with.
