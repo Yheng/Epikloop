@@ -1,3 +1,6 @@
 # Per-person Claude Code files; never shared.
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Local reference material; never shared.
+docs/temp/
