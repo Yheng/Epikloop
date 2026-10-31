@@ -104,7 +104,8 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | Project setup: the project marker with its id, and the gate files, staged and armed | **Available** |
 | CI: validation, the guard's, the briefing's, project setup's and the gate runner's self-tests, and the emitter's tests on Linux, macOS and Windows | **Available** |
 | The path to a frozen plan: `/epikloop`, `discover`, `architect` and `plan`, with full instructions | **Available** |
-| The other commands: `doctor`, `adopt`, `epic`, `next`, `story`, `decide`, `triage`, `retro`, `release` | Defined; full instructions in M1 |
+| The batch: `epic`, `next`, `story`, the `story-worker`, `decide` and `triage`, with full instructions | **Available** |
+| The other commands: `doctor`, `adopt`, `retro`, `release` | Defined; full instructions in M1 |
 | The `web` and `service` lanes | M1 |
 | `design`: direction variants, every screen, the gallery | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
@@ -265,6 +266,11 @@ You can change the effort for each tier; see [Effort and cost](#effort-and-cost)
   transcript.
 - A story is built, passes its gates and is committed with its spec delta applied in the same
   commit, so there is no separate document-sync step.
+- The commit lands: in solo mode it is pushed to the default branch, and in team mode it goes on
+  its own branch with a pull request that you merge. In solo mode a T3 story also parks a
+  `Review N.M` question, so you read its diff in `decide`.
+- Workers run one at a time in one working tree until M3. A batch starts only from a clean
+  checkout of the default branch, and it stops when a story doesn't land.
 - The batch never stops to ask. A question is parked in `docs/queue.md` with a conservative default
   taken, and the work goes on.
 - A story that outgrows its budget is parked as "split me". From M3, the story-size law enforces
@@ -389,6 +395,9 @@ Team mode is the standard; solo mode is supported. You choose during `plan`.
 - Progress is derived, never stored. In solo mode a story is done when a `feat(X.X):` commit exists
   on main. In team mode it is done when a merged pull request references it; squash merges
   collapse commits, so pull request titles and `Closes #` are what count.
+- In team mode each story gets its own branch, `story/X.X`, and a pull request titled like its
+  commit. A story whose pull request is still open is in review, and the stories after it wait
+  for your merge.
 
 ## Commands
 

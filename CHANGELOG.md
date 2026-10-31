@@ -56,6 +56,16 @@ All notable changes to Epikloop are recorded here.
 - Skill bodies for the path to a frozen plan: `/epikloop`, `discover`, `architect` and `plan`. They
   run the plugin's scripts through `${CLAUDE_PLUGIN_ROOT}`, pre-approved for Bash and PowerShell,
   and receive each format by injection.
+- Skill bodies for the batch. `epic`, `next` and `story` run one `story-worker` per story, and
+  the worker's body is written too. `spec-delta` applies a story's spec delta, `decide` answers
+  the parked questions in one sitting, and `triage` routes a finding.
+- The state reader's batch commands:
+  - `--ready` lists the stories a batch may start.
+  - `--story` prints a worker's brief.
+  - `--ids` prints the next question and decision numbers.
+  - The reader also reports a question number used twice, or one a decision already answers.
+- The protocol says how work lands: by a push in solo mode, and through a pull request in team
+  mode.
 
 ### Changed
 
@@ -257,3 +267,31 @@ earlier pipeline's runs on real projects, from July to September 2026.
 - **`plan` freezes the MVP set in a commit** (doctrine 5, a frozen finish line). The freeze date,
   mode, hours per day and deadline are recorded with it. That commit is the queue's baseline, and
   the set moves only through a recorded decision.
+
+### Skill rules (adopted 2026-10-31)
+
+As on 2026-10-28, each entry names the principle or the failure the instruction answers.
+
+- **The batch takes its stories, and each worker its brief, from the script** (article 5: the
+  model talked itself past checkable rules written as prose). `state.mjs` computes which story is
+  ready and what its worker reads; neither is judged from the files.
+- **No story's text passes through the orchestrator.** The spawn prompt names the story, and the
+  worker prints its own brief. An earlier pipeline's per-story rituals were its largest token
+  cost (article 10), and the orchestrator must stay at a few thousand tokens.
+- **A batch starts from a clean, landed default branch, and stops when a story doesn't land.**
+  Until M3, workers share one working tree. Otherwise a half-built story would ride into the next
+  story's commit, and a story whose commit never landed would be built twice.
+- **Work lands by a push in solo mode and through a pull request in team mode** (doctrine 6: state
+  lives in the repository). A story counts as done only on the default branch, so a commit that
+  is never pushed leaves its story open.
+- **In solo mode a T3 story parks `Review N.M`** (doctrine 4: a T3 diff gets the human's review).
+  Solo mode has no pull request, so the review rides the queue and `decide`.
+- **The worker reports in one line**, which is all the batch keeps (article 10, as above).
+- **`decide` splits a story in place and adds rework as new stories.** Story IDs are never
+  reused, and done is read from git, so a story that has landed can't be reopened.
+
+### Format rules (adopted 2026-10-31)
+
+- **A question number is never reused.** `decide` removes answered questions, so the queue alone
+  can't tell which numbers are taken. A reused number would point a decision's `Answers` at the
+  wrong question. `--ids` counts the decisions' answers too, and the reader reports a reuse.

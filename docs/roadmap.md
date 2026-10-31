@@ -40,8 +40,9 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 - skill bodies for `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`,
   `epic`/`next`/`story` (sequential workers), `decide`, `triage`, `retro` and `release`
   - slice 1, the path to a frozen plan, is done: `/epikloop`, `discover`, `architect` and `plan`
-  - slice 2 is the batch: `epic`/`next`/`story`, the `story-worker` body, `spec-delta`, `decide`
-    and `triage`; slice 3 is `retro`, `release`, `adopt` and `doctor`
+  - slice 2, the batch, is done: `epic`/`next`/`story`, the `story-worker` body, `spec-delta`,
+    `decide` and `triage`
+  - slice 3 is `retro`, `release`, `adopt` and `doctor`
   - `doctor` also reports drift between a product's `.githooks/check.mjs` and the plugin's template
   - stage 3, design, is held until M2 brings design's body; until then a UI lane goes on to
     `architect`
@@ -120,7 +121,7 @@ rise. Known so far:
 
 - parallel workers, where the dependency graph allows
 - the story-size law: a worker that exceeds its file count or time budget parks "split me" and
-  stops
+  stops. A plugin agent's `maxTurns` is a candidate for the time budget.
 - the `mobile-expo` and `mobile-flutter` lanes
 
 With the full lane set in place, the core becomes 1.0.0, and the Node floor (22 today) is revisited.

@@ -18,7 +18,8 @@ This is the tool, not a product built with it.
   `scripts/check.sh`, `.githooks/`) appear here only as templates and eval fixtures.
 - This repository's own `docs/` is documentation about Epikloop.
 
-`/epikloop`, `discover`, `architect` and `plan` have their bodies; the other skills have
+`/epikloop`, `discover`, `architect`, `plan` and the batch's skills (`epic`, `next`, `story`,
+`spec-delta`, `decide`, `triage`) have their bodies, and so does the worker; the other skills have
 frontmatter and a purpose paragraph only. The git guard, the emitter,
 the gate runner, the SessionStart briefing, project setup and the project file formats are in
 place; the other hooks, scripts, lanes and templates arrive with M1 (`docs/roadmap.md`).
@@ -131,7 +132,9 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
 - **The init self-test** runs setup in throwaway repos: remote forms, kept files, staged modes and
   arming. Its last case commits through the real pre-commit hook.
 - **The state reader's self-test** parses the templates and malformed files, and reads dated
-  commits, tags and cost rows in throwaway repos into exact stages and gauges.
+  commits, tags and cost rows in throwaway repos into exact stages and gauges. It also runs the
+  batch's commands there: the ready list against branches, a bare remote and a team-mode review,
+  and a worker's exact brief.
 - **The plugin test** runs the emitter's suite against simulated events, with no login.
 - **The fold's self-test** folds sample files in a temporary folder.
 - **The gate runner's self-test** builds throwaway repos with bare remotes in a temporary folder.

@@ -24,6 +24,9 @@ const PROTOCOL = `Epikloop protocol for this project:
   docs/stories/<epic>.md holds the stories; each carries a spec delta, applied in the same commit
   as its code. docs/queue.md holds parked questions and backlog lines, each dated. design/ is the
   visual truth. Which stories are done is read from git, never written down.
+- Work lands on the default branch. In solo mode a commit is pushed to it when there is a remote;
+  in team mode a commit goes on a branch of its own, with a pull request the human merges. A story
+  is done once its commit has landed.
 - A batch (/epikloop:epic, /epikloop:next or /epikloop:story) never stops to ask the human. A
   question that needs a product call is parked in docs/queue.md with the conservative default
   taken and what it blocks, and the work goes on with that default; /epikloop:decide answers

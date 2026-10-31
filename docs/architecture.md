@@ -347,6 +347,14 @@ fragments.
   lives in the module.
 - The batch starts each spawn's `description` with the story and its tier, as in
   `3.2 T2 login form`, which is how the module knows the tier.
+- The batch takes those lines from `state.mjs --ready`, and the prompt names only the story. The
+  worker prints its own brief with `state.mjs --story N.M`, so no story's text passes through the
+  orchestrator. It preloads `spec-delta`.
+- Until M3, workers run one at a time in one working tree. A batch starts only from a clean,
+  landed default branch, and it stops when a story it ran is still ready, because it didn't land.
+- A story lands as one `feat(N.M):` commit: pushed to the default branch in solo mode, or on
+  `story/N.M` with a pull request the human merges in team mode. In solo mode a T3 story also
+  parks a `Review N.M` question, so the human reads its diff in `decide`.
 
 **Frontmatter conventions:**
 
@@ -446,7 +454,7 @@ tool's name and docs are not nautical.
 |---|---|---|
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
-| `plugins/epikloop/skills/` | Sixteen skills: bodies for `/epikloop`, `discover`, `architect` and `plan` now, the rest in M1 | now, M1 |
+| `plugins/epikloop/skills/` | Sixteen skills: bodies for `/epikloop`, `discover`, `architect`, `plan` and the batch now, the rest in M1 | now, M1 |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | Hooks, the emitter, the guard, doctor | M1 |

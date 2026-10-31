@@ -4,6 +4,9 @@
 // is stored; every read derives it again. The briefing imports it, and skills run it:
 //
 //   node state.mjs                                          the state of the project here
+//   node state.mjs --ready [N | N.M]                        the stories a batch may start, or why none
+//   node state.mjs --story N.M                              a story-worker's brief
+//   node state.mjs --ids                                    the next question and decision numbers
 //   node state.mjs --example spec|stories|queue|decisions   a project file's example, its format
 //   node state.mjs --self-test                              every case below, in throwaway repos
 import { spawnSync } from 'node:child_process'
@@ -37,6 +40,13 @@ function markdownFiles(root, dir) {
 }
 
 const linesOf = (text) => text.replace(/^﻿/, '').split(/\r?\n/)
+
+// The entry whose heading is at line `i`, up to the next heading of level one or two.
+function sectionAt(lines, i) {
+  let end = i + 1
+  while (end < lines.length && !/^##? /.test(lines[end])) end += 1
+  return lines.slice(i, end).join('\n').trimEnd()
+}
 
 function readLines(root, rel) {
   try {
@@ -81,7 +91,7 @@ function readSpec(root, problems) {
         if (given === null) problems.push(`${rel}:${next + 1}: ${id}'s status is not observed or retired`)
         else status = given[1]
       }
-      requirements.set(id, { id, file: rel, status })
+      requirements.set(id, { id, file: rel, status, text: sectionAt(lines, i) })
     })
   }
   return requirements
@@ -135,7 +145,7 @@ function readStories(root, problems) {
         } else if (stories.has(id)) {
           problems.push(`${rel}:${i + 1}: ${id} is already in ${stories.get(id).file}`)
         } else {
-          story = { id, epic, file: rel, line: i + 1, fields: {}, delta: false }
+          story = { id, epic, title: line.slice(`## ${id} `.length).trim(), file: rel, line: i + 1, text: sectionAt(lines, i), fields: {}, delta: false }
           i = readFields(lines, i + 1, ['Tier', 'MVP', 'Requirements', 'After'], story.fields, (at, what) =>
             problems.push(`${rel}:${at}: ${id} ${what}`),
           ) - 1
@@ -169,6 +179,7 @@ function readQueue(text, problems, stories) {
   const rel = 'docs/queue.md'
   const report = (line, what) => problems?.push(`${rel}:${line}: ${what}`)
   const questions = []
+  const asked = new Set()
   let backlog = 0
   let section = null
   const lines = text === null ? [] : linesOf(text)
@@ -185,6 +196,9 @@ function readQueue(text, problems, stories) {
         report(i + 1, `"${line}" is not "### Q-NNN Title (YYYY-MM-DD)"`)
         continue
       }
+      const at = i + 1
+      if (asked.has(heading[1])) report(at, `${heading[1]} is already a question`)
+      asked.add(heading[1])
       const fields = {}
       i = readFields(lines, i + 1, ['Blocks', 'Default taken'], fields, (at, what) => report(at, `${heading[1]} ${what}`)) - 1
       for (const field of ['Blocks', 'Default taken']) {
@@ -194,7 +208,7 @@ function readQueue(text, problems, stories) {
       for (const id of blocks) {
         if (!STORY.test(id) || (stories !== null && !stories.has(id))) report(i + 1, `${heading[1]} blocks ${id}, which is not a story`)
       }
-      questions.push({ id: heading[1], title: heading[2], date: heading[3], blocks })
+      questions.push({ id: heading[1], title: heading[2], date: heading[3], blocks, line: at })
     } else if (section === 'backlog' && line.startsWith('- ')) {
       if (new RegExp(`^- ${DATE} \\S`).test(line)) backlog += 1
       else report(i + 1, 'a backlog line does not start with its date, "- YYYY-MM-DD"')
@@ -217,12 +231,13 @@ function readDecisions(root, problems) {
       continue
     }
     const id = heading[1]
-    if (decisions.includes(id)) problems.push(`${rel}:${i + 1}: ${id} appears twice`)
+    if (decisions.some((d) => d.id === id)) problems.push(`${rel}:${i + 1}: ${id} appears twice`)
     const fields = {}
     readFields(lines, i + 1, ['Answers', ...required], fields, (at, what) => problems.push(`${rel}:${at}: ${id} ${what}`))
     for (const field of required) if (fields[field] === undefined) problems.push(`${rel}:${i + 1}: ${id} has no ${field}`)
-    if (fields.Answers !== undefined && !/^Q-\d{3,}$/.test(fields.Answers)) problems.push(`${rel}:${i + 1}: ${id}'s Answers is not a Q-NNN`)
-    decisions.push(id)
+    const answers = fields.Answers !== undefined && /^Q-\d{3,}$/.test(fields.Answers) ? fields.Answers : null
+    if (fields.Answers !== undefined && answers === null) problems.push(`${rel}:${i + 1}: ${id}'s Answers is not a Q-NNN`)
+    decisions.push({ id, answers, text: sectionAt(lines, i) })
   }
   return decisions
 }
@@ -329,17 +344,17 @@ function stageOf(root, project, s) {
   const epic = epics.find((n) => !s.tags.has(`phase-${n}`))
   if (epic === undefined) return { n: 8, why: 'every MVP epic is tagged', next: '/epikloop' }
   const left = mvp.filter((story) => story.epic === epic && !s.done.has(story.id))
-  if (left.length === 0) return { n: 7, why: `epic ${epic}'s MVP stories are done, and it has no phase-${epic} tag`, next: '/epikloop:retro' }
+  if (left.length === 0) return { n: 7, epic, why: `epic ${epic}'s MVP stories are done, and it has no phase-${epic} tag`, next: '/epikloop:retro' }
   const why = `epic ${epic} has ${plural(left.length, 'MVP story', 'MVP stories')} left`
   const blocking = s.questions.filter((q) => q.blocks.some((id) => left.some((story) => story.id === id)))
   if (blocking.length > 0) {
     const first = blocking[0]
     const blocked = first.blocks.filter((id) => left.some((story) => story.id === id))
     const more = blocking.length > 1 ? ` and ${plural(blocking.length - 1, 'more question')}` : ''
-    return { n: 6, why: `${why}, and ${first.id}${more} ${blocking.length > 1 ? 'block' : 'blocks'} ${blocked.join(', ')}`, next: `/epikloop:decide, then /epikloop:epic ${epic}` }
+    return { n: 6, epic, why: `${why}, and ${first.id}${more} ${blocking.length > 1 ? 'block' : 'blocks'} ${blocked.join(', ')}`, next: `/epikloop:decide, then /epikloop:epic ${epic}` }
   }
-  if (s.questions.length >= MANY_QUESTIONS) return { n: 6, why: `${why}, and ${s.questions.length} questions wait`, next: `/epikloop:decide, then /epikloop:epic ${epic}` }
-  return { n: 6, why, next: `/epikloop:epic ${epic}` }
+  if (s.questions.length >= MANY_QUESTIONS) return { n: 6, epic, why: `${why}, and ${s.questions.length} questions wait`, next: `/epikloop:decide, then /epikloop:epic ${epic}` }
+  return { n: 6, epic, why, next: `/epikloop:epic ${epic}` }
 }
 
 // What is wrong with the project marker, by the fields its schema requires, or null.
@@ -393,6 +408,10 @@ export function readState(root, project, { now = Date.now(), home = os.homedir()
   const queueText = readLines(root, 'docs/queue.md')?.join('\n') ?? null
   const { questions, backlog } = readQueue(queueText, problems, stories)
   const decisions = readDecisions(root, problems)
+  for (const q of questions) {
+    const answer = decisions.find((d) => d.answers === q.id)
+    if (answer !== undefined) problems.push(`docs/queue.md:${q.line}: ${q.id} is already answered by ${answer.id}`)
+  }
   const git = gitReader(root)
   const { branch, tags } = refsOf(git)
   const done = doneTimes(git, branch)
@@ -416,9 +435,158 @@ export function readState(root, project, { now = Date.now(), home = os.homedir()
   return { ...s, stage, gauge }
 }
 
+// ---- What a batch reads
+
+const minor = (story) => Number(story.id.split('.')[1])
+const planOrder = (stories) => [...stories.values()].sort((a, b) => a.epic - b.epic || minor(a) - minor(b))
+
+// What a batch needs from git beyond the state, or null without a commit to start from: the
+// default branch's name, the remote it lands on and how far apart the two are, whether the
+// checkout is clean and on that branch, and the stories in review, whose feat commit is on another
+// branch and not yet on the default one.
+export function batchFacts(root) {
+  const git = gitReader(root)
+  const { branch } = refsOf(git)
+  if (branch === null || git(['rev-parse', '--verify', '-q', 'HEAD']) === null) return null
+  const current = git(['symbolic-ref', '-q', 'HEAD'])?.trim().replace(/^refs\/heads\//, '') ?? null
+  let name = current
+  if (branch === 'refs/remotes/origin/HEAD') name = git(['symbolic-ref', '-q', branch])?.trim().replace(/^refs\/remotes\/origin\//, '') ?? null
+  else if (branch.startsWith('refs/heads/')) name = branch.slice('refs/heads/'.length)
+  const remotes = (git(['remote']) ?? '').split('\n').filter(Boolean)
+  const remote = remotes.includes('origin') ? 'origin' : (remotes[0] ?? null)
+  const exists = (ref) => git(['rev-parse', '--verify', '-q', ref]) !== null
+  const upstream = remote !== null && name !== null && exists(`refs/remotes/${remote}/${name}`) ? `${remote}/${name}` : null
+  let [ahead, behind] = [0, 0]
+  if (upstream !== null && exists(`refs/heads/${name}`)) {
+    const counts = git(['rev-list', '--left-right', '--count', `refs/heads/${name}...refs/remotes/${upstream}`])
+    ;[ahead, behind] = (counts ?? '0 0').trim().split(/\s+/).map(Number)
+  }
+  const status = git(['status', '--porcelain'])
+  const review = new Set()
+  for (const subject of (git(['log', '--format=%s', '--branches', '--remotes', '--not', branch]) ?? '').split('\n')) {
+    const feat = /^feat\((\d+\.\d+)\):/.exec(subject)
+    if (feat !== null) review.add(feat[1])
+  }
+  return { name, current, remote, upstream, ahead, behind, clean: status !== null && status.trim() === '', review }
+}
+
+// Why a story that isn't done can't start now, or null when it can.
+function hold(story, state, facts) {
+  const blockers = state.questions.filter((q) => q.blocks.includes(story.id)).map((q) => q.id)
+  if (blockers.length > 0) return `is blocked by ${blockers.join(', ')}`
+  if (facts.review.has(story.id)) return 'is in review, committed on another branch'
+  const waits = story.after.filter((id) => !state.done.has(id))
+  if (waits.length > 0) return `waits for ${waits.join(', ')}`
+  if (story.tier === null) return 'has no tier the reader can read'
+  return null
+}
+
+// The stories a batch may start, as `N.M Tn Title` lines in plan order, the line a worker's spawn
+// description starts with. `select` is an epic's number, or one story's ID, which may be outside
+// the MVP set; without it, the current phase's epic, or every epic once all are tagged. Before the
+// `mvp` tag only MVP stories run. When none can start, `text` says why, and `fails` is set when the
+// checkout has to change first.
+export function readyList(state, project, facts, select) {
+  const say = (text, fails = false) => ({ lines: [], text, fails })
+  const { stage } = state
+  if (stage.n < 6) return say(`Nothing is ready: ${stage.why}. Next: ${stage.next}.`)
+  if (facts === null) return say('Nothing is ready: there is no commit to start from.', true)
+  if (!facts.clean) return say("The working tree has changes that aren't committed, and a batch starts from a clean tree.", true)
+  if (facts.current === null || facts.current !== facts.name) {
+    return say(`A batch starts on ${facts.name}, and ${facts.current === null ? 'HEAD is detached' : `this checkout is on ${facts.current}`}.`, true)
+  }
+  if (facts.ahead > 0 && facts.behind > 0) return say(`${facts.name} and ${facts.upstream} have diverged, and the human reconciles them before a batch starts.`, true)
+  if (facts.ahead > 0) {
+    const one = facts.ahead === 1
+    const how = project.mode === 'team' ? `in team mode ${one ? 'it lands' : 'they land'} through a pull request` : `\`git push ${facts.remote} ${facts.name}\` lands ${one ? 'it' : 'them'}`
+    return say(`${facts.name} has ${plural(facts.ahead, 'commit')} that ${facts.upstream} lacks; ${how} before a batch starts.`, true)
+  }
+  if (facts.behind > 0) {
+    return say(`${facts.name} is ${plural(facts.behind, 'commit')} behind ${facts.upstream}; \`git pull --ff-only ${facts.remote} ${facts.name}\` brings it up to date.`, true)
+  }
+  const line = (story) => `${story.id} ${story.tier} ${story.title}`
+  if (select !== undefined && STORY.test(select)) {
+    const story = state.stories.get(select)
+    if (story === undefined) return say(`${select} is not a story.`, true)
+    if (state.done.has(select)) return say(`${select} is done.`)
+    const why = hold(story, state, facts)
+    return why === null ? { lines: [line(story)] } : say(`${select} ${why}, so it is not ready.`)
+  }
+  if (select === undefined && stage.n === 7) return say(`Nothing is ready: ${stage.why}. Next: ${stage.next}.`)
+  const epic = select !== undefined ? Number(select) : stage.n === 6 ? stage.epic : null
+  const signedOff = state.tags.has('mvp')
+  const lines = []
+  const reasons = []
+  for (const story of planOrder(state.stories)) {
+    if ((epic !== null && story.epic !== epic) || state.done.has(story.id) || (!signedOff && !story.mvp)) continue
+    const why = hold(story, state, facts)
+    if (why === null) lines.push(line(story))
+    else reasons.push(`${story.id} ${why}`)
+  }
+  if (lines.length > 0) return { lines }
+  const where = epic === null ? '' : ` in epic ${epic}`
+  if (reasons.length > 0) return say(`Nothing is ready${where}: ${reasons.join('; ')}.`)
+  return say(`Nothing is left to run${where}.${epic === null ? ` Next: ${stage.next}.` : ''}`)
+}
+
+// How a story's commit lands: pushed to the default branch in solo mode, through its own branch
+// and a pull request the human merges in team mode.
+function landing(project, facts, id) {
+  const name = facts?.name ?? 'the default branch'
+  const commit = `one commit whose subject starts "feat(${id}): ", holding the code, its tests and the spec delta`
+  if (facts?.remote == null) {
+    const none = project.mode === 'team' ? 'Team mode lands through a pull request, and there is no remote yet' : 'There is no remote, so nothing is pushed'
+    return `Landing: ${commit}, on ${name}. ${none}.`
+  }
+  if (project.mode === 'team') {
+    return `Landing: \`git switch -c story/${id} ${facts.upstream ?? name}\`; ${commit}; \`git push -u ${facts.remote} story/${id}\`; a pull request with that subject as its title, through \`gh pr create\`; then \`git switch ${name}\`. The human merges it.`
+  }
+  return `Landing: ${commit}, on ${name}, then \`git push ${facts.remote} ${name}\`.`
+}
+
+// The next question and decision numbers, never reusing one a decision answered, and the forms
+// that use them.
+export function nextIds(state, now) {
+  const next = (ids) => String(Math.max(0, ...ids.map((id) => Number(id.split('-')[1]))) + 1).padStart(3, '0')
+  const question = next([...state.questions.map((q) => q.id), ...state.decisions.map((d) => d.answers).filter(Boolean)])
+  const decision = next(state.decisions.map((d) => d.id))
+  const today = ymd(now)
+  return [
+    `A parked question goes under "## Questions" in docs/queue.md as "### Q-${question} Title (${today})", numbered on from there, then "- Blocks:" with the stories it blocks or "nothing", "- Default taken:" with the default the work goes on with, and the question itself.`,
+    `A backlog line goes under "## Backlog" as "- ${today} what was found".`,
+    `The next decision is DECISION-${decision}.`,
+  ]
+}
+
+// A story-worker's brief: the story, the requirements it cites and the decisions that name it,
+// each verbatim, then how its commit lands and the numbers for anything it parks. Null for an
+// unknown story.
+export function storyBrief(state, project, facts, id, now) {
+  const story = state.stories.get(id)
+  if (story === undefined) return null
+  const out = [`Story ${id}, from ${story.file}:`, '', story.text, '']
+  if (story.requirements.length > 0) out.push('The requirements it cites:', '')
+  for (const req of story.requirements) {
+    const r = state.requirements.get(req)
+    out.push(...(r === undefined ? [`${req} is not in spec/ yet.`] : [`From ${r.file}:`, '', r.text]), '')
+  }
+  const own = new RegExp(`(?<![\\d.])${id.replace('.', '\\.')}(?!\\d|\\.\\d)`)
+  const named = new Set(story.text.match(/DECISION-\d{3,}/g) ?? [])
+  const decisions = state.decisions.filter((d) => named.has(d.id) || own.test(d.text))
+  if (decisions.length > 0) out.push('The decisions that name it, from docs/decisions.md:', '')
+  for (const d of decisions) out.push(d.text, '')
+  return [...out, landing(project, facts, id), '', ...nextIds(state, now)]
+}
+
 const TEMPLATES = path.join(import.meta.dirname, '..', 'templates')
 const EXAMPLES = { spec: 'spec/capability.md', stories: 'docs/stories/epic.md', queue: 'docs/queue.md', decisions: 'docs/decisions.md' }
-const USAGE = 'usage: node state.mjs [--example spec|stories|queue|decisions]'
+const USAGE = 'usage: node state.mjs [--ready [N | N.M] | --story N.M | --ids | --example spec|stories|queue|decisions]'
+// The batch's flags, each with a test of its argument.
+const BATCH = {
+  '--ready': (arg) => arg === undefined || /^\d+(?:\.\d+)?$/.test(arg),
+  '--story': (arg) => STORY.test(arg ?? ''),
+  '--ids': (arg) => arg === undefined,
+}
 
 // The state of the project in the current folder, as lines a skill reads, or one example.
 function cli(argv) {
@@ -426,12 +594,33 @@ function cli(argv) {
   if (flag === '--example' && EXAMPLES[name] !== undefined && rest.length === 0) {
     return process.stdout.write(fs.readFileSync(path.join(TEMPLATES, ...EXAMPLES[name].split('/')), 'utf8'))
   }
-  if (flag !== undefined) {
+  if (flag !== undefined && !(Object.hasOwn(BATCH, flag) && BATCH[flag](name) && rest.length === 0)) {
     process.exitCode = 1
     return console.log(USAGE)
   }
   const opened = openProject(process.cwd())
-  if (opened === null) return console.log('Not an Epikloop project.')
+  if (opened === null) {
+    if (flag !== undefined) process.exitCode = 1
+    return console.log('Not an Epikloop project.')
+  }
+  if (flag !== undefined) {
+    if (opened.problem !== null) {
+      process.exitCode = 1
+      return console.log(`.epikloop/project.json ${opened.problem}.`)
+    }
+    const state = readState(opened.root, opened.project)
+    const now = Date.now()
+    if (flag === '--ids') return console.log(nextIds(state, now).join('\n'))
+    const facts = batchFacts(opened.root)
+    if (flag === '--story') {
+      const brief = storyBrief(state, opened.project, facts, name, now)
+      if (brief === null) process.exitCode = 1
+      return console.log(brief === null ? `${name} is not a story.` : brief.join('\n'))
+    }
+    const ready = readyList(state, opened.project, facts, name)
+    if (ready.fails) process.exitCode = 1
+    return console.log(ready.lines.length > 0 ? ready.lines.join('\n') : ready.text)
+  }
   const state = opened.problem === null ? readState(opened.root, opened.project) : null
   const { parts, needs } = summary(opened, state)
   const lines = [...parts]
@@ -498,7 +687,7 @@ const CASES = [
         [`${story('3.1').mvp} ${story('3.3').mvp} ${story('3.2').after}`, 'true false 3.1'],
         [s.questions.map((q) => `${q.id}>${q.blocks}`).join(' '), 'Q-007>3.2 Q-008>3.3'],
         [s.backlog, 2],
-        [s.decisions.join(' '), 'DECISION-001 DECISION-002'],
+        [s.decisions.map((d) => `${d.id}>${d.answers}`).join(' '), 'DECISION-001>null DECISION-002>Q-006'],
         [`${s.stage.n} ${s.stage.next}`, '2 /epikloop:adopt'],
       ])
     },
@@ -696,6 +885,204 @@ const CASES = [
     },
   ],
   [
+    'a question number is used once',
+    (k) => {
+      const dir = k.folder({
+        'docs/queue.md': '# Queue\n\n## Questions\n\n### Q-001 One (2026-11-01)\n- Blocks: nothing\n- Default taken: a\n\n### Q-001 Again (2026-11-02)\n- Blocks: nothing\n- Default taken: b\n',
+        'docs/decisions.md': '# Decisions\n\n## DECISION-001 Answered (2026-11-03)\n- Answers: Q-001\n- Context: c\n- Decision: d\n- Rejected: r\n- Trade-offs: t\n- Implementation note: n\n',
+      })
+      return k.contains(k.read(dir).problems, ['docs/queue.md:9: Q-001 is already a question', 'docs/queue.md:5: Q-001 is already answered by DECISION-001'])
+    },
+  ],
+  [
+    'the ready list: the current phase, After, questions and the MVP set',
+    (k) => {
+      const epics = { 1: [[1, 'T1', true], [2, 'T2', true, '1.1'], [3, 'T1', false], [4, 'T1', true]], 2: [[1, 'T1', true]] }
+      const dir = k.repo(planned(epics, { questions: [['Q-001', '1.4']] }), { freeze: true })
+      const before = [k.ready(dir), k.ready(dir, '1'), k.ready(dir, '2'), k.ready(dir, '1.3'), k.ready(dir, '1.4'), k.ready(dir, '9.9')]
+      k.commit(dir, 'feat(1.1): one', 0)
+      return k.expect([
+        [before[0], '0 1.1 T1 Story 1.1\n'],
+        [before[1], '0 1.1 T1 Story 1.1\n'],
+        [before[2], '0 2.1 T1 Story 2.1\n'],
+        [before[3], '0 1.3 T1 Story 1.3\n'],
+        [before[4], '0 1.4 is blocked by Q-001, so it is not ready.\n'],
+        [before[5], '1 9.9 is not a story.\n'],
+        [k.ready(dir), '0 1.2 T2 Story 1.2\n'],
+        [k.ready(dir, '1.1'), '0 1.1 is done.\n'],
+      ])
+    },
+  ],
+  [
+    'after the mvp tag every story is ready, across epics in plan order',
+    (k) => {
+      const dir = k.repo(planned({ 2: [[1, 'T1', true], [2, 'T3', false]], 10: [[1, 'T2', false]] }), { freeze: true })
+      k.commit(dir, 'feat(2.1): one', 0)
+      k.git(dir, 'tag', 'phase-2')
+      const unsigned = k.ready(dir)
+      k.git(dir, 'tag', 'mvp')
+      return k.expect([
+        [unsigned, '0 Nothing is left to run. Next: /epikloop.\n'],
+        [k.ready(dir), '0 2.2 T3 Story 2.2\n10.1 T2 Story 10.1\n'],
+      ])
+    },
+  ],
+  [
+    'nothing is ready, and why',
+    (k) => {
+      const blocked = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true, '1.1']] }, { questions: [['Q-001', '1.1']] }), { freeze: true })
+      const retro = k.repo(planned({ 1: [[1, 'T1', true]] }), { freeze: true })
+      k.commit(retro, 'feat(1.1): one', 0)
+      const unfrozen = k.repo(planned({ 1: [[1, 'T1', true]] }))
+      return k.expect([
+        [k.ready(blocked), '0 Nothing is ready in epic 1: 1.1 is blocked by Q-001; 1.2 waits for 1.1.\n'],
+        [k.ready(retro), "0 Nothing is ready: epic 1's MVP stories are done, and it has no phase-1 tag. Next: /epikloop:retro.\n"],
+        [k.ready(retro, '1'), '0 Nothing is left to run in epic 1.\n'],
+        [k.ready(unfrozen), "0 Nothing is ready: the MVP set isn't frozen. Next: /epikloop:plan.\n"],
+      ])
+    },
+  ],
+  [
+    'a batch starts from a clean, landed default branch',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true]] }), { freeze: true })
+      k.remote(dir)
+      const got = []
+      k.write(dir, 'notes.txt', 'untracked')
+      got.push(k.ready(dir))
+      fs.rmSync(path.join(dir, 'notes.txt'))
+      k.write(dir, 'spec/architecture.md', '# Changed\n')
+      got.push(k.ready(dir))
+      k.git(dir, 'checkout', '-q', '--', 'spec/architecture.md')
+      k.git(dir, 'switch', '-q', '-c', 'side')
+      got.push(k.ready(dir))
+      k.git(dir, 'switch', '-q', 'main')
+      k.commit(dir, 'docs: not pushed yet', 0)
+      got.push(k.ready(dir))
+      k.git(dir, 'push', '-q', 'origin', 'main')
+      k.git(dir, 'reset', '-q', '--hard', 'HEAD~1')
+      got.push(k.ready(dir))
+      k.commit(dir, 'docs: another', 0)
+      got.push(k.ready(dir))
+      const dirty = "1 The working tree has changes that aren't committed, and a batch starts from a clean tree.\n"
+      return k.expect([
+        [got[0], dirty],
+        [got[1], dirty],
+        [got[2], '1 A batch starts on main, and this checkout is on side.\n'],
+        [got[3], '1 main has 1 commit that origin/main lacks; `git push origin main` lands it before a batch starts.\n'],
+        [got[4], '1 main is 1 commit behind origin/main; `git pull --ff-only origin main` brings it up to date.\n'],
+        [got[5], '1 main and origin/main have diverged, and the human reconciles them before a batch starts.\n'],
+      ])
+    },
+  ],
+  [
+    'team mode: a story committed on another branch is in review',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true, '1.1'], [3, 'T1', true]] }), { freeze: true, marker: { mode: 'team' } })
+      k.remote(dir)
+      k.git(dir, 'remote', 'set-head', 'origin', 'main')
+      k.git(dir, 'switch', '-q', '-c', 'story/1.1')
+      k.commit(dir, 'feat(1.1): one', 0)
+      k.git(dir, 'switch', '-q', 'main')
+      const local = [k.ready(dir), k.ready(dir, '1.1')]
+      k.git(dir, 'push', '-q', 'origin', 'story/1.1')
+      k.git(dir, 'branch', '-q', '-D', 'story/1.1')
+      const review = '0 1.1 is in review, committed on another branch, so it is not ready.\n'
+      return k.expect([
+        [local[0], '0 1.3 T1 Story 1.3\n'],
+        [local[1], review],
+        [k.ready(dir, '1.1'), review],
+      ])
+    },
+  ],
+  [
+    'the brief: the story, what it cites and the decisions that name it, then how it lands',
+    (k) => {
+      const later = [
+        '## DECISION-003 Tax on its own line (2026-10-29)',
+        '- Context: 3.1 shows the total.',
+        '- Decision: tax gets a line of its own.',
+        '- Rejected: tax folded into the total.',
+        '- Trade-offs: one more line on a small screen.',
+        '- Implementation note: 3.1 builds it.',
+        '',
+        '## DECISION-004 Later stories (2026-10-30)',
+        '- Answers: Q-011',
+        '- Context: 13.1 and 3.10 come later, after v3.1.2.',
+        '- Decision: wait.',
+        '- Rejected: now.',
+        '- Trade-offs: none.',
+        '- Implementation note: none.',
+      ]
+      const dir = k.repo({
+        'spec/checkout.md': k.template('spec/capability.md'),
+        'docs/stories/3-checkout.md': k.template('docs/stories/epic.md'),
+        'docs/queue.md': k.template('docs/queue.md'),
+        'docs/decisions.md': `${k.template('docs/decisions.md').trimEnd()}\n\n${later.join('\n')}\n`,
+      })
+      const today = ymd(Date.now())
+      const ids = [
+        `A parked question goes under "## Questions" in docs/queue.md as "### Q-012 Title (${today})", numbered on from there, then "- Blocks:" with the stories it blocks or "nothing", "- Default taken:" with the default the work goes on with, and the question itself.`,
+        `A backlog line goes under "## Backlog" as "- ${today} what was found".`,
+        'The next decision is DECISION-005.',
+      ]
+      const brief = (landing) =>
+        [
+          '0 Story 3.1, from docs/stories/3-checkout.md:',
+          '',
+          '## 3.1 Cart page',
+          '- Tier: T1',
+          '- MVP: yes',
+          '- Requirements: REQ-CHECKOUT-002',
+          '',
+          'The cart lists each item with its price, and the total with tax as its own line. Done when the',
+          'page matches design/screens/cart.html at both widths.',
+          '',
+          '### Spec delta',
+          '- change REQ-CHECKOUT-002: the total shows tax as its own line',
+          '',
+          'The requirements it cites:',
+          '',
+          'From spec/checkout.md:',
+          '',
+          '## REQ-CHECKOUT-002 Show the total before payment',
+          'Status: observed',
+          '',
+          'The cart shows its total, tax included, before payment starts.',
+          '',
+          '> "Prices always include tax." (the pricing page)',
+          '',
+          'The decisions that name it, from docs/decisions.md:',
+          '',
+          ...later.slice(0, 6),
+          '',
+          landing,
+          '',
+          ...ids,
+          '',
+        ].join('\n')
+      const commit = 'one commit whose subject starts "feat(3.1): ", holding the code, its tests and the spec delta'
+      const alone = k.run(dir, '--story', '3.1')
+      k.remote(dir)
+      const solo = k.run(dir, '--story', '3.1')
+      k.write(dir, '.epikloop/project.json', `${JSON.stringify({ ...k.project, mode: 'team' })}\n`)
+      const team = k.run(dir, '--story', '3.1')
+      return k.expect([
+        [alone, brief(`Landing: ${commit}, on main. There is no remote, so nothing is pushed.`)],
+        [solo, brief(`Landing: ${commit}, on main, then \`git push origin main\`.`)],
+        [
+          team,
+          brief(
+            `Landing: \`git switch -c story/3.1 origin/main\`; ${commit}; \`git push -u origin story/3.1\`; a pull request with that subject as its title, through \`gh pr create\`; then \`git switch main\`. The human merges it.`,
+          ),
+        ],
+        [k.run(dir, '--ids'), `0 ${ids.join('\n')}\n`],
+        [k.run(dir, '--story', '9.9'), '1 9.9 is not a story.\n'],
+        [k.run(dir, '--story', '3'), `1 ${USAGE}\n`],
+      ])
+    },
+  ],
+  [
     'the CLI reports the state, its questions and its unreadable lines',
     (k) => {
       const files = planned({ 1: [[1, 'T1', true], [2, 'T1', true]] }, { questions: [['Q-001', '1.2']] })
@@ -783,14 +1170,22 @@ async function selfTest() {
     },
     // A repository holding `files`. With `freeze`, the first commit freezes the MVP set
     // `frozenAgo` days before NOW, so that commit is the queue's base.
-    repo(files, { freeze = false, frozenAgo = 0 } = {}) {
+    repo(files, { freeze = false, frozenAgo = 0, marker = {} } = {}) {
       const dir = k.folder(files)
       k.git(dir, 'init', '-q')
-      k.project = { ...MARKER }
+      k.project = { ...MARKER, ...marker }
       if (freeze) k.project.mvp_frozen = ymd(NOW - frozenAgo * DAY)
       k.write(dir, '.epikloop/project.json', `${JSON.stringify(k.project)}\n`)
       k.commit(dir, 'plan', frozenAgo)
       return dir
+    },
+    // A bare repository as `origin`, holding main.
+    remote(dir) {
+      made += 1
+      const bare = path.join(temp, `remote-${made}`)
+      k.git(temp, 'init', '-q', '--bare', bare)
+      k.git(dir, 'remote', 'add', 'origin', bare)
+      k.git(dir, 'push', '-q', 'origin', 'main')
     },
     costs(files) {
       const dir = path.join(home, '.epikloop', 'projects', MARKER.id)
@@ -802,6 +1197,12 @@ async function selfTest() {
     // The CLI, run as a skill runs it, from `cwd`, with this case's home.
     cli: (cwd, args = []) =>
       spawnSync(process.execPath, [import.meta.filename, ...args], { cwd, env: { ...env, HOME: home, USERPROFILE: home }, encoding: 'utf8', windowsHide: true }),
+    // The CLI's exit code and output for --ready, or for another batch flag.
+    run(dir, ...args) {
+      const run = k.cli(dir, args)
+      return `${run.status} ${run.stdout}`
+    },
+    ready: (dir, select) => k.run(dir, '--ready', ...(select === undefined ? [] : [select])),
     expect: (pairs) => pairs.filter(([actual, wanted]) => actual !== wanted).map(([actual, wanted]) => `got ${JSON.stringify(actual)}, not ${JSON.stringify(wanted)}`),
     contains: (problems, wanted) => {
       const missing = wanted.filter((text) => !problems.some((problem) => problem.startsWith(text)))

@@ -50,6 +50,11 @@ Example: [`templates/docs/queue.md`](../plugins/epikloop/templates/docs/queue.md
   - `- Blocks:` the stories it blocks, or `nothing`
   - `- Default taken:` the conservative default the work went on with
 - **"Split me".** A story that outgrows its budget is parked as a question titled `Split N.M`.
+- **Review.** In solo mode a T3 story's commit parks a question titled `Review N.M`, blocking
+  nothing, so the human reads its diff in `decide`.
+- **Numbers.** A question number is never reused: the next one follows the highest in the queue
+  and in the decisions' `Answers`, and `state.mjs --ids` prints it. A number listed twice, or one
+  a decision already answers, is reported.
 - **Backlog lines.** Each is `- YYYY-MM-DD what`.
 - **Answering.** `decide` removes an answered question in the same commit that appends its
   decision. `retro` prunes backlog lines. The queue's open entries are its questions and backlog
@@ -72,6 +77,28 @@ Example: [`templates/docs/decisions.md`](../plugins/epikloop/templates/docs/deci
   - In team mode, a squash-merged pull request's title carries the same prefix.
 - **Tags.** `retro` tags a closed phase `phase-N`, and MVP sign-off tags `mvp`.
 - **The current phase** is the lowest epic that has MVP stories and no `phase-N` tag.
+- **In review.** A story whose `feat(N.M):` commit is on another branch, local or remote, and not
+  yet on the default branch is in review.
+
+## What a batch reads
+
+`state.mjs --ready [N | N.M]` lists the stories a batch may start, one `N.M Tn Title` line each,
+in plan order. That line is the worker's spawn description.
+
+- **Ready.** A story is ready when it isn't done or in review, every story in its `After` is done,
+  and no parked question blocks it. Before the `mvp` tag only MVP stories are ready; named alone,
+  as `N.M`, any story can be.
+- **Which stories.** Without an argument, the current phase's epic, or every epic once all MVP
+  epics are tagged. Nothing is ready before stage 6, or while the phase waits for `retro`.
+- **Where a batch starts.** Only from a clean checkout of the default branch that its remote
+  neither leads nor trails. Otherwise the list gives the reason, with the git command that fixes
+  it when there is one.
+- **The brief.** `state.mjs --story N.M` prints the story, the requirements it cites and the
+  decisions that name it, each verbatim; how its commit lands; and the next question and decision
+  numbers.
+- **Landing.** In solo mode the story's commit is pushed to the default branch, when there is a
+  remote. In team mode it goes on `story/N.M`, with a pull request titled like the commit, which
+  the human merges.
 
 ## The fuel gauge
 
