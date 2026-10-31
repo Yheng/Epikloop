@@ -13,10 +13,13 @@ to `docs/decisions.md` as a `DECISION-XXX` entry. Scope: architecture only; epic
 MVP set belong to `plan`.
 
 Read `spec/` and `docs/decisions.md` first. Propose the stack and the lane, and write nothing until
-the human confirms both. `spec/architecture.md` then holds the stack; the schema as code in the
-stack's own language; the API contract for every requirement that crosses a process boundary; how
-staging is hosted; and the pre-mortem, each way the project could fail paired with what guards
-against it.
+the human confirms both. The lanes:
+
+!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --lanes`
+
+`spec/architecture.md` then holds the stack; the schema as code in the stack's own language; the
+API contract for every requirement that crosses a process boundary; how staging is hosted; and the
+pre-mortem, each way the project could fail paired with what guards against it.
 
 Each decision is appended, numbered after the last, in this format, which a script reads:
 

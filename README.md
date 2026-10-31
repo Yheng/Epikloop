@@ -30,8 +30,8 @@
 > [!IMPORTANT]
 > **Epikloop is in pre-release.** This README describes the loop as it is designed. Today the
 > marketplace installs, the [git guard](#the-git-guard) and the gates protect Epikloop projects,
-> and every command but `design` and `harbor` has its full instructions. The lanes arrive with
-> milestone 1. [Status](#status) shows what works now and when the rest lands.
+> every command but `design` and `harbor` has its full instructions, and the `web` and `service`
+> lanes are in. [Status](#status) shows what works now and when the rest lands.
 
 ## Contents
 
@@ -106,16 +106,16 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The path to a frozen plan: `/epikloop`, `discover`, `architect` and `plan`, with full instructions | **Available** |
 | The batch: `epic`, `next`, `story`, the `story-worker`, `decide` and `triage`, with full instructions | **Available** |
 | Closing the loop: `retro`, `release`, `adopt` and `doctor`, with full instructions, the staging smoke, and `init.mjs --refresh` | **Available** |
-| The `web` and `service` lanes, with retro's visual compare and perf check, and the lane authoring guide | M1 |
+| The `web` and `service` lanes: Playwright tests as a web story's UI evidence, the guard allowing the lane's test runner, `doctor`'s lane checks, and the [lane authoring guide](docs/lanes.md) | **Available** |
 | The team-mode workflow (`.github/workflows/check.yml`) and the `CLAUDE.md` template | M1 |
 | The plugin eval suite with a fixture project, and lint and evals in CI | M1 |
 | This repository's own law checks in CI: the prompt ceiling, no `.sh` beyond the shims, no network calls in hook or Harbor code, DCO sign-off, no AI co-author trailers | M1 |
-| `design`: direction variants, every screen, the gallery | M2 |
+| `design`: direction variants, every screen, the gallery, and with them a screenshot per touched screen and retro's visual compare | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor (its server, its 3D view and the `harbor` command), then the Bridge | M4 |
 
-Until M1 lands, there are no lanes and no team-mode workflow, and the loop hasn't yet taken a real
-project end to end, so Epikloop is not ready for real projects. See the [roadmap](#roadmap).
+Until M1 lands, there is no team-mode workflow, and the loop hasn't yet taken a real project end to
+end, so Epikloop is not ready for real projects. See the [roadmap](#roadmap).
 
 ## Install
 
@@ -320,14 +320,20 @@ the start of the final phase. The exact rules are in
 ### Lanes
 
 A lane is a profile for one kind of product: `lanes/<name>.json` inside the core plugin, plus an
-optional skill fragment. It declares:
+optional fragment, `lanes/<name>.md`. Together they declare:
 
-- how visual truth is stored and gated
-- how UI is verified: a Playwright screenshot, a Maestro or Flutter integration test, or contract
-  tests
-- how staging works: a host's git-deploy URL, an EAS preview, TestFlight or the Play internal
+- **how UI is verified:**
+  - in `web`, a Playwright test for each acceptance criterion a person sees, with a screenshot per
+    touched screen once `design` arrives in M2
+  - a Maestro or Flutter integration test in the mobile lanes
+  - contract tests in `service`
+- **how staging works:** a host's git-deploy URL, an EAS preview, TestFlight or the Play internal
   track, or a service URL
-- the performance budgets
+- **how visual truth is stored and gated, and the performance budgets,** once a lane needs them
+
+The fragment's Plan, Story and Retro sections reach Claude through the plan, each story-worker's
+brief and the retro's brief, so no skill names a lane. In a web project, the guard also allows
+`npx playwright test`. [Writing a lane](docs/lanes.md) covers both files.
 
 The 1.0 lane set is `web` and `service` (which skips design) in M1, then `mobile-expo` and
 `mobile-flutter` in M3. Native iOS and Android are community lanes. Contributors add lanes without
@@ -370,9 +376,10 @@ step is also a command you can run directly.
    - the deep gates, with end-to-end tests
    - the gates' self-test
 
-   The full visual compare and the perf check join it with the web lane. The retro then prunes the
-   queue with you, reviews the cost rows, and deletes something from the pipeline, or records why
-   nothing qualified. It records all this in `docs/decisions.md` and tags the phase.
+   In the web lane, the deep gates run the whole Playwright suite. The full visual compare joins
+   with `design` in M2, and perf budgets wait for a project that needs them. The retro then prunes
+   the queue with you, reviews the cost rows, and deletes something from the pipeline, or records
+   why nothing qualified. It records all this in `docs/decisions.md` and tags the phase.
 
    In the final phase, it also takes you through MVP sign-off. Sign-off waits until queue Δ is 0 or
    below and the staging smoke is green.
@@ -820,7 +827,8 @@ you want to change a choice.
   thousand tokens. API-key users get the one-hour cache for the main conversation by setting
   `promptCacheTtl`, and `doctor` says so.
 - **Small outputs.** `check.sh` prints failures and a one-line summary, a product's `CLAUDE.md`
-  stays under 200 lines, and each story takes one screenshot per touched screen, with the full
+  stays under 200 lines, and a web story runs only the Playwright specs it touched, with the whole
+  suite once per epic. From M2, each story takes one screenshot per touched screen, with the full
   visual compare once per epic.
 
 More in [Architecture → Token economy](docs/architecture.md#token-economy).
@@ -895,11 +903,11 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke and `doctor` | now |
-| `plugins/epikloop/lanes/` | `web` and `service`, then `mobile-expo` and `mobile-flutter` | M1, M3 |
+| `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, and the examples of each project file in `spec/` and `docs/`, now; `CLAUDE.md` and the team-mode workflow in M1 | now, M1 |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project | M1 |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
-| `docs/` | Doctrine, architecture and roadmap; the lane authoring guide with the first lanes | now, M1 |
+| `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
 | `.github/workflows/ci.yml` | CI on Linux, macOS and Windows | now |
 
 ### Checks
@@ -953,7 +961,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 
 | Milestone | Delivers |
 |---|---|
-| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), then the `web` and `service` lanes, the team-mode workflow and `CLAUDE.md` templates, the eval suite, lint and evals in CI, the lane authoring guide, and this repository's own law checks |
+| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), the `web` and `service` lanes and the lane authoring guide (done), then the team-mode workflow and `CLAUDE.md` templates, the eval suite, lint and evals in CI, and this repository's own law checks |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: Harbor, then the Bridge** | Harbor's server and 3D scene, then the Bridge's review pages |
@@ -972,6 +980,8 @@ becomes 1.0.0 when the full lane set lands; Harbor starts at 0.1.0. Releases are
 |---|---|
 | [Doctrine](docs/doctrine.md) | The principles the pipeline enforces |
 | [Architecture](docs/architecture.md) | How Epikloop fits together, and the settled decisions |
+| [Formats](docs/formats.md) | The project files' formats, and what is read from git |
+| [Writing a lane](docs/lanes.md) | The lane authoring guide: a lane's profile and its fragment |
 | [Roadmap](docs/roadmap.md) | Milestones, versions and open questions |
 | [Constitution](CONSTITUTION.md) | The rules for changing Epikloop |
 | [Contributing](CONTRIBUTING.md) | What a change needs, the checks and the DCO |

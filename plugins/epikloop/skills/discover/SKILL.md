@@ -22,7 +22,8 @@ exactly as shown. No requirement is marked `observed`; that marker belongs to `a
 !`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --example spec`
 
 The project files come from a script. In a git repository, after `git init` in a new folder, run
-`node "${CLAUDE_PLUGIN_ROOT}/bin/init.mjs" --lane <lane> --mode solo`. The lane is `web` for a
-product people use in a browser and `service` for an API, a command-line tool or a job; `plan`
-settles the mode. It writes the project marker and the gate files and stages them. Commit the spec
-with them, and the git hooks run the gates on that commit.
+`node "${CLAUDE_PLUGIN_ROOT}/bin/init.mjs" --lane <lane> --mode solo`; `plan` settles the mode. It
+writes the project marker and the gate files and stages them. Commit the spec with them, and the
+git hooks run the gates on that commit. The lane is the one of these that fits the product:
+
+!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --lanes`

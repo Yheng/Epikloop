@@ -1,0 +1,12 @@
+{
+  "$schema": "../schemas/lane.schema.json",
+  "format": 1,
+  "name": "web",
+  "description": "a product people use in a browser",
+  "requires": ["npx"],
+  "ui_test": {
+    "tool": "Playwright",
+    "package": "@playwright/test",
+    "allow": ["npx playwright test"]
+  }
+}

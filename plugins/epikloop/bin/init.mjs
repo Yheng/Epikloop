@@ -12,6 +12,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
+import { laneNames } from './state.mjs'
 
 const USAGE = 'usage: node init.mjs --lane <lane> --mode solo|team | --refresh'
 export const TEMPLATES = path.join(import.meta.dirname, '..', 'templates')
@@ -95,6 +96,8 @@ function init(argv) {
     return console.log(USAGE)
   }
   if (!/^[a-z][a-z0-9-]*$/.test(options.lane ?? '') || !['solo', 'team'].includes(options.mode)) return console.log(USAGE)
+  const lanes = laneNames()
+  if (!lanes.includes(options.lane)) return console.log(`init: lane "${options.lane}" is not one of ${lanes.join(', ')}`)
   const inside = git(process.cwd(), ['rev-parse', '--show-toplevel'])
   if (inside.status !== 0) return console.log('init: not a git repository; run git init first')
   const top = inside.stdout.trim()
@@ -338,6 +341,13 @@ const CASES = [
     (k) => {
       const dir = k.repo()
       return k.fails(k.init(dir, ['--lane', 'Web', '--mode', 'solo']), USAGE, dir)
+    },
+  ],
+  [
+    'a lane the plugin lacks',
+    (k) => {
+      const dir = k.repo()
+      return k.fails(k.init(dir, ['--lane', 'desktop', '--mode', 'solo']), 'init: lane "desktop" is not one of service, web', dir)
     },
   ],
   [

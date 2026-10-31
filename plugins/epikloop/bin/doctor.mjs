@@ -43,9 +43,10 @@ function entries(dir) {
 export function exec(program, args, cwd) {
   const options = { cwd, encoding: 'utf8', timeout: 20_000, windowsHide: true }
   let run = spawnSync(program, args, options)
-  // npm installs claude on Windows as a .cmd shim, which only a shell runs.
-  if (run.error?.code === 'ENOENT' && process.platform === 'win32' && program === 'claude') {
-    run = spawnSync(`claude ${args.join(' ')}`, { ...options, shell: true })
+  // npm installs programs on Windows as .cmd shims, such as claude's and npx, which only a shell
+  // runs. The program and its arguments are always doctor's own.
+  if (run.error?.code === 'ENOENT' && process.platform === 'win32') {
+    run = spawnSync(`${program} ${args.join(' ')}`, { ...options, shell: true })
   }
   return run.error ? { status: null, stdout: '' } : { status: run.status, stdout: run.stdout ?? '' }
 }
@@ -131,7 +132,7 @@ export async function report({ cwd, env, home, node, exec, now }) {
   else if (below(claudeVersion, FLOORS.claude)) fix(`Claude Code ${claudeVersion.join('.')} is older than ${FLOORS.claude}`, 'update it with claude update')
   else ok(`Claude Code ${claudeVersion.join('.')}`)
 
-  const { openProject, readState } = await import('./state.mjs')
+  const { openProject, readState, laneNames, readLane } = await import('./state.mjs')
   const opened = openProject(cwd)
   const auth = exec('claude', ['auth', 'status'], cwd)
   const method = /"authMethod"\s*:\s*"([^"]+)"/.exec(auth.stdout)?.[1] ?? null
@@ -139,6 +140,25 @@ export async function report({ cwd, env, home, node, exec, now }) {
   else if (API.includes(method) && hourCache(env, home, opened?.root ?? cwd)) ok('Prompt cache: an API key, with the cache set to an hour')
   else if (API.includes(method)) fix("Prompt cache: an API key keeps the conversation's cache for 5 minutes", SETTING)
   else note(`Prompt cache: claude auth status doesn't say which account this is; with an API key, ${SETTING}`)
+
+  // The lanes this machine can build: those whose programs are all on PATH. One the project's lane
+  // needs is a fix.
+  const found = new Map()
+  const onPath = (program) => {
+    if (!found.has(program)) found.set(program, exec(program, ['--version'], cwd).status === 0)
+    return found.get(program)
+  }
+  const lanes = laneNames().map((name) => ({ name, missing: (readLane(name)?.requires ?? []).filter((program) => !onPath(program)) }))
+  const buildable = lanes.filter((lane) => lane.missing.length === 0).map((lane) => lane.name)
+  const blocked = lanes.filter((lane) => lane.missing.length > 0)
+  if (blocked.length === 0) ok(`Lanes this machine can build: ${buildable.join(', ')}`)
+  else {
+    const can = `Lanes this machine can build: ${buildable.length > 0 ? buildable.join(', ') : 'none'}`
+    const needs = blocked.map((lane) => `${lane.name} needs ${lane.missing.join(' and ')} on PATH`).join('; ')
+    const own = blocked.find((lane) => lane.name === opened?.project?.lane)
+    if (own === undefined) note(`${can}; ${needs}`)
+    else fix(`${can}; ${needs}`, `install ${own.missing.join(' and ')}, which this project's lane needs`)
+  }
 
   if (opened === null) note("Project: this isn't an Epikloop project, so the project's checks are skipped")
   else if (opened.problem !== null) fix(`Project: .epikloop/project.json ${opened.problem}`, 'correct it')
@@ -161,6 +181,17 @@ export async function report({ cwd, env, home, node, exec, now }) {
       fix(`Gate files: ${names} the plugin's current one${stale.length === 1 ? '' : 's'}`, `node "${path.join(HERE, 'init.mjs')}" --refresh, then commit ${stale.length === 1 ? 'it' : 'them'}`)
     }
 
+    // The lane's UI test tool, by the package a product installs it as: no spawn, no network.
+    const ui = readLane(opened.project?.lane)?.ui_test
+    if (ui) {
+      let version = null
+      try {
+        version = JSON.parse(fs.readFileSync(path.join(opened.root, 'node_modules', ...ui.package.split('/'), 'package.json'), 'utf8')).version
+      } catch {}
+      if (typeof version === 'string') ok(`UI tests: ${ui.tool} ${version} is installed`)
+      else note(`UI tests: ${ui.tool} isn't installed here yet; the first story with a UI installs it`)
+    }
+
     const session = env.CLAUDE_CODE_SESSION_ID
     if (!session) note("Events: not checked, since doctor isn't running inside Claude Code")
     else if (sessionWrites(home, session, now)) ok("Events: this session's are being written")
@@ -174,7 +205,8 @@ export async function report({ cwd, env, home, node, exec, now }) {
   const folded = foldAll(fold, home, now)
   if (folded.events + folded.rows > 0) {
     const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`
-    note(`Folded ${count(folded.events, 'event file')} and ${count(folded.rows, 'cost row')} into their .jsonl files`)
+    const what = [folded.events > 0 && count(folded.events, 'event file'), folded.rows > 0 && count(folded.rows, 'cost row')].filter(Boolean)
+    note(`Folded ${what.join(' and ')} into ${folded.events + folded.rows === 1 ? 'its .jsonl file' : 'their .jsonl files'}`)
   }
   return done()
 }
@@ -226,14 +258,16 @@ async function selfTest() {
       for (const [day, names] of Object.entries(events)) for (const name of names) k.write(home, `.epikloop/events/${day}/${name}`, '{"format":1}\n')
       return home
     },
-    // The report, with a fake claude and git version: `claude` is { version, auth }, either one
-    // null for a claude that can't say; `git` is the version git reports, or null for no git.
-    async run({ cwd = k.dir('plain'), home = k.home(), env = { CLAUDE_CODE_SESSION_ID: SESSION }, node = '22.12.0', claude = {}, git = '2.45.1' } = {}) {
+    // The report, with a fake claude, git version and npx: `claude` is { version, auth }, either one
+    // null for a claude that can't say; `git` is the version git reports, or null for no git; `npx`
+    // is npx's version, or null for no npx.
+    async run({ cwd = k.dir('plain'), home = k.home(), env = { CLAUDE_CODE_SESSION_ID: SESSION }, node = '22.12.0', claude = {}, git = '2.45.1', npx = '10.9.2' } = {}) {
       const { version = '2.1.314', auth = 'claude.ai' } = claude
       const fake = (program, args, at) => {
         if (program === 'claude' && args[0] === '--version') return version === null ? { status: null, stdout: '' } : { status: 0, stdout: `${version} (Claude Code)\n` }
         if (program === 'claude') return auth === null ? { status: 1, stdout: '' } : { status: 0, stdout: JSON.stringify({ loggedIn: true, authMethod: auth }, null, 2) }
         if (program === 'git' && args[0] === '--version') return git === null ? { status: null, stdout: '' } : { status: 0, stdout: `git version ${git}\n` }
+        if (program === 'npx') return npx === null ? { status: null, stdout: '' } : { status: 0, stdout: `${npx}\n` }
         return exec(program, args, at)
       }
       return `${(await report({ cwd, env, home, node, exec: fake, now: NOW })).join('\n')}\n`
@@ -256,9 +290,11 @@ async function selfTest() {
           '- git 2.45.1: ok.',
           '- Claude Code 2.1.314: ok.',
           "- Prompt cache: a subscription, which keeps an hour's cache: ok.",
+          '- Lanes this machine can build: service, web: ok.',
           '- Project files: every line reads: ok.',
           '- Git hooks: armed at .githooks: ok.',
           "- Gate files: the same as the plugin's: ok.",
+          "- UI tests: Playwright isn't installed here yet; the first story with a UI installs it.",
           "- Events: this session's are being written: ok.",
           '',
         ]
@@ -292,6 +328,21 @@ async function selfTest() {
           ...k.has(await k.run({ claude: api, env: { CLAUDE_CODE_PROMPT_CACHE_TTL: '1h' } }), set),
           ...k.has(await k.run({ claude: { auth: 'api_key_helper' }, cwd: local }), set),
           ...k.has(await k.run({ claude: { auth: null } }), `- Prompt cache: claude auth status doesn't say which account this is; with an API key, ${SETTING}.\n`),
+        ]
+      },
+    ],
+    [
+      'the lanes this machine can build, and the UI test tool',
+      async () => {
+        const installed = k.project()
+        k.write(installed, 'node_modules/@playwright/test/package.json', JSON.stringify({ name: '@playwright/test', version: '1.49.1' }))
+        const service = k.project({ marker: { lane: 'service' } })
+        const serviceOut = await k.run({ cwd: service, npx: null })
+        return [
+          ...k.has(await k.run({ cwd: k.project(), npx: null }), "- Lanes this machine can build: service; web needs npx on PATH. Fix: install npx, which this project's lane needs.\n"),
+          ...k.has(serviceOut, '- Lanes this machine can build: service; web needs npx on PATH.\n'),
+          ...(serviceOut.includes('UI tests') ? ['spoke of UI tests in a service project'] : []),
+          ...k.has(await k.run({ cwd: installed }), '- UI tests: Playwright 1.49.1 is installed: ok.\n'),
         ]
       },
     ],
@@ -344,8 +395,11 @@ async function selfTest() {
         k.write(home, '.epikloop/projects/000000000000/cost/1-x-1.json', '{"format":1,"tier":"T1","wall":60}\n')
         const out = await k.run({ cwd: k.project(), home })
         const events = path.join(home, '.epikloop', 'events')
+        const rowOnly = k.home()
+        k.write(rowOnly, '.epikloop/projects/000000000000/cost/1-x-1.json', '{"format":1,"tier":"T1","wall":60}\n')
         return [
           ...k.has(out, '- Folded 2 event files and 1 cost row into their .jsonl files.\n'),
+          ...k.has(await k.run({ cwd: k.project(), home: rowOnly }), '- Folded 1 cost row into its .jsonl file.\n'),
           ...(fs.readFileSync(path.join(events, `${yesterday}.jsonl`), 'utf8').split('\n').filter(Boolean).length === 2 ? [] : ["yesterday's lines aren't folded"]),
           ...(fs.existsSync(path.join(events, yesterday)) ? ["yesterday's folder is left"] : []),
           ...(fs.existsSync(path.join(events, today, mine)) && !fs.existsSync(path.join(events, `${today}.jsonl`)) ? [] : ["today's events were folded"]),

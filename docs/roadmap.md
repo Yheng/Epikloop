@@ -46,14 +46,17 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
     files differ from the plugin's
   - stage 3, design, is held until M2 brings design's body; until then a UI lane goes on to
     `architect`
-  - retro's full visual compare and perf check, and `doctor`'s report of the lanes this machine
-    can build, join with the `web` lane; `adopt`'s token extraction joins with `design` in M2, and
-    `doctor`'s Harbor check with Harbor in M4
-- the `web` and `service` lanes
+  - `adopt`'s token extraction joins with `design` in M2, and `doctor`'s Harbor check with Harbor
+    in M4
+- the `web` and `service` lanes (done): each a profile and a fragment, whose sections the state
+  reader prints into the plan, the worker's brief and the retro's brief; the guard allows the
+  lane's test runner, and `doctor` reports the lanes this machine can build
+  - a web story's UI evidence is a Playwright test; the screenshot per touched screen and retro's
+    full visual compare join with `design` in M2
 - CI self-test, lint and evals, on top of validation
 - CI mutation check — break one guard rule in a copy and expect the self-test to fail
 - a plugin eval suite with a fixture project
-- the lane authoring guide
+- the lane authoring guide (done: [docs/lanes.md](lanes.md))
 - this repository's own law checks:
   - prompt ceiling
   - no `.sh` beyond the shims
@@ -68,6 +71,8 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 - **Converting repositories on an earlier template layout,** behind a rollback tag, held for the
   adoption of one.
 - **Literal spacing in the token gate,** and Tailwind's spacing utilities.
+- **Perf budgets in a lane,** held for a project whose performance regresses unnoticed. Harbor's
+  own app vendors Three.js, so no generic web budget fits the first dogfood project.
 
 **Open questions to settle along the way:**
 
@@ -111,6 +116,9 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 - `amend`, `add`, `audit` and `ingest`
 - the gallery
 - design references
+- with the screens as the truth: a screenshot per touched screen at story time, and retro's full
+  visual compare, the web lane's
+- `adopt`'s design-token extraction
 
 ## M3 — Speed
 

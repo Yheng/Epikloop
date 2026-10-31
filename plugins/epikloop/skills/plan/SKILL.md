@@ -21,8 +21,10 @@ Every current requirement in `spec/` is cited by at least one story. Most storie
 money, migrations on live data and untrusted input are T3; T2 is for a story whose quoted business
 rules need tests of their own. Epic 1 opens with 1.1, which adds `node .githooks/check.mjs --arm`
 to the stack's install step and sets `gates.commands` in `.epikloop/project.json` where
-auto-detection won't find them, and 1.2, which brings up staging. The first story with a UI
-installs the lane's UI test tool. `After` names only the stories a story builds on.
+auto-detection won't find them, and 1.2, which brings up staging. `After` names only the stories a
+story builds on. The project's lane adds this:
+
+!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --lane plan`
 
 Propose the MVP set and let the human decide it, along with solo or team mode, hours per day and
 any deadline. Record them in `.epikloop/project.json` as `mvp_frozen` (today's date), `mode`,

@@ -7,6 +7,7 @@ Thanks for helping. Epikloop is small on purpose, and these rules keep it that w
 - Read the [constitution](CONSTITUTION.md). It governs every change.
 - The decisions recorded in [docs/architecture.md](docs/architecture.md) are settled. To change one,
   [open an issue](https://github.com/Yheng/Epikloop/issues) and make the case there first.
+- To add a lane, see [Writing a lane](docs/lanes.md).
 
 ## What a change needs
 
@@ -44,6 +45,11 @@ claude plugin validate . --strict
 claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
 node plugins/epikloop/bin/guard.mjs --self-test
+node plugins/epikloop/bin/brief.mjs --self-test
+node plugins/epikloop/bin/init.mjs --self-test
+node plugins/epikloop/bin/state.mjs --self-test
+node plugins/epikloop/bin/smoke.mjs --self-test
+node plugins/epikloop/bin/doctor.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test

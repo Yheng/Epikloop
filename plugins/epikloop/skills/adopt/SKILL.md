@@ -15,9 +15,12 @@ project's own commands and pass on its code as it stands, and a confirmation bat
 turns the observed requirements into current ones. Scope: describing and gating what exists;
 changing product behaviour is for planned stories.
 
-Read the code first. Propose the lane, `web` for a product people use in a browser or `service`
-for an API, a command-line tool or a job, and the mode, `team` when the repository merges through
-pull requests and `solo` otherwise, and write nothing until the human confirms both. Then run
+Read the code first. Propose the lane, the one of these that fits it:
+
+!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --lanes`
+
+Propose the mode too, `team` when the repository merges through pull requests and `solo`
+otherwise, and write nothing until the human confirms both. Then run
 `node "${CLAUDE_PLUGIN_ROOT}/bin/init.mjs" --lane <lane> --mode <mode>`, which writes the project
 marker and the gate files and stages them.
 

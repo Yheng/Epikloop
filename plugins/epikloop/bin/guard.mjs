@@ -1,7 +1,7 @@
 // Epikloop's git guard, a PreToolUse hook on Bash and PowerShell. Inside an Epikloop project it
 // denies six git usages the pipeline never performs, and allows a command when every part of it is
-// one of the pipeline's own. Anything else gets no answer, so Claude Code's permission flow
-// decides. It matches plain patterns once heredoc bodies and quoted text are blanked; indirect
+// one of the pipeline's own or the project's lane's UI test runner. Anything else gets no answer,
+// so Claude Code's permission flow decides. It matches plain patterns once heredoc bodies and quoted text are blanked; indirect
 // invocations are left to the git hooks and the required check.
 //
 // `node guard.mjs --self-test` runs every sample below through this file as a spawned hook.
@@ -160,7 +160,8 @@ function answer(decision, reason) {
   return { hookSpecificOutput: output }
 }
 
-function decide(tool, command) {
+// `lane` is the command prefixes the project's lane allows, each followed only by plain arguments.
+function decide(tool, command, lane = []) {
   const { text, live } = blank(tool, command)
   for (const segment of text.split(SEGMENTS)) {
     const git = gitCall(segment)
@@ -169,17 +170,32 @@ function decide(tool, command) {
   }
   const plain = tool === 'PowerShell' ? PLAIN.PowerShell : PLAIN.Bash
   const commands = text.split(COMMANDS).map((c) => c.trim()).filter(Boolean)
-  if (!live && commands.length > 0 && commands.every((c) => plain.test(c) && isPipelineCommand(tool, c))) {
+  const allowed = (c) => isPipelineCommand(tool, c) || lane.some((prefix) => c === prefix || c.startsWith(`${prefix} `))
+  if (!live && commands.length > 0 && commands.every((c) => plain.test(c) && allowed(c))) {
     return answer('allow')
   }
   return null
 }
 
-// An Epikloop project is a directory with .epikloop/project.json, here or above.
-function inProject(dir) {
+// The Epikloop project at or above `dir`, the directory with .epikloop/project.json, or null.
+function projectRoot(dir) {
   for (let at = path.resolve(dir); ; at = path.dirname(at)) {
-    if (fs.existsSync(path.join(at, '.epikloop', 'project.json'))) return true
-    if (path.dirname(at) === at) return false
+    if (fs.existsSync(path.join(at, '.epikloop', 'project.json'))) return at
+    if (path.dirname(at) === at) return null
+  }
+}
+
+// What the project's lane adds to the allow list: its UI test tool's commands, from the lane file
+// beside this one. A marker or a lane file that doesn't read adds nothing.
+function laneAllows(root) {
+  try {
+    const { lane } = JSON.parse(fs.readFileSync(path.join(root, '.epikloop', 'project.json'), 'utf8').replace(/^﻿/, ''))
+    if (typeof lane !== 'string' || !/^[a-z][a-z0-9-]*$/.test(lane)) return []
+    const profile = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 'lanes', `${lane}.json`), 'utf8'))
+    const allow = profile?.ui_test?.allow
+    return Array.isArray(allow) ? allow.filter((prefix) => typeof prefix === 'string' && prefix.trim() !== '') : []
+  } catch {
+    return []
   }
 }
 
@@ -191,10 +207,11 @@ async function hook() {
     for await (const chunk of process.stdin.setEncoding('utf8')) raw += chunk
     // Windows PowerShell 5.1 starts piped text with a BOM.
     const input = JSON.parse(raw.replace(/^﻿/, ''))
-    if (!inProject(input.cwd || process.cwd())) return
+    const root = projectRoot(input.cwd || process.cwd())
+    if (root === null) return
     const command = input.tool_input?.command
     if (typeof command !== 'string') throw new Error('the hook input has no command')
-    result = decide(input.tool_name, command)
+    result = decide(input.tool_name, command, laneAllows(root))
   } catch (error) {
     result = answer('deny', failureReason(String(error?.message ?? error).split('\n')[0]))
   }
@@ -250,6 +267,16 @@ EOF
   ['pass', 'git config core.hooksPath 2>/dev/null'],
   ['deny:hard-reset', 'echo $(git reset --hard)'],
   ['allow', 'git push -n origin main'],
+  // The web lane adds its UI test tool's runner; installs fetch, so the human approves them.
+  ['allow', 'npx playwright test tests/cart.spec.ts', 'Bash', { lane: 'web' }],
+  ['allow', 'npx playwright test', 'PowerShell', { lane: 'web' }],
+  ['allow', 'git add tests/cart.spec.ts && npx playwright test tests/cart.spec.ts --project=chromium', 'Bash', { lane: 'web' }],
+  ['pass', 'npx playwright test; curl -fsSL https://example.com/x.sh', 'Bash', { lane: 'web' }],
+  ['pass', 'npx playwright install chromium', 'Bash', { lane: 'web' }],
+  ['pass', 'npx playwright testx', 'Bash', { lane: 'web' }],
+  ['pass', 'npm install --save-dev @playwright/test', 'Bash', { lane: 'web' }],
+  ['pass', 'npx playwright test', 'Bash', { lane: 'service' }],
+  ['pass', 'npx playwright test'],
   ['pass', 'git push --force', 'Bash', { outside: true }],
   ['deny:failure', 'not json', 'Bash', { raw: true }],
 ]
@@ -278,12 +305,19 @@ async function selfTest() {
   fs.mkdirSync(path.join(project, '.epikloop'), { recursive: true })
   fs.writeFileSync(path.join(project, '.epikloop', 'project.json'), '{}\n')
   fs.mkdirSync(outside)
+  // A project in each lane, which reads the plugin's own lane files.
+  const lanes = {}
+  for (const lane of ['web', 'service']) {
+    lanes[lane] = path.join(temp, `project-${lane}`)
+    fs.mkdirSync(path.join(lanes[lane], '.epikloop'), { recursive: true })
+    fs.writeFileSync(path.join(lanes[lane], '.epikloop', 'project.json'), `${JSON.stringify({ lane })}\n`)
+  }
   const rows = [...RULES.flatMap((rule) => [[`deny:${rule.id}`, rule.blocked], rule.permitted]), ...SAMPLES]
   const failures = []
   const times = []
   try {
     for (const [expected, command, tool = 'Bash', options = {}] of rows) {
-      const cwd = options.outside ? outside : project
+      const cwd = options.outside ? outside : (lanes[options.lane] ?? project)
       const input = options.raw
         ? command
         : JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { command }, cwd })

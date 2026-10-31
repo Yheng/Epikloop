@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Yheng/Epikloop/main/plugins/epikloop/schemas/lane.schema.json",
+  "title": "Epikloop lane",
+  "description": "A lane profile, plugins/epikloop/lanes/<name>.json. Its fragment, lanes/<name>.md, holds Plan, Story and Retro sections, which the state reader prints into the plan, a story-worker's brief and the retro's brief. See docs/lanes.md.",
+  "type": "object",
+  "required": ["format", "name", "description", "requires", "ui_test"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "format": { "const": 1, "description": "Format version of this file." },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "The lane's name: the same as its file's, and the value of lane in a project's marker."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The kind of product the lane is for, in a few lower-case words. discover, adopt and architect list it when the lane is chosen."
+    },
+    "requires": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9.-]*$" },
+      "uniqueItems": true,
+      "description": "Programs a machine needs on PATH to build in this lane, beyond Node and git. doctor runs each with --version."
+    },
+    "ui_test": {
+      "description": "The lane's UI test tool, or null for a lane without screens.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["tool", "package", "allow"],
+          "additionalProperties": false,
+          "properties": {
+            "tool": { "type": "string", "minLength": 1, "description": "The tool's name, as doctor reports it." },
+            "package": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The npm package a product installs it as. doctor reads node_modules/<package>/package.json for its version."
+            },
+            "allow": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._/:=+,-]*$" },
+              "uniqueItems": true,
+              "description": "Command prefixes the guard allows in this lane's projects, each followed only by plain arguments. Never a command that fetches."
+            }
+          }
+        }
+      ]
+    }
+  }
+}

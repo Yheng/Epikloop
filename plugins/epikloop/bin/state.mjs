@@ -9,6 +9,8 @@
 //   node state.mjs --ids                                    the next question and decision numbers
 //   node state.mjs --retro                                  the retro's brief, or the tags it leaves
 //   node state.mjs --release                                the release's brief, or the tag it leaves
+//   node state.mjs --lane plan|story|retro                  that section of the project's lane
+//   node state.mjs --lanes                                  the lanes, with what each is for
 //   node state.mjs --example spec|stories|queue|decisions   a project file's example, its format
 //   node state.mjs --self-test                              every case below, in throwaway repos
 import { spawnSync } from 'node:child_process'
@@ -244,6 +246,66 @@ function readDecisions(root, problems) {
   return decisions
 }
 
+// ---- Lanes: lanes/<name>.json, the profile, and lanes/<name>.md, its fragment (docs/lanes.md)
+
+const LANES = path.join(import.meta.dirname, '..', 'lanes')
+const LANE_NAME = /^[a-z][a-z0-9-]*$/
+// The fragment's sections, each printed where its name says: into the plan, a story's brief and the
+// retro's brief.
+const LANE_SECTIONS = ['Plan', 'Story', 'Retro']
+
+// The lanes this plugin has, by name.
+export function laneNames() {
+  try {
+    return fs
+      .readdirSync(LANES)
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => name.slice(0, -'.json'.length))
+      .sort()
+  } catch {
+    return []
+  }
+}
+
+// The lane `name`: its profile, with its fragment's sections as `sections`, or null when the plugin
+// has no such lane.
+export function readLane(name) {
+  if (typeof name !== 'string' || !LANE_NAME.test(name)) return null
+  let profile
+  try {
+    profile = JSON.parse(fs.readFileSync(path.join(LANES, `${name}.json`), 'utf8'))
+  } catch {
+    return null
+  }
+  const sections = {}
+  const lines = readLines(LANES, `${name}.md`) ?? []
+  lines.forEach((line, i) => {
+    const heading = /^## (\S.*)$/.exec(line)
+    if (heading !== null) sections[heading[1].trim()] = sectionAt(lines, i).split('\n').slice(1).join('\n').trim()
+  })
+  return { ...profile, sections }
+}
+
+// What is wrong with a lane, by its schema, or null. The self-test holds every lane to it.
+function laneProblem(lane, file) {
+  if (lane === null || typeof lane !== 'object' || Array.isArray(lane)) return "doesn't read as a JSON object"
+  const fields = ['$schema', 'format', 'name', 'description', 'requires', 'ui_test', 'sections']
+  const unknown = Object.keys(lane).filter((key) => !fields.includes(key))
+  if (unknown.length > 0) return `has ${unknown.join(', ')}, which no lane field is`
+  if (lane.format !== 1) return 'has an unknown format'
+  if (lane.name !== file) return `is named ${JSON.stringify(lane.name)}, not ${file}`
+  if (typeof lane.description !== 'string' || lane.description === '') return 'has no description'
+  if (!Array.isArray(lane.requires) || lane.requires.some((p) => typeof p !== 'string' || !/^[a-z][a-z0-9.-]*$/.test(p))) return "has requires that aren't program names"
+  const ui = lane.ui_test
+  const plain = (entry) => typeof entry === 'string' && /^[A-Za-z0-9][A-Za-z0-9 ._/:=+,-]*$/.test(entry)
+  if (ui !== null && (typeof ui?.tool !== 'string' || typeof ui.package !== 'string' || !Array.isArray(ui.allow) || !ui.allow.every(plain))) {
+    return 'has a ui_test without its tool, its package and plain allow entries'
+  }
+  const extra = Object.keys(lane.sections).filter((name) => !LANE_SECTIONS.includes(name))
+  if (extra.length > 0) return `has ${extra.map((name) => `## ${name}`).join(', ')} in its fragment, which no brief prints`
+  return null
+}
+
 function gitReader(root) {
   return (args) => {
     const run = spawnSync('git', args, { cwd: root, encoding: 'utf8', timeout: 10_000, windowsHide: true })
@@ -451,6 +513,11 @@ export function readState(root, project, { now = Date.now(), home = os.homedir()
   const queueText = readLines(root, 'docs/queue.md')?.join('\n') ?? null
   const { questions, backlog } = readQueue(queueText, problems, stories)
   const decisions = readDecisions(root, problems)
+  const lane = readLane(project.lane)
+  if (lane === null) {
+    const at = (readLines(root, '.epikloop/project.json') ?? []).findIndex((line) => /"lane"\s*:/.test(line)) + 1 || 1
+    problems.push(`.epikloop/project.json:${at}: lane "${project.lane}" is not one of ${laneNames().join(', ')}`)
+  }
   for (const q of questions) {
     const answer = decisions.find((d) => d.answers === q.id)
     if (answer !== undefined) problems.push(`docs/queue.md:${q.line}: ${q.id} is already answered by ${answer.id}`)
@@ -478,7 +545,7 @@ export function readState(root, project, { now = Date.now(), home = os.homedir()
     }
     gauge = fuelGauge(project, mvp, done, delta, { now, home })
   }
-  return { ...s, stage: stageOf(root, project, s, delta), gauge, delta, base }
+  return { ...s, lane, stage: stageOf(root, project, s, delta), gauge, delta, base }
 }
 
 // ---- What a batch reads
@@ -627,8 +694,15 @@ export function storyBrief(state, project, facts, id, now) {
   const decisions = state.decisions.filter((d) => named.has(d.id) || own.test(d.text))
   if (decisions.length > 0) out.push('The decisions that name it, from docs/decisions.md:', '')
   for (const d of decisions) out.push(d.text, '')
+  out.push(...laneSection(state, 'Story'))
   const commit = `one commit whose subject starts "feat(${id}): ", holding the code, its tests and the spec delta`
   return [...out, landing(project, facts, commit, `story/${id}`), '', ...nextIds(state, now)]
+}
+
+// The project's lane's section `name`, as brief lines, or none when the lane has no such section.
+function laneSection(state, name) {
+  const text = state.lane?.sections[name]
+  return text ? [`The ${state.lane.name} lane:`, '', text, ''] : []
 }
 
 // ---- What the closing ceremonies read
@@ -723,6 +797,7 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
       'Its stories, for the click-through:',
       ...stories.map((story) => `- ${story.id} ${story.title}`),
       `The evidence: the deep gates, \`scripts/check.sh --deep\` from Bash or \`node .githooks/check.mjs --deep\` from PowerShell; the gates' self-test, the same with \`--self-test\`; ${stagingLine(project, 'the staging smoke')}; and the human's click-through of these stories on staging.`,
+      ...(state.lane?.sections.Retro ? [`The ${state.lane.name} lane: ${state.lane.sections.Retro.replace(/\s*\n\s*/g, ' ')}`] : []),
       queueLine(state),
       ...costLines(project, home),
     )
@@ -780,14 +855,16 @@ export function releaseBrief(state, project, facts) {
 
 const TEMPLATES = path.join(import.meta.dirname, '..', 'templates')
 const EXAMPLES = { spec: 'spec/capability.md', stories: 'docs/stories/epic.md', queue: 'docs/queue.md', decisions: 'docs/decisions.md' }
-const USAGE = 'usage: node state.mjs [--ready [N | N.M] | --story N.M | --ids | --retro | --release | --example spec|stories|queue|decisions]'
-// The flags that read a project for a batch or a ceremony, each with a test of its argument.
+const USAGE =
+  'usage: node state.mjs [--ready [N | N.M] | --story N.M | --ids | --retro | --release | --lane plan|story|retro | --lanes | --example spec|stories|queue|decisions]'
+// The flags that read a project for a batch, a ceremony or a lane, each with a test of its argument.
 const FLAGS = {
   '--ready': (arg) => arg === undefined || /^\d+(?:\.\d+)?$/.test(arg),
   '--story': (arg) => STORY.test(arg ?? ''),
   '--ids': (arg) => arg === undefined,
   '--retro': (arg) => arg === undefined,
   '--release': (arg) => arg === undefined,
+  '--lane': (arg) => LANE_SECTIONS.some((section) => section.toLowerCase() === arg),
 }
 
 // The state of the project in the current folder, as lines a skill reads, or one example.
@@ -795,6 +872,10 @@ function cli(argv) {
   const [flag, name, ...rest] = argv
   if (flag === '--example' && EXAMPLES[name] !== undefined && rest.length === 0) {
     return process.stdout.write(fs.readFileSync(path.join(TEMPLATES, ...EXAMPLES[name].split('/')), 'utf8'))
+  }
+  // The lanes, for choosing one, before a project exists.
+  if (flag === '--lanes' && name === undefined) {
+    return console.log(laneNames().map((lane) => `- ${lane}: ${readLane(lane)?.description ?? "its profile doesn't read"}`).join('\n'))
   }
   if (flag !== undefined && !(Object.hasOwn(FLAGS, flag) && FLAGS[flag](name) && rest.length === 0)) {
     process.exitCode = 1
@@ -813,6 +894,14 @@ function cli(argv) {
     const state = readState(opened.root, opened.project)
     const now = Date.now()
     if (flag === '--ids') return console.log(nextIds(state, now).join('\n'))
+    if (flag === '--lane') {
+      if (state.lane === null) {
+        process.exitCode = 1
+        return console.log(`Lane "${opened.project.lane}" is not one of ${laneNames().join(', ')}.`)
+      }
+      const section = LANE_SECTIONS.find((each) => each.toLowerCase() === name)
+      return console.log(state.lane.sections[section] ?? `The ${state.lane.name} lane adds nothing here.`)
+    }
     const facts = batchFacts(opened.root)
     if (flag === '--retro' || flag === '--release') {
       const brief = flag === '--retro' ? retroBrief(state, opened.project, facts) : releaseBrief(state, opened.project, facts)
@@ -1308,6 +1397,10 @@ const CASES = [
           '',
           ...later.slice(0, 6),
           '',
+          'The web lane:',
+          '',
+          readLane('web').sections.Story,
+          '',
           landing,
           '',
           ...ids,
@@ -1350,6 +1443,7 @@ const CASES = [
         '- 1.1 Story 1.1',
         '- 1.2 Story 1.2',
         "The evidence: the deep gates, `scripts/check.sh --deep` from Bash or `node .githooks/check.mjs --deep` from PowerShell; the gates' self-test, the same with `--self-test`; the staging smoke against https://staging.example.com/; and the human's click-through of these stories on staging.",
+        `The web lane: ${readLane('web').sections.Retro.replace(/\s*\n\s*/g, ' ')}`,
         'The queue: 1 question and 2 backlog lines; queue Δ 0 since the MVP set was frozen.',
         'The cost rows on this machine:',
         '- T1 at low: 1 run, 10.0 min and $0.10 each on average',
@@ -1483,6 +1577,53 @@ const CASES = [
           ].join('\n'),
         ],
       ])
+    },
+  ],
+  [
+    'every lane reads cleanly, and a malformed one is refused',
+    (k) => {
+      const names = laneNames()
+      const problems = names.map((name) => [name, laneProblem(readLane(name), name)]).filter(([, problem]) => problem !== null)
+      const good = { format: 1, name: 'x', description: 'a kind of product', requires: ['npx'], ui_test: { tool: 'T', package: 'p', allow: ['npx t run'] }, sections: { Plan: 'p' } }
+      const bad = [
+        [{ ...good, name: 'y' }, 'is named "y", not x'],
+        [{ ...good, ui_test: { ...good.ui_test, allow: ['npx t run; curl x'] } }, 'has a ui_test without its tool, its package and plain allow entries'],
+        [{ ...good, requires: ['NPX'] }, "has requires that aren't program names"],
+        [{ ...good, sections: { Deploy: 'd' } }, 'has ## Deploy in its fragment, which no brief prints'],
+        [{ ...good, perf: {} }, 'has perf, which no lane field is'],
+      ]
+      return [
+        ...problems.map(([name, problem]) => `lanes/${name}.json ${problem}`),
+        ...k.expect([
+          [names.join(' '), 'service web'],
+          [Object.keys(readLane('web').sections).join(' '), 'Plan Story Retro'],
+          [Object.keys(readLane('service').sections).join(' '), 'Plan Story'],
+          [laneProblem(good, 'x'), null],
+          ...bad.map(([lane, wanted]) => [laneProblem(lane, 'x'), wanted]),
+          // A name that climbs out of lanes/ to a JSON file that exists is still no lane.
+          [readLane('../schemas/examples/project'), null],
+        ]),
+      ]
+    },
+  ],
+  [
+    "--lanes lists the lanes, --lane prints the project's lane, and an unknown lane is a problem",
+    (k) => {
+      const outside = k.folder()
+      const web = k.repo(planned({ 1: [[1, 'T1', true]] }))
+      const service = k.repo(planned({ 1: [[1, 'T1', true]] }), { marker: { lane: 'service' } })
+      const unknown = k.repo(planned({ 1: [[1, 'T1', true]] }), { marker: { lane: 'desktop' } })
+      return [
+        ...k.expect([
+          [k.run(outside, '--lanes'), '0 - service: an API, a command-line tool or a job\n- web: a product people use in a browser\n'],
+          [k.run(web, '--lane', 'plan'), `0 ${readLane('web').sections.Plan}\n`],
+          [k.run(service, '--lane', 'retro'), '0 The service lane adds nothing here.\n'],
+          [k.run(unknown, '--lane', 'story'), '1 Lane "desktop" is not one of service, web.\n'],
+          [k.run(web, '--lane', 'deploy'), `1 ${USAGE}\n`],
+        ]),
+        ...k.contains(k.read(unknown).problems, ['.epikloop/project.json:1: lane "desktop" is not one of service, web']),
+        ...k.read(web, { lane: 'web' }).problems.map((problem) => `problem ${problem}`),
+      ]
     },
   ],
   [

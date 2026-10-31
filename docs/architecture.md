@@ -302,14 +302,28 @@ only layers 2 and 3 gate them.
 
 ## Lanes
 
-A lane is a profile inside the core plugin: `lanes/<name>.json`, plus an optional skill fragment. It
-declares:
+A lane is a profile inside the core plugin: `lanes/<name>.json`, plus an optional fragment,
+`lanes/<name>.md`. Together they declare:
 
-- how visual truth is stored and gated
-- how UI is verified (Playwright screenshot, Maestro or Flutter integration test, contract tests)
-- how staging works (host git-deploy URL, EAS preview, TestFlight or Play internal track, service
-  URL)
-- the perf budgets
+- how UI is verified
+  - `web`: a Playwright test for each acceptance criterion a person sees; the screenshot per
+    touched screen joins with design in M2
+  - Maestro or a Flutter integration test in the mobile lanes
+  - contract tests for `service`
+- how staging works: a host's git-deploy URL, an EAS preview, TestFlight or the Play internal
+  track, or a service URL
+- how visual truth is stored and gated, and the perf budgets, once a lane needs them
+
+The pieces work like this:
+
+- **The profile** is data, and code reads each field. `doctor` reads `requires`, and the guard
+  reads the UI test tool's `allow` prefixes.
+- **The fragment** holds `Plan`, `Story` and `Retro` sections. The state reader prints the active
+  lane's sections into plan's injection, each story-worker's brief and the retro's brief.
+  - Nothing loads until it is used, and skills never name a lane.
+  - A per-project lane skill couldn't be preloaded, and every model-invocable skill's description
+    costs every turn ([issue #2](https://github.com/Yheng/Epikloop/issues/2)).
+- **Writing a lane** is covered in [docs/lanes.md](lanes.md).
 
 The 1.0 lane set is `web`, `service` (which skips design), `mobile-expo` and `mobile-flutter`.
 Native iOS and Android are community lanes. Contributors add lanes without touching skills, and
@@ -333,8 +347,8 @@ Native iOS and Android are community lanes. Contributors add lanes without touch
 | `/epikloop:release` | The go-live story: production, promotion, rollback note, post-launch checklist. | high | user only |
 | `/epikloop:harbor on\|off\|open` | Harbor's switch and its view. | low | user only |
 
-The two internal skills are `spec-delta`, which applies a story's spec delta, and the lane
-fragments.
+The one internal skill is `spec-delta`, which applies a story's spec delta. Lane fragments reach
+the model through the state reader's briefs instead (see [Lanes](#lanes)).
 
 **The worker.** The batch's worker is a plugin subagent, `story-worker`:
 
@@ -418,7 +432,9 @@ script's call, not the model's.
 - `check.sh` prints failures and a one-line summary, never full logs.
 - A product's `CLAUDE.md` stays under 200 lines, with project rules only; the protocol arrives by
   hook.
-- Each story takes one screenshot per touched screen; the full visual compare runs once per epic.
+- Each story takes one screenshot per touched screen, and the full visual compare runs once per
+  epic. Both come with design in M2. Until then a web story's UI evidence is a Playwright test, and
+  only the specs it touched run per story.
 - Cost rows per story are the tuning instrument: model, effort, wall time and, when available,
   dollars. The first retro of each dogfood project reviews them.
 
@@ -467,9 +483,9 @@ tool's name and docs are not nautical.
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke and doctor | now |
-| `plugins/epikloop/lanes/` | `web` and `service`; then `mobile-expo` and `mobile-flutter` | M1, M3 |
+| `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, and an example of each project file in `spec/` and `docs/`; then `CLAUDE.md` and the team-mode workflow | now, M1 |
 | `plugins/epikloop/evals/` | The eval suite and its fixture project, inside the plugin where `claude plugin eval` reads it | M1 |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
-| `docs/` | Doctrine, architecture, roadmap; the lane authoring guide with the first lanes | now, M1 |
+| `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
 | `.github/workflows/ci.yml` | Validation on Linux, macOS and Windows; self-test, lint and evals as they arrive | now |

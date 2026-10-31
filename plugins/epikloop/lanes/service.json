@@ -1,0 +1,8 @@
+{
+  "$schema": "../schemas/lane.schema.json",
+  "format": 1,
+  "name": "service",
+  "description": "an API, a command-line tool or a job",
+  "requires": [],
+  "ui_test": null
+}

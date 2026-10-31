@@ -84,6 +84,15 @@ All notable changes to Epikloop are recorded here.
   It also folds the emitter's files. CI runs its self-test on Linux, macOS and Windows.
 - `init.mjs --refresh` copies the plugin's current gate files over a project's missing or stale
   copies, and stages them.
+- The `web` and `service` lanes, each a profile, `lanes/<name>.json`, and a fragment,
+  `lanes/<name>.md`, with `schemas/lane.schema.json` and the authoring guide, `docs/lanes.md`.
+  - The state reader prints the active lane's Plan, Story and Retro sections into the plan, each
+    story-worker's brief and the retro's brief.
+  - `--lanes` lists the lanes for `discover`, `adopt` and `architect`.
+  - An unknown lane is a reader problem, and `init.mjs` refuses one.
+  - In a web project, the guard allows `npx playwright test`.
+  - `doctor` reports the lanes this machine can build, and whether the web lane's Playwright is
+    installed.
 
 ### Changed
 
@@ -94,6 +103,11 @@ All notable changes to Epikloop are recorded here.
 - `init.mjs` compares gate files without regard to line endings, so a CRLF checkout counts as the
   plugin's own.
 - `fold.mjs` runs its self-test only when run itself, not when `doctor.mjs` imports it.
+- Lane fragments reach the model through the state reader's briefs, not as internal skills
+  ([issue #2](https://github.com/Yheng/Epikloop/issues/2)). `spec-delta` is the one internal skill.
+- In M1 a web story's UI evidence is a Playwright test. The screenshot per touched screen and
+  retro's full visual compare join with `design` in M2. Perf budgets are held until a project
+  needs them.
 
 ### Removed
 
@@ -346,6 +360,19 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   had the decisions format and the next number but not the file. It couldn't read the plugin's
   files, and said it was assuming `docs/decisions.md`. `--ids` and the ceremony briefs now name
   `docs/decisions.md`.
+- **A web story's UI evidence is a Playwright test of what a person sees** (doctrine 4: a T1 story
+  carries acceptance evidence). Until `design` arrives, there is no truth to compare a screenshot
+  against. An earlier pipeline's per-story screenshot renders were among its largest token costs.
+  So only the specs a story touched run per story, and the whole suite runs at retro.
+- **No skill names a lane** (the settled design: contributors add lanes without touching skills).
+  The lanes' descriptions come from `--lanes`, and each lane's guidance comes from its fragment,
+  printed into the briefs ([issue #2](https://github.com/Yheng/Epikloop/issues/2)).
+
+### Hook rules (adopted 2026-10-31)
+
+- **In a web project the guard allows `npx playwright test`, but never an install** (doctrine 2: a
+  batch never stops to ask). Without it, each web story's test run would wait for approval. An
+  install fetches from the network, so the human approves it.
 
 ### Format rules (adopted 2026-10-31)
 
@@ -360,6 +387,8 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
 - **Until the `mvp` tag, queue Δ counts from the start of the current phase, which is the last
   MVP epic once all are tagged.** Counting from the highest tag would reset Δ to 0 the moment the
   final phase is tagged, and the sign-off condition would pass by itself.
+- **A project's lane is one the plugin has.** A lane without a profile would leave the briefs and
+  the guard nothing to read. So `init.mjs` refuses an unknown lane, and the reader reports one.
 
 ### Setup rules (adopted 2026-10-31)
 
