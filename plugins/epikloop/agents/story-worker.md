@@ -25,7 +25,8 @@ nothing, with "landed as built" as its default, so the human reads the diff.
 
 The gates are `scripts/check.sh` from Bash and `node .githooks/check.mjs` from PowerShell. A full
 run before committing stamps the tree, so the push doesn't repeat the tests and build. A failing
-gate is fixed, never bypassed.
+gate is fixed, never bypassed. Each command runs on its own, with nothing chained or piped onto
+it, so the batch never waits on an approval.
 
 Nothing is asked. A question that needs a product call is parked in `docs/queue.md` with the
 conservative default taken, and the work goes on with that default; the entry rides in the story's

@@ -337,6 +337,11 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   model from invoking it, and the front door told the human the install seemed to lack a `retro`
   skill. The state reader now reads the skill's frontmatter and adds "which only the human starts".
   On the same check, the front door then named the command for the human to type.
+- **Each shell command runs on its own,** in the protocol and in the worker. On 2026-10-31, in
+  headless checks, the model chained `; echo "EXIT $?"`, `2>&1` or `| tail` onto commands in the
+  worker, `adopt`, `retro` (three times) and `doctor`. Claude Code refused each part no rule
+  allowed, and the model reran the command alone. In an interactive session each would be an
+  approval prompt, which stops a batch meant to run unattended.
 - **The next decision's number comes with its file.** On 2026-10-31, in a headless check, `adopt`
   had the decisions format and the next number but not the file. It couldn't read the plugin's
   files, and said it was assuming `docs/decisions.md`. `--ids` and the ceremony briefs now name

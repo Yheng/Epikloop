@@ -31,6 +31,8 @@ const PROTOCOL = `Epikloop protocol for this project:
   question that needs a product call is parked in docs/queue.md with the conservative default
   taken and what it blocks, and the work goes on with that default; /epikloop:decide answers
   parked questions in one sitting.
+- Each shell command runs on its own, with nothing chained or piped onto it. The tool already
+  returns its output and any failing exit code, and a compound command can wait for approval.
 - A finding goes by threshold: mechanical and small is fixed now in its own commit; one that needs
   a product call is a parked question; real but not MVP-breaking is one dated backlog line; one
   that breaks an MVP acceptance criterion is fixed now or parked as an explicit scope question.
