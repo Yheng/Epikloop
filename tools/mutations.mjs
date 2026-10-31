@@ -126,6 +126,7 @@ export const MUTATIONS = [
   m(STATE, ['state'], 'accept any fragment section', 'const extra = Object.keys(lane.sections).filter((name) => !LANE_SECTIONS.includes(name))', 'const extra = []'),
   m(STATE, ['state'], 'accept any allow entry', "const plain = (entry) => typeof entry === 'string' && /^[A-Za-z0-9][A-Za-z0-9 ._/:=+,-]*$/.test(entry)", "const plain = (entry) => typeof entry === 'string'"),
   m(STATE, ['state'], 'read a lane by any name', "if (typeof name !== 'string' || !LANE_NAME.test(name)) return null", "if (typeof name !== 'string') return null"),
+  m(STATE, ['state'], 'do nothing when run through a link', "if (fs.realpathSync.native(path.resolve(process.argv[1] ?? '.')) === fs.realpathSync.native(import.meta.filename)) {", "if (path.resolve(process.argv[1] ?? '') === import.meta.filename) {"),
 
   // The staging smoke.
   m(SMOKE, ['smoke'], 'accept any answer', 'if (status >= 200 && status < 300) process.exitCode = 0', 'process.exitCode = 0'),

@@ -544,6 +544,9 @@ async function selfTest() {
     repo() {
       const dir = k.folder()
       gitOk(dir, ['init', '-q'], env)
+      // As on Windows, git takes no file mode from the file system, so only --chmod=+x stages a
+      // shim as executable, whatever system the self-test runs on.
+      gitOk(dir, ['config', 'core.fileMode', 'false'], env)
       return dir
     },
     git: (dir, ...args) => git(dir, args, env),
@@ -617,7 +620,7 @@ async function selfTest() {
   process.exitCode = failures.length > 0 ? 1 : 0
 }
 
-if (path.resolve(process.argv[1] ?? '') === import.meta.filename) {
+if (fs.realpathSync.native(path.resolve(process.argv[1] ?? '.')) === fs.realpathSync.native(import.meta.filename)) {
   process.exitCode = 1
   try {
     if (process.argv[2] === '--self-test') await selfTest()

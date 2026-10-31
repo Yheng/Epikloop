@@ -1650,6 +1650,20 @@ const CASES = [
       return k.expect([...pairs, [k.cli(dir).stdout, 'Not an Epikloop project.\n'], [`${usage.status} ${usage.stdout}`, `1 ${USAGE}\n`]])
     },
   ],
+  [
+    'the CLI runs from a path through a link, as a plugin behind a symlink does',
+    (k) => {
+      // The link points at a copy of the plugin, so nothing that removes the link can reach the
+      // plugin itself. A junction is Windows' link that needs no privilege; elsewhere it is a symlink.
+      const dir = k.folder()
+      const copy = path.join(dir, 'plugin')
+      fs.cpSync(path.join(import.meta.dirname, '..'), copy, { recursive: true })
+      const link = path.join(dir, 'linked')
+      fs.symlinkSync(copy, link, 'junction')
+      const linked = k.cli(dir, ['--lanes'], path.join(link, 'bin', 'state.mjs'))
+      return k.expect([[`${linked.status} ${linked.stdout}`, `0 ${k.cli(dir, ['--lanes']).stdout}`]])
+    },
+  ],
 ]
 
 async function selfTest() {
@@ -1726,8 +1740,8 @@ async function selfTest() {
     },
     read: (dir, fields = {}) => readState(dir, { ...(k.project ?? MARKER), ...fields }, { now: NOW, home }),
     // The CLI, run as a skill runs it, from `cwd`, with this case's home.
-    cli: (cwd, args = []) =>
-      spawnSync(process.execPath, [import.meta.filename, ...args], { cwd, env: { ...env, HOME: home, USERPROFILE: home }, encoding: 'utf8', windowsHide: true }),
+    cli: (cwd, args = [], script = import.meta.filename) =>
+      spawnSync(process.execPath, [script, ...args], { cwd, env: { ...env, HOME: home, USERPROFILE: home }, encoding: 'utf8', windowsHide: true }),
     // The CLI's exit code and output for --ready, or for another batch flag.
     run(dir, ...args) {
       const run = k.cli(dir, args)
@@ -1771,7 +1785,7 @@ async function selfTest() {
   process.exitCode = failures.length > 0 ? 1 : 0
 }
 
-if (path.resolve(process.argv[1] ?? '') === import.meta.filename) {
+if (fs.realpathSync.native(path.resolve(process.argv[1] ?? '.')) === fs.realpathSync.native(import.meta.filename)) {
   if (process.argv[2] === '--self-test') await selfTest()
   else cli(process.argv.slice(2))
 }

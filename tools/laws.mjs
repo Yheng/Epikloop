@@ -509,7 +509,7 @@ async function selfTest() {
   process.exitCode = failures.length > 0 ? 1 : 0
 }
 
-if (path.resolve(process.argv[1] ?? '') === import.meta.filename) {
+if (fs.realpathSync.native(path.resolve(process.argv[1] ?? '.')) === fs.realpathSync.native(import.meta.filename)) {
   process.exitCode = 1
   try {
     if (process.argv[2] === '--self-test' && process.argv.length === 3) await selfTest()

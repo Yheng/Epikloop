@@ -115,6 +115,9 @@ All notable changes to Epikloop are recorded here.
   - A mutation that survives, or whose text no longer matches, fails CI.
   - Its first full run found a gap: no sample of the guard's showed that a pipe or a redirect after
     an allowed command is refused. The guard's self-test now has three.
+  - On Linux, its first CI run found that `init`'s self-test couldn't tell whether a shim had been
+    staged without `--chmod=+x`, because git there reads the mode from the file. Its test
+    repositories now take no mode from the file system, as on Windows.
 
 ### Changed
 
@@ -132,6 +135,14 @@ All notable changes to Epikloop are recorded here.
   needs them.
 - When a stack command fails and its output names `.githooks/` or `scripts/check.sh`, the gate
   runner adds a line: those ship as they are, so leave them out of what the command checks.
+- `state.mjs`, `init.mjs`, `doctor.mjs`, `smoke.mjs` and `fold.mjs` now run when they are started
+  through a symlinked path.
+  - They compared the path they were given with their own resolved path. Behind a symlink, such
+    as macOS's temporary folder, the two differed, and the script printed nothing.
+  - Every skill's format injection runs through `state.mjs`, so a plugin installed behind a
+    symlink would have injected nothing.
+  - The laws' self-test found it on macOS on 2026-10-31, and the state reader's self-test now runs
+    it through a link.
 
 ### Removed
 
