@@ -220,6 +220,17 @@ All notable changes to Epikloop are recorded here.
 - The `story` case's landing grader allows the story's title between its number and "landed", as in
   "Story 1.1 (Greet by name) landed as commit `332a9ce`". Two runs on 2026-11-01 reported it that
   way, and the grader still refuses "1.1 hasn't landed".
+- The fixtures before a batch (`empty`, `specified` and `architected`) carry a remote nothing has
+  been pushed to, as a new project's GitHub repository is. The `discover` and `plan` cases check
+  that their commit reached it.
+  - The remote's URL is a network one, so `init.mjs` reads the project id from it. A push goes to a
+    bare repository inside `.git`, so nothing leaves the machine.
+  - Graders read a push from `.git/logs/refs/remotes/origin/main`, as they read commits from
+    `.git/logs/HEAD`.
+- A `regex` grader's file target can be a glob, such as `spec/*.md`, which reads every file it
+  matches. `discover`'s spec graders read the spec files that way, so they check what was written,
+  whichever tool wrote it. On 2026-11-01 a `discover` run wrote a correct spec through a Bash
+  heredoc, and the graders, which watched Write calls, failed it.
 
 ### Removed
 
@@ -557,3 +568,21 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   plugin with one. Epikloop's scripts were in `bin/`, which kept Epikloop out of Anthropic's
   directory, where a listed plugin's author can see its usage. Claude Code's docs offer `bin/` as
   the way to ship a command-line tool, so the laws keep one from coming back.
+
+### Skill rules (adopted 2026-11-01)
+
+- **`discover`, `architect` and `plan` land their commits, as the other committing skills do.**
+  - On 2026-11-01, in the first dogfood project, `discover` committed the spec in solo mode with
+    its remote set, and never pushed it, and `architect` did the same with the architecture. The
+    protocol pushes a solo commit when there is a remote.
+  - The three skills said only "commit", where `adopt`, `decide`, `triage`, `retro` and `release`
+    say "commit … and land it".
+  - "Land" alone wasn't enough. Told to "land it", a `discover` eval run still committed without
+    pushing, and the dogfood project's `plan`, told to land its commit, committed and left the push
+    to the human. So the three say "push" outright for solo mode, and `architect` and `plan` say
+    that team mode lands through a pull request. `discover` always runs in solo mode.
+  - No eval case holds `architect`'s landing, which uses `plan`'s sentence. A case for it landed
+    the commit in both its runs, but cost $1.22 to $1.87 a run at the skill's max effort, so it was
+    left out of the suite.
+  - Nothing later caught it. A batch checks that the default branch is landed against the
+    remote's copy of it, and a remote nothing has been pushed to has none.

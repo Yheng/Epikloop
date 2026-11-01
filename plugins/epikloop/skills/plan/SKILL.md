@@ -34,6 +34,7 @@ any deadline. Record them in `.epikloop/project.json` as `mvp_frozen` (today's d
 `hours_per_day` and `deadline`, and commit them with the plan. In team mode, once the marker says
 so, `node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" --refresh` lays down the check each pull request
 runs, `.github/workflows/check.yml`, for the same commit; tell the human to make its check job
-required in the default branch's protection. The plan's commit is the queue's baseline, and the
-MVP set moves afterwards only through a recorded decision. With `--extend`, new epics follow the
-last one with their stories marked `MVP: no`, and frozen epics stay as they are.
+required in the default branch's protection. The plan's commit is the queue's baseline: in solo
+mode push it when the repository has a remote, and in team mode it lands through a pull request.
+The MVP set moves afterwards only through a recorded decision. With `--extend`, new epics follow
+the last one with their stories marked `MVP: no`, and frozen epics stay as they are.

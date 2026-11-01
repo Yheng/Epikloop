@@ -25,4 +25,5 @@ Each decision is appended, numbered after the last, in this format, which a scri
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example decisions`
 
-Set the confirmed lane in `.epikloop/project.json`, then commit.
+Set the confirmed lane in `.epikloop/project.json`, then commit. In solo mode push the commit when
+the repository has a remote; in team mode it lands through a pull request.

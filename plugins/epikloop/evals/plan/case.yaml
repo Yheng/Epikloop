@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: plan
-description: /epikloop:plan, with the human's decisions given up front, writes tiered stories, freezes the MVP set, records the mode and hours, and commits.
+description: /epikloop:plan, with the human's decisions given up front, writes tiered stories, freezes the MVP set, records the mode and hours, and lands the commit on its remote.
 tags: [plan]
 runs: 1
 context:
@@ -36,3 +36,7 @@ graders:
     type: regex
     target: { source: file, path: .git/logs/HEAD }
     pattern: '\tcommit: (?!fixture: )'
+  - name: lands
+    type: regex
+    target: { source: file, path: .git/logs/refs/remotes/origin/main }
+    pattern: '\tupdate by push'

@@ -194,6 +194,9 @@ export const MUTATIONS = [
   m(FIXTURE, ['fixture'], "give existing code a test that fails", 'return `Hello, ${name}!`', 'return `Hi, ${name}!`'),
   m(FIXTURE, ['fixture'], 'take any scaffold for the shim', 'const fixture = SHIM.exec(', 'const fixture = / ([a-z][a-z0-9-]*)\\n/.exec('),
   m(FIXTURE, ['fixture'], "count a scaffold case.yaml never runs", "const runs = fs.existsSync(yaml) && /^\\s+scaffold_script: scaffold\\.sh\\s*$/m.test(fs.readFileSync(yaml, 'utf8'))", 'const runs = true'),
+  m(FIXTURE, ['fixture'], 'build the fixtures before a batch without a remote', '  if (REMOTE.has(name)) {', '  if (false) {'),
+  m(FIXTURE, ['fixture'], 'give every fixture a remote', '  if (REMOTE.has(name)) {', '  if (true) {'),
+  m(FIXTURE, ['fixture'], 'push to the network URL', "    git(dir, ['config', `url.${bare}.pushInsteadOf`, url])\n", ''),
 
   // The eval suite's runner.
   m(EVALS, ['evals'], 'take not_contains for contains', 'return { ok: found === 0,', 'return { ok: found > 0,'),
@@ -205,6 +208,8 @@ export const MUTATIONS = [
   m(EVALS, ['evals'], 'ignore the cost cap', 'if (!ctx.budget()) return', 'if (false) return'),
   m(EVALS, ['evals'], 'let a session run past its timeout', '      timedOut = true\n      stop(child)\n', '      timedOut = true\n'),
   m(EVALS, ['evals'], 'read a file outside the workspace', "if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(", 'if (false) throw new Error('),
+  m(EVALS, ['evals'], 'read a glob as one file name', "if (spec.path.includes('*')) {", 'if (false) {'),
+  m(EVALS, ['evals'], 'read only the first file a glob matches', '.filter((file) => glob.test(file)).sort()', '.filter((file) => glob.test(file)).sort().slice(0, 1)'),
   m(EVALS, ['evals'], "take a field the runner doesn't read", 'if (!known.includes(key)) say(', 'if (false) say('),
   m(EVALS, ['evals'], 'grant Agent to every case', '...READ_ONLY.filter((tool) => !listed.includes(tool))', "...READ_ONLY.filter((tool) => !listed.includes(tool) && tool !== 'Agent')"),
   m(EVALS, ['evals'], 'grant a case a tool beyond the read-only ones', 'if (!READ_ONLY.includes(tool)) say(', 'if (false) say('),

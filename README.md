@@ -995,7 +995,9 @@ reads, and `node tools/evals.mjs` runs it.
   - planned
   - planned with a question parked
 
-  The fixture's self-test runs in CI on every push, at no cost.
+  The first three carry a remote nothing has been pushed to, as a new project's GitHub repository
+  is; a push there goes to a bare repository inside `.git`. The fixture's self-test runs in CI on
+  every push, at no cost.
 - **What the ten cases cover:**
   - the front door, inside and outside a project
   - a plain question answered from the briefing
@@ -1003,6 +1005,8 @@ reads, and `node tools/evals.mjs` runs it.
   - `decide` and `triage`
   - `architect` waiting for confirmation
   - `plan`, `discover` and `adopt`
+
+  `discover` and `plan` must also push their commit to the fixture's remote.
 
 From the repository's root:
 

@@ -1,6 +1,6 @@
 schema_version: "1.1"
 name: discover
-description: /epikloop:discover, given a brief that leaves nothing open, writes the spec with stable IDs and the brief's rule quoted, sets up the project, and commits.
+description: /epikloop:discover, given a brief that leaves nothing open, writes the spec with stable IDs and the brief's rule quoted, sets up the project, and lands the commit on its remote.
 tags: [discover]
 runs: 1
 context:
@@ -21,20 +21,24 @@ graders:
     target: { source: file, path: .epikloop/project.json }
     pattern: '"lane":\s*"service"'
   - name: writes-a-requirement
-    type: tool_used
-    tool: Write
-    input_match: 'spec[/\\]+.*## REQ-[A-Z]+-\d{3} '
+    type: regex
+    target: { source: file, path: 'spec/*.md' }
+    pattern: '^## REQ-[A-Z]+-\d{3} '
+    flags: m
   - name: quotes-the-rule
-    type: tool_used
-    tool: Write
-    input_match: 'spec[/\\]+.*No such file'
+    type: regex
+    target: { source: file, path: 'spec/*.md' }
+    pattern: 'No such file'
   - name: observes-nothing
-    type: tool_used
-    tool: Write
-    input_match: 'Status: observed'
-    min: 0
-    max: 0
+    type: regex
+    target: { source: file, path: 'spec/*.md' }
+    pattern: 'Status: observed'
+    match: not_contains
   - name: commits
     type: regex
     target: { source: file, path: .git/logs/HEAD }
     pattern: '\tcommit \(initial\): '
+  - name: lands
+    type: regex
+    target: { source: file, path: .git/logs/refs/remotes/origin/main }
+    pattern: '\tupdate by push'

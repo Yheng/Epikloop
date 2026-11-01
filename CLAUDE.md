@@ -68,7 +68,8 @@ has been built with Epikloop and an existing production repo adopted, each end t
     its graders; a case that starts in a fixture project also has `scaffold.sh`, the two-line shim
     that names it
   - `evals/fixture.mjs` — builds each fixture project, a greeter repository at the stage a case
-    starts from, with its self-test
+    starts from, with its self-test. The fixtures before a batch carry a remote nothing has been
+    pushed to.
 - `plugins/epikloop-harbor/` — a manifest only, until M4.
 - `tools/` — this repository's own checks, which no plugin ships:
   - `laws.mjs` checks the mechanical rules: the constitution's, and those below for frontmatter,
@@ -206,7 +207,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - CI runs it again on Node 22.0.0, the floor.
 - **The fixture's self-test** builds every eval fixture in a temporary folder with a home of its
   own. It reads each fixture's stage as the briefing does, runs `existing`'s tests and the gates on
-  `planned`, and checks that each case's scaffold names a fixture.
+  `planned`, pushes to `architected`'s remote, and checks that each case's scaffold names a
+  fixture.
 - **The eval runner's self-test** loads every case, holds its YAML reader and graders to samples,
   and runs whole cases against a stand-in for `claude`. Those runs cover the fixture, the prompt,
   the tools granted, a timeout, the cost cap and the cleaned events. It makes no model call.
@@ -265,19 +267,24 @@ node tools/evals.mjs story plan   # the named cases
 - **Each case sets its own run.**
   - `runs: 1` and `model: claude-sonnet-5-5`; the worker keeps its pinned Opus.
   - Its graders are deterministic: `regex`, `tool_used` and `file_exists`, with no LLM judge.
+  - A `regex` grader's file target may be a glob, such as `spec/*.md`, which reads every file it
+    matches, so the grader checks what was written whichever tool wrote it.
 - **How a case runs.** The runner starts a headless `claude -p` session in `dontAsk` mode.
   - It loads the plugin from this checkout, with no user settings, MCP servers or other plugins.
   - It grants Bash, Write and Edit, plus the read-only tools the case lists.
   - It starts in a throwaway folder: empty, or the fixture its `scaffold.sh` names.
+  - The fixtures before a batch (`empty`, `specified`, `architected`) carry `origin`, a network URL
+    nothing has been pushed to, as a new project's GitHub repository is. A push goes to a bare
+    repository inside `.git`, so nothing leaves the machine.
   - Its environment is the runner's, with `PWD` set to that folder and none of the variables naming
     the Claude Code session the runner was started from, so its effort and its shell are its own.
   - There's no OS sandbox. The guard stands in front of each shell command, and the runner deletes
     what the sessions wrote to `~/.epikloop`.
   - `--cap` (default $5) stops starting runs, `--jobs` (default 3) sets how many run at once, and
     `--keep` keeps the folders and transcripts.
-- **Graders that work under both runners.** They read git state from `.git/logs/HEAD`, because
-  `claude plugin eval` switches git hooks off. A slash-command prompt doesn't count as a Skill
-  call there.
+- **Graders that work under both runners.** They read git state from `.git/logs/HEAD`, and a push
+  from `.git/logs/refs/remotes/origin/main`, because `claude plugin eval` switches git hooks off.
+  A slash-command prompt doesn't count as a Skill call there.
 - **`claude plugin eval`** reads the same files. From `plugins/epikloop`:
   `claude plugin eval . --ablation none --scaffold --allow-tools Bash Write Edit --max-cost-usd 5`,
   on Linux, macOS or WSL2 with `bubblewrap` and `socat`.

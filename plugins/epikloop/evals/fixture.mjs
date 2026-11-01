@@ -6,8 +6,10 @@
 // commits start `fixture: `, so a grader can tell them from the commits made during the run.
 //
 // `node fixture.mjs --self-test` builds every fixture in a temporary folder, reads each one as the
-// briefing does, and checks that every case's scaffold names a fixture.
+// briefing does, pushes to the remote the fixtures before a batch carry, and checks that every
+// case's scaffold names a fixture.
 import { spawnSync } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -142,6 +144,12 @@ export const FIXTURES = {
   parked: [SPECIFY, ARCHITECT, PLAN, PARK],
 }
 
+// The fixtures before a batch carry the remote a new repository on GitHub gives a project: a
+// network URL that nothing has been pushed to yet, from which init.mjs reads the project id. A push
+// goes to a bare repository inside .git, where git never looks, so nothing leaves the machine. The
+// other fixtures have no remote, so the skills that run `git fetch` never reach the network.
+const REMOTE = new Set(['empty', 'specified', 'architected'])
+
 // ---- Building one
 
 function run(cwd, command, args, env = {}) {
@@ -174,6 +182,14 @@ export function build(name, dir) {
   git(dir, ['init', '-q', '-b', 'main'])
   // The repository carries its own identity, so its commits, and the run's, work in any home.
   for (const [key, value] of [['user.name', 'Eval'], ['user.email', 'eval@example.invalid'], ['commit.gpgsign', 'false']]) git(dir, ['config', key, value])
+  // Before the commits, so init reads the id from the remote. The random part keeps runs apart.
+  if (REMOTE.has(name)) {
+    const bare = path.join(dir, '.git', 'origin.git').split(path.sep).join('/')
+    const url = `https://example.invalid/greeter-${crypto.randomBytes(4).toString('hex')}.git`
+    git(dir, ['init', '-q', '--bare', bare])
+    git(dir, ['remote', 'add', 'origin', url])
+    git(dir, ['config', `url.${bare}.pushInsteadOf`, url])
+  }
   for (const commit of commits) {
     if (commit.init) run(dir, process.execPath, [INIT, '--lane', 'service', '--mode', 'solo'])
     for (const [file, text] of Object.entries(commit.files)) write(dir, file, text)
@@ -291,6 +307,42 @@ async function selfTest() {
       },
     ],
     ['parked is at stage 6, with its question first', () => stage('parked', 6, '/epikloop:decide, then /epikloop:epic 1')],
+    [
+      'the fixtures before a batch carry a network remote nothing has been pushed to, and a push lands inside .git',
+      () => {
+        const problems = []
+        const read = (dir, args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8', windowsHide: true }).stdout.trim()
+        const pushLog = (dir) => path.join(dir, '.git', 'logs', 'refs', 'remotes', 'origin', 'main')
+        for (const name of REMOTE) {
+          const dir = path.join(temp, `remote-${name}`)
+          build(name, dir)
+          const url = read(dir, ['remote', 'get-url', 'origin'])
+          if (!/^https:\/\/example\.invalid\/greeter-[0-9a-f]{8}\.git$/.test(url)) problems.push(`${name}'s origin is ${JSON.stringify(url)}`)
+          if (fs.existsSync(pushLog(dir))) problems.push(`${name} has been pushed to already`)
+          const marker = path.join(dir, '.epikloop', 'project.json')
+          const fromRemote = crypto.createHash('sha256').update(url.slice('https://'.length, -'.git'.length)).digest('hex').slice(0, 12)
+          if (fs.existsSync(marker) && JSON.parse(fs.readFileSync(marker, 'utf8')).id !== fromRemote) problems.push(`${name}'s project id isn't read from its remote`)
+        }
+        const dir = path.join(temp, 'remote-architected')
+        const pushed = spawnSync('git', ['push', '-q', '--no-verify', 'origin', 'main'], { cwd: dir, encoding: 'utf8', windowsHide: true })
+        if (pushed.status !== 0) return [...problems, `the push failed: ${`${pushed.stderr}${pushed.stdout}`.trim().split('\n')[0]}`]
+        if (!(fs.existsSync(pushLog(dir)) && /\tupdate by push$/m.test(fs.readFileSync(pushLog(dir), 'utf8')))) problems.push("the push left no update by push in origin/main's log")
+        if (read(dir, ['--git-dir', '.git/origin.git', 'rev-parse', 'refs/heads/main']) !== read(dir, ['rev-parse', 'HEAD'])) problems.push("the bare repository's main isn't HEAD")
+        return problems
+      },
+    ],
+    [
+      'the other fixtures have no remote',
+      () =>
+        Object.keys(FIXTURES)
+          .filter((name) => !REMOTE.has(name))
+          .flatMap((name) => {
+            const dir = path.join(temp, `local-${name}`)
+            build(name, dir)
+            const remotes = spawnSync('git', ['remote'], { cwd: dir, encoding: 'utf8', windowsHide: true }).stdout.trim()
+            return remotes === '' ? [] : [`${name} has a remote: ${remotes.split('\n').join(', ')}`]
+          }),
+    ],
     [
       'a fixture builds only in an empty folder',
       () => {

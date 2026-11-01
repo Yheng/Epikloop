@@ -213,12 +213,18 @@ const globRe = (glob) =>
   new RegExp(`^${glob.split(/(\*\*\/|\*\*|\*)/).map((part) => (part === '**/' ? '(?:.*/)?' : part === '**' ? '.*' : part === '*' ? '[^/]*' : part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))).join('')}$`)
 
 // What a grader looks at in `run`: the last message, the trace, the files created, or one file's
-// contents after the run, which must lie inside the workspace.
+// contents after the run, which must lie inside the workspace. A path with a * reads every file it
+// matches, outside .git, so a grader checks what was written, whichever tool wrote it.
 function target(spec = 'last_message', run) {
   if (spec === 'last_message') return run.last
   if (spec === 'trace') return run.trace
   if (spec === 'files') return run.created.join('\n')
   if (spec !== null && typeof spec === 'object' && spec.source === 'file' && typeof spec.path === 'string') {
+    if (spec.path.includes('*')) {
+      const glob = globRe(spec.path)
+      const files = listFiles(run.work).filter((file) => glob.test(file)).sort()
+      return files.map((file) => fs.readFileSync(path.join(run.work, ...file.split('/')), 'utf8')).join('\n')
+    }
     const file = path.resolve(run.work, ...spec.path.split('/'))
     const relative = path.relative(run.work, file)
     if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(`${spec.path} is outside the workspace`)
@@ -712,7 +718,11 @@ async function selfTest() {
       () => {
         const work = path.join(temp, 'regex')
         write(path.join(work, 'docs', 'queue.md'), '# Queue\n\n- 2026-11-01 Spanish one day\n')
+        write(path.join(work, 'spec', 'count.md'), '# Count\n\n## REQ-COUNT-001 Count words\n')
+        write(path.join(work, 'spec', 'missing.md'), '# Missing\n\n## REQ-MISSING-001 Name the file\n\n> "No such file: <file>"\n')
+        write(path.join(work, 'notes', 'spec.md'), 'only in notes\n')
         const run = fakeRun(work, { last: 'Story 1.1 landed as 3238a73. MVP: 1/1', trace: '{"a":"b"}\n{"c":"d"}', created: ['test/greet.test.mjs'] })
+        const specs = { source: 'file', path: 'spec/*.md' }
         const problems = verdicts(run, [
           [{ type: 'regex', pattern: '1\\.1 landed\\b[^\\n]*\\b[0-9a-f]{7}\\b' }, true],
           [{ type: 'regex', pattern: 'mvp\\W{0,6}1/1' }, false],
@@ -724,6 +734,10 @@ async function selfTest() {
           [{ type: 'regex', pattern: '^test/', target: 'files' }, true],
           [{ type: 'regex', pattern: '\\n- \\d{4}-\\d{2}-\\d{2} [^\\n]*[Ss]panish', target: { source: 'file', path: 'docs/queue.md' } }, true],
           [{ type: 'regex', pattern: 'Q-001', target: { source: 'file', path: 'docs/missing.md' }, match: 'not_contains' }, true],
+          [{ type: 'regex', pattern: '^## REQ-[A-Z]+-\\d{3} ', flags: 'm', target: specs, match: 'count:2' }, true],
+          [{ type: 'regex', pattern: 'No such file', target: specs }, true],
+          [{ type: 'regex', pattern: 'only in notes', target: specs, match: 'not_contains' }, true],
+          [{ type: 'regex', pattern: '.', target: { source: 'file', path: 'nothing/*.md' }, match: 'not_contains' }, true],
         ])
         try {
           grade({ type: 'regex', pattern: 'x', target: { source: 'file', path: '../outside.md' } }, run)

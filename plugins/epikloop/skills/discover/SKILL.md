@@ -23,7 +23,8 @@ exactly as shown. No requirement is marked `observed`; that marker belongs to `a
 
 The project files come from a script. In a git repository, after `git init` in a new folder, run
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" --lane <lane> --mode solo`; `plan` settles the mode.
-It writes the project marker and the gate files and stages them. Commit the spec with them, and the
-git hooks run the gates on that commit. The lane is the one of these that fits the product:
+It writes the project marker and the gate files and stages them. Commit the spec with them, then
+push the commit when the repository has a remote; the git hooks run the gates on both. The lane is
+the one of these that fits the product:
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --lanes`
