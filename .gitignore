@@ -7,3 +7,7 @@ docs/temp/
 
 # What claude plugin eval writes after a run.
 plugins/epikloop/evals/results/
+
+# The tsconfig.json Claude Code writes in a plugin's folder. The type declarations it points to,
+# in .claude-plugin/types/, carry their own ignore file.
+plugins/*/tsconfig.json
