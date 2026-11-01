@@ -1,0 +1,40 @@
+schema_version: "1.1"
+name: front-door
+description: At stage 6, /epikloop reports the fuel gauge and the next step from the state script, and changes nothing.
+tags: [front-door]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: /epikloop
+  model: claude-sonnet-5-5
+  max_turns: 15
+  timeout_seconds: 300
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: runs-the-state-script
+    type: tool_used
+    tool: Bash
+    input_match: 'state\.mjs'
+  - name: reports-the-gauge
+    type: regex
+    pattern: 'MVP\W{0,6}0/1'
+  - name: names-epic-1
+    type: regex
+    pattern: 'epic 1\b'
+  - name: writes-nothing
+    type: tool_used
+    tool: Write
+    min: 0
+    max: 0
+  - name: edits-nothing
+    type: tool_used
+    tool: Edit
+    min: 0
+    max: 0
+  - name: reads-no-project-file
+    type: tool_used
+    tool: Read
+    input_match: 'docs[/\\]+stories|[/\\]spec[/\\]|\.epikloop[/\\]'
+    min: 0
+    max: 0

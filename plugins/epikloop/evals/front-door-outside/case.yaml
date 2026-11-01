@@ -1,0 +1,26 @@
+schema_version: "1.1"
+name: front-door-outside
+description: Outside a project, /epikloop asks whether this is a new product or existing code, and starts nothing.
+tags: [front-door]
+runs: 1
+execution:
+  prompt: /epikloop
+  model: claude-sonnet-5-5
+  max_turns: 10
+  timeout_seconds: 300
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: asks-new-or-existing
+    type: regex
+    pattern: '\bnew\b[\s\S]*\bexisting\b|\bexisting\b[\s\S]*\bnew\b'
+    flags: i
+  - name: starts-neither-skill
+    type: tool_used
+    tool: Skill
+    input_match: 'discover|adopt'
+    min: 0
+    max: 0
+  - name: creates-nothing
+    type: file_exists
+    path: '**/*'
+    exists: false

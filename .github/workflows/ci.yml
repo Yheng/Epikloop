@@ -43,6 +43,11 @@ jobs:
       - run: claude plugin test plugins/epikloop
       - run: node plugins/epikloop/bin/fold.mjs --self-test
       - run: node plugins/epikloop/templates/githooks/check.mjs --self-test
+      # The eval suite's fixtures and runner, neither of which makes a model call. The suite itself
+      # runs on a contributor's machine under their own Claude Code login, so no credential is
+      # stored here.
+      - run: node plugins/epikloop/evals/fixture.mjs --self-test
+      - run: node tools/evals.mjs --self-test
       - run: node tools/laws.mjs --self-test
       - run: node tools/laws.mjs
 

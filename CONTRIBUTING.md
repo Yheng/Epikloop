@@ -53,6 +53,8 @@ node plugins/epikloop/bin/doctor.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
+node plugins/epikloop/evals/fixture.mjs --self-test
+node tools/evals.mjs --self-test
 node tools/laws.mjs --self-test
 node tools/laws.mjs
 node tools/mutate.mjs --self-test
@@ -61,7 +63,7 @@ node tools/mutate.mjs
 
 - **`tools/laws.mjs`** checks this repository against the constitution's mechanical rules:
   - the prompt ceiling
-  - the one shell file, `scripts/check.sh`
+  - a shell only as a thin shim: `scripts/check.sh`, and each eval case's `scaffold.sh`
   - no network call in hook or Harbor code
   - a sign-off on every commit but a merge
   - no AI credits
@@ -79,13 +81,28 @@ To try a plugin:
 - Run `/reload-plugins` after each edit.
 - Point `--plugin-dir` at a plugin's directory; at the repository root it loads nothing.
 
-Eval suites live inside each plugin, in `plugins/<plugin>/evals/`. From a plugin's directory:
+The core plugin's eval suite is in `plugins/epikloop/evals/`: one folder per case, and
+`fixture.mjs`, which builds the fixture project a case starts in. From the repository's root:
 
-- `claude plugin eval .` runs the whole suite.
-- `claude plugin eval . --case <name> --runs 1 --ablation none` runs one case.
+- `node tools/evals.mjs` runs the whole suite.
+- `node tools/evals.mjs <case> …` runs the named cases.
+- `--keep` leaves each case's folder and transcript for inspection.
 
-Every run is a real model call, charged to your plan or API key. Cases that grant Bash or
-PowerShell can't run on native Windows; use Linux, macOS or WSL2.
+Each case runs as a headless Claude Code session under whatever Claude Code is logged in with, so
+a Claude plan is enough; you don't need an API key. It works on Linux, macOS and Windows alike.
+Every run is a real model call. A pass comes to about $1.50 at list price, which a plan counts
+against its usage limits. The sessions run as you, in throwaway folders, with no OS sandbox.
+
+- **When.** Run the suite when your change touches model-facing text:
+  - the skills, the worker or the lanes
+  - the briefing or the state reader
+  - the hooks or the project file templates
+  - the evals
+
+  CI doesn't run it, since that would need a Claude credential stored on GitHub.
+- **A new case** needs a grader for each thing its skill promises.
+- **A changed skill** may need its case's graders changed with it.
+- **A new fixture** goes in `fixture.mjs`, with its expected stage in the fixture's self-test.
 
 ## Commits
 

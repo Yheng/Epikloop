@@ -108,8 +108,9 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | Closing the loop: `retro`, `release`, `adopt` and `doctor`, with full instructions, the staging smoke, and `init.mjs --refresh` | **Available** |
 | The `web` and `service` lanes: Playwright tests as a web story's UI evidence, the guard allowing the lane's test runner, `doctor`'s lane checks, and the [lane authoring guide](docs/lanes.md) | **Available** |
 | The team-mode workflow, `.github/workflows/check.yml`, which runs the pre-push gates over every commit a pull request adds, and the `CLAUDE.md` template | **Available** |
-| This repository's own law checks in CI (the prompt ceiling, one shell file, no network calls in hook or Harbor code, a sign-off on every commit, no AI credits), and a mutation check for every self-test | **Available** |
-| The plugin eval suite with a fixture project, and lint and evals in CI | M1 |
+| This repository's own law checks in CI (the prompt ceiling, a shell only as a thin shim, no network calls in hook or Harbor code, a sign-off on every commit, no AI credits), and a mutation check for every self-test | **Available** |
+| The plugin eval suite: ten cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
+| Lint: the frontmatter, hook and schema rules in `CLAUDE.md`, as laws | M1 |
 | `design`: direction variants, every screen, the gallery, and with them a screenshot per touched screen and retro's visual compare | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor (its server, its 3D view and the `harbor` command), then the Bridge | M4 |
@@ -918,10 +919,10 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke and `doctor` | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, the examples of each project file in `spec/` and `docs/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
-| `plugins/epikloop/evals/` | The eval suite and its fixture project | M1 |
+| `plugins/epikloop/evals/` | The eval suite: one folder per case, and `fixture.mjs`, which builds the fixture project each case starts in | now |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
-| `tools/` | This repository's own checks: `laws.mjs`, and the mutation check, `mutate.mjs` with `mutations.mjs` | now |
+| `tools/` | This repository's own checks: `laws.mjs`, the mutation check (`mutate.mjs` with `mutations.mjs`), and `evals.mjs`, which runs the eval suite | now |
 | `.github/workflows/ci.yml` | CI on Linux, macOS and Windows, with the mutation check on Linux | now |
 
 ### Checks
@@ -941,6 +942,8 @@ node plugins/epikloop/bin/doctor.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
+node plugins/epikloop/evals/fixture.mjs --self-test
+node tools/evals.mjs --self-test
 node tools/laws.mjs --self-test
 node tools/laws.mjs
 ```
@@ -950,7 +953,7 @@ gate runner's self-test also runs on Node 22.0.0, the floor.
 
 - **`tools/laws.mjs`** holds this repository to the constitution's mechanical rules:
   - the prompt ceiling of 700 lines
-  - `scripts/check.sh` as the one shell file
+  - a shell only as a thin shim: `scripts/check.sh`, and each eval case's `scaffold.sh`
   - no network call in hook or Harbor code
   - a sign-off on every commit but a merge
   - no commit crediting an AI tool
@@ -968,16 +971,56 @@ gate runner's self-test also runs on Node 22.0.0, the floor.
 
 ### Evals
 
-Eval suites live inside each plugin, in `plugins/<plugin>/evals/`, where `claude plugin eval` reads
-them. From a plugin's directory:
+The core plugin's eval suite lives in `plugins/epikloop/evals/`, in the format `claude plugin eval`
+reads, and `node tools/evals.mjs` runs it.
+
+- **Cases.** Each case is a folder with a `case.yaml`: its prompt, one run on Sonnet 5.5, and
+  deterministic graders over the reply, the tool calls and the files left behind.
+- **Fixtures.** Most cases start in a fixture project. The case's `scaffold.sh` hands a fixture's
+  name to `fixture.mjs`, which builds a small greeter repository at the stage the case needs:
+  - empty
+  - existing code
+  - specified
+  - architected
+  - planned
+  - planned with a question parked
+
+  The fixture's self-test runs in CI on every push, at no cost.
+- **What the ten cases cover:**
+  - the front door, inside and outside a project
+  - a plain question answered from the briefing
+  - a story landed by its worker, with its open product call parked
+  - `decide` and `triage`
+  - `architect` waiting for confirmation
+  - `plan`, `discover` and `adopt`
+
+From the repository's root:
 
 ```
-claude plugin eval .                                          # the whole suite
-claude plugin eval . --case <name> --runs 1 --ablation none   # one case
+node tools/evals.mjs              # the whole suite
+node tools/evals.mjs story plan   # the named cases
 ```
 
-Every run is a real model call, billed to your plan or API key. Cases that grant Bash or
-PowerShell can't run on native Windows; use Linux, macOS or WSL2.
+- **Your own login.** Each case runs as a headless Claude Code session under whatever Claude Code
+  is logged in with, so a Claude plan is enough; neither Epikloop nor its evals need an API key.
+- **Any system.** It runs on Linux, macOS and Windows alike, with nothing to install beyond what
+  Epikloop already needs.
+- **Cost.** Every run is a real model call. A pass of the whole suite comes to about $1.50 at list
+  price, which on a plan counts against your usage limits rather than adding a charge. `--cap`
+  stops starting runs at $5 of that estimate.
+- **When to run it.** Run it when a change touches model-facing text:
+  - the skills, the worker or the lanes
+  - the briefing or the state reader
+  - the hooks or the project file templates
+  - the evals themselves
+- **Trust.** The sessions run as you, in throwaway folders under your temporary folder, with the
+  plugin's git guard in front of each shell command but no OS sandbox. So run only a suite you
+  trust.
+- **`claude plugin eval`** reads the same cases. On Linux its sandbox makes the run's temporary
+  folder and `.git` read-only (Claude Code 2.1.316), so the seven cases whose skills load a format
+  or commit can't pass there yet.
+- **Not in CI.** Running the suite on GitHub would mean storing a Claude credential there, so CI
+  runs only the fixture's and the runner's self-tests, which make no model call.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for what a change needs.
 
@@ -987,7 +1030,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 
 | Milestone | Delivers |
 |---|---|
-| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), this repository's own law checks and the CI mutation check (done), then the eval suite, and lint and evals in CI |
+| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), this repository's own law checks and the CI mutation check (done), the eval suite with its fixture project, run in CI (done), then lint as laws |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: Harbor, then the Bridge** | Harbor's server and 3D scene, then the Bridge's review pages |

@@ -35,6 +35,8 @@ const TESTS = {
   check: [process.execPath, 'plugins/epikloop/templates/githooks/check.mjs', '--self-test'],
   emit: ['claude', 'plugin', 'test', 'plugins/epikloop'],
   laws: [process.execPath, 'tools/laws.mjs', '--self-test'],
+  fixture: [process.execPath, 'plugins/epikloop/evals/fixture.mjs', '--self-test'],
+  evals: [process.execPath, 'tools/evals.mjs', '--self-test'],
 }
 
 // The repository's files as a copy needs them: tracked, and new ones not yet ignored.

@@ -58,14 +58,24 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - the check runs the pre-push gates over every commit a pull request adds
   - story 1.1, or `adopt`, writes the stack's setup and install into it
   - the human makes it required in the default branch's protection
-- CI self-test (done), lint and evals, on top of validation
+- CI self-test (done), on top of validation; lint is next, as laws for the frontmatter, hook and
+  schema rules that `CLAUDE.md` states in sentences. The evals run on a contributor's machine
+  instead, since CI would need a Claude credential stored on GitHub
 - the CI mutation check (done): `tools/mutate.mjs` breaks each rule in a copy and expects its
   self-test to fail, across every self-test, in its own job on Linux
-- a plugin eval suite with a fixture project
+- a plugin eval suite with a fixture project (done): ten cases in `plugins/epikloop/evals/`, each
+  with deterministic graders, on fixtures that `fixture.mjs` builds
+  - `tools/evals.mjs` runs them on any system, under the contributor's own Claude Code login, a
+    plan included. They run in each slice that changes model-facing text, one run each on Sonnet
+    5.5, under a $5 cap, at about $1.50 a pass at list price.
+  - `claude plugin eval` reads the same files. Its Linux sandbox (Claude Code 2.1.316) makes the
+    run's temporary folder and `.git` read-only, so seven cases fail there for now.
+  - CI runs the fixture's and the runner's self-tests, which make no model call
+  - chained shell commands, a watch item, aren't graded yet
 - the lane authoring guide (done: [docs/lanes.md](lanes.md))
 - this repository's own law checks (done: `tools/laws.mjs`, in CI on all three systems):
   - prompt ceiling
-  - no `.sh` beyond the shims
+  - a shell only as a thin shim: `check.sh`, and each eval case's `scaffold.sh`
   - no network calls in hook or Harbor code
   - DCO sign-off on every commit
   - no AI co-author trailers, nor AI authors, committers or "Generated with" footers
@@ -98,7 +108,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - Git for Windows and GitHub Desktop's git run a `#!/usr/bin/env node` hook and a two-line `sh`
     wrapper alike: from PowerShell, Git Bash and a stripped PATH, with LF or CRLF.
   - Both fail closed without Node.
-  - The hooks are Node files, so `scripts/check.sh` stays the one shell file.
+  - The hooks are Node files, so `scripts/check.sh` stays the one shell file a product carries.
   - The self-test's real commits and pushes confirm Linux and macOS in CI.
 - **Worker effort.** Settled: mechanically, inside the hooks module, by rewriting the Agent call's
   `effort` in a `tool.call` hook. The spike saw the rewrite reach the subagent's requests.

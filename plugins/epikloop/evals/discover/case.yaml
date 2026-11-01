@@ -1,0 +1,40 @@
+schema_version: "1.1"
+name: discover
+description: /epikloop:discover, given a brief that leaves nothing open, writes the spec with stable IDs and the brief's rule quoted, sets up the project, and commits.
+tags: [discover]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: '/epikloop:discover A command-line word counter. People run `wc-lite <file>`, and it prints the number of words in the file. A file that does not exist prints "No such file: <file>" and exits with status 1. The lane is service. Nothing else is open, so write the spec and commit it without asking.'
+  model: claude-sonnet-5-5
+  max_turns: 40
+  timeout_seconds: 600
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: sets-up-the-project
+    type: tool_used
+    tool: Bash
+    input_match: 'init\.mjs.*--lane service'
+  - name: marks-the-service-lane
+    type: regex
+    target: { source: file, path: .epikloop/project.json }
+    pattern: '"lane":\s*"service"'
+  - name: writes-a-requirement
+    type: tool_used
+    tool: Write
+    input_match: 'spec[/\\]+.*## REQ-[A-Z]+-\d{3} '
+  - name: quotes-the-rule
+    type: tool_used
+    tool: Write
+    input_match: 'spec[/\\]+.*No such file'
+  - name: observes-nothing
+    type: tool_used
+    tool: Write
+    input_match: 'Status: observed'
+    min: 0
+    max: 0
+  - name: commits
+    type: regex
+    target: { source: file, path: .git/logs/HEAD }
+    pattern: '\tcommit \(initial\): '

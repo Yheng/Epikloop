@@ -3,7 +3,7 @@
 // exits 1 on any failure.
 //
 //   ceiling     the core plugin's model-facing text stays within 700 lines (article 2)
-//   shell       the one shell file is the check.sh shim (article 7)
+//   shell       a shell appears only as a thin shim: check.sh and the eval scaffolds (article 7)
 //   network     hook and Harbor code makes no network call (article 6)
 //   sign-off    every commit but a merge is signed off by its author, for the DCO
 //   AI credits  no commit credits an AI tool: not as its author or committer, a trailer or a footer
@@ -133,13 +133,25 @@ function firstLine(file) {
   }
 }
 
-// Every tracked file that is a shell script, by its name or its #! line, other than the shim.
+// An eval case's scaffold. `claude plugin eval` sets a case up only by running a Bash script in the
+// case's own folder, so each scaffold is allowed as exactly this shim, which hands the fixture's name
+// to evals/fixture.mjs.
+const SCAFFOLD_PATH = /^plugins\/[^/]+\/evals\/[^/]+\/scaffold\.sh$/
+const SCAFFOLD = /^#!\/bin\/sh\nexec node "\$\(dirname "\$0"\)\/\.\.\/fixture\.mjs" [a-z][a-z0-9-]*\n$/
+
+// Every tracked file that is a shell script, by its name or its #! line, other than the thin shims:
+// scripts/check.sh's template, and each eval case's scaffold.
 export function shellLaw(root) {
   const files = gitOk(root, ['ls-files', '-z']).split('\0').filter(Boolean)
-  const problems = files
-    .filter((file) => !SHIMS.includes(file) && (SHELL_NAME.test(file) || SHELL_LINE.test(firstLine(path.join(root, file)))))
-    .map((file) => `shell: ${file} is a shell script; Epikloop's scripts are Node, and scripts/check.sh is the one shim`)
-  return { problems }
+  const shells = files.filter((file) => !SHIMS.includes(file) && (SHELL_NAME.test(file) || SHELL_LINE.test(firstLine(path.join(root, file)))))
+  const problems = []
+  let scaffolds = 0
+  for (const file of shells) {
+    if (!SCAFFOLD_PATH.test(file)) problems.push(`shell: ${file} is a shell script; Epikloop's scripts are Node, and a shell appears only as a thin shim`)
+    else if (!SCAFFOLD.test(fs.readFileSync(path.join(root, file), 'utf8'))) problems.push(`shell: ${file} is more than the scaffold shim, which only hands its fixture's name to evals/fixture.mjs`)
+    else scaffolds += 1
+  }
+  return { problems, scaffolds }
 }
 
 // ---- Network calls
@@ -272,7 +284,10 @@ function main() {
     const { count, problems } = ceilingLaw(path.join(ROOT, 'plugins', 'epikloop'))
     return { problems, shown: `ceiling ${count}/${CEILING}${problems.length > 0 ? ' FAIL' : ''}` }
   })
-  law('shell', () => shellLaw(ROOT))
+  law('shell', () => {
+    const { problems, scaffolds } = shellLaw(ROOT)
+    return { problems, shown: `shell ${problems.length === 0 ? 'ok' : `FAIL ${problems.length}`} (${scaffolds} eval scaffolds)` }
+  })
   law('network', () => {
     const { files, problems } = networkLaw(ROOT)
     return { problems, shown: `network ${problems.length === 0 ? 'ok' : `FAIL ${problems.length}`} (${files} files)` }
@@ -415,6 +430,34 @@ async function selfTest() {
         gitOk(dir, ['add', '-A'])
         const dirty = shellLaw(dir).problems
         return [...k.none(clean), ...k.has(dirty, 'shell: tools/run.sh is a shell script', 'shell: bin/tool is a shell script', 'shell: setup.ps1 is a shell script'), ...(dirty.length === 3 ? [] : [`found ${dirty.length}, not 3`])]
+      },
+    ],
+    [
+      "an eval case's scaffold passes only as the exact shim, in a case folder",
+      () => {
+        const dir = k.repo()
+        const shim = '#!/bin/sh\nexec node "$(dirname "$0")/../fixture.mjs" planned\n'
+        k.write(dir, 'plugins/epikloop/evals/story/scaffold.sh', shim)
+        gitOk(dir, ['add', '-A'])
+        const { problems: clean, scaffolds } = shellLaw(dir)
+        k.write(dir, 'plugins/epikloop/evals/plan/scaffold.sh', `${shim}echo more\n`)
+        k.write(dir, 'plugins/epikloop/evals/decide/scaffold.sh', shim.replace('fixture.mjs', 'fixture.js'))
+        k.write(dir, 'plugins/epikloop/evals/scaffold.sh', shim)
+        k.write(dir, 'tools/evals/story/scaffold.sh', shim)
+        gitOk(dir, ['add', '-A'])
+        const dirty = shellLaw(dir).problems
+        return [
+          ...k.none(clean),
+          ...(scaffolds === 1 ? [] : [`counted ${scaffolds} scaffolds, not 1`]),
+          ...k.has(
+            dirty,
+            'shell: plugins/epikloop/evals/plan/scaffold.sh is more than the scaffold shim',
+            'shell: plugins/epikloop/evals/decide/scaffold.sh is more than the scaffold shim',
+            'shell: plugins/epikloop/evals/scaffold.sh is a shell script',
+            'shell: tools/evals/story/scaffold.sh is a shell script',
+          ),
+          ...(dirty.length === 4 ? [] : [`found ${dirty.length}, not 4`]),
+        ]
       },
     ],
     [

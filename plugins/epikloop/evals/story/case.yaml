@@ -1,0 +1,44 @@
+schema_version: "1.1"
+name: story
+description: /epikloop:story 1.1 lands the story through a worker, with its test and its spec delta, and parks the open product call instead of asking.
+tags: [batch]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: /epikloop:story 1.1
+  model: claude-sonnet-5-5
+  max_turns: 20
+  timeout_seconds: 900
+  allowed_tools: [Read, Glob, Grep, Skill, Agent, TodoWrite]
+graders:
+  - name: spawns-the-worker
+    type: tool_used
+    tool: Agent
+    input_match: 'epikloop:story-worker'
+  - name: lands-feat-1-1
+    type: regex
+    target: { source: file, path: .git/logs/HEAD }
+    pattern: '\tcommit: feat\(1\.1\):'
+  - name: applies-the-spec-delta
+    type: regex
+    target: { source: file, path: spec/greet.md }
+    pattern: 'exclamation|!'
+    flags: i
+  - name: writes-a-test
+    type: file_exists
+    path: '**/*.test.*'
+  - name: parks-the-empty-name
+    type: regex
+    target: { source: file, path: docs/queue.md }
+    pattern: '### Q-\d{3} '
+  - name: takes-a-default
+    type: regex
+    target: { source: file, path: docs/queue.md }
+    pattern: '- Default taken: \S'
+  - name: reports-the-landing
+    type: regex
+    pattern: '1\.1 landed\b[^\n]*\b[0-9a-f]{7}\b'
+  - name: reports-the-gauge
+    type: regex
+    pattern: 'MVP\W{0,6}1/1'

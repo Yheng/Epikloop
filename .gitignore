@@ -4,3 +4,6 @@ CLAUDE.local.md
 
 # Local reference material; never shared.
 docs/temp/
+
+# What claude plugin eval writes after a run.
+plugins/epikloop/evals/results/

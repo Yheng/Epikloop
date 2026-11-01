@@ -1,0 +1,34 @@
+schema_version: "1.1"
+name: adopt
+description: /epikloop:adopt, with the lane and mode confirmed, observes the code into spec/ and the architecture, sets up the project, and commits.
+tags: [adopt]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: '/epikloop:adopt The lane is service and the mode is solo. Both are confirmed, so go ahead without asking about them.'
+  model: claude-sonnet-5-5
+  max_turns: 60
+  timeout_seconds: 900
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: sets-up-the-project
+    type: tool_used
+    tool: Bash
+    input_match: 'init\.mjs.*--lane service'
+  - name: marks-the-service-lane
+    type: regex
+    target: { source: file, path: .epikloop/project.json }
+    pattern: '"lane":\s*"service"'
+  - name: observes-the-requirements
+    type: tool_used
+    tool: Write
+    input_match: 'spec[/\\]+.*Status: observed'
+  - name: writes-the-architecture
+    type: tool_used
+    tool: Write
+    input_match: 'spec[/\\]+architecture\.md'
+  - name: commits
+    type: regex
+    target: { source: file, path: .git/logs/HEAD }
+    pattern: '\tcommit: (?!fixture: )'

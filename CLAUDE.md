@@ -22,8 +22,8 @@ Every skill has its body except `design` (M2) and `harbor` (M4), which have fron
 purpose paragraph only, and so does the worker. The git guard, the emitter, the gate runner, the
 SessionStart briefing, project setup, the state reader, the staging smoke, `doctor`, the project
 file formats, the `web` and `service` lanes, the team-mode workflow and the product `CLAUDE.md`
-template are in place, and CI checks this repository's laws and the self-tests' mutations. The
-eval suite arrives with M1 (`docs/roadmap.md`).
+template are in place. CI checks this repository's laws and the self-tests' mutations, and the
+eval suite runs on a contributor's machine. Lint, as laws, is next in M1 (`docs/roadmap.md`).
 
 ## Map
 
@@ -61,11 +61,17 @@ eval suite arrives with M1 (`docs/roadmap.md`).
     (`schemas/lane.schema.json`, `docs/lanes.md`); the state reader prints a fragment's sections
     into the plan and the briefs, the guard reads the profile's `ui_test.allow`, and `doctor` its
     `requires`
-  - later: `evals/`
+  - `evals/<case>/case.yaml` — the eval suite, one folder per case: its prompt, its run fields and
+    its graders; a case that starts in a fixture project also has `scaffold.sh`, the two-line shim
+    that names it
+  - `evals/fixture.mjs` — builds each fixture project, a greeter repository at the stage a case
+    starts from, with its self-test
 - `plugins/epikloop-harbor/` — a manifest only, until M4.
 - `tools/` — this repository's own checks, which no plugin ships:
   - `laws.mjs` checks the constitution's mechanical rules
   - `mutate.mjs`, with its list in `mutations.mjs`, is the self-tests' mutation check
+  - `evals.mjs` runs the eval suite, each case as a headless session under the machine's own
+    login, with its self-test
 - `CONSTITUTION.md` — the rules for changing Epikloop.
 - `docs/doctrine.md`, `docs/architecture.md` (the settled decisions), `docs/formats.md` (the
   project file formats), `docs/lanes.md` (writing a lane) and `docs/roadmap.md`.
@@ -144,6 +150,8 @@ node plugins/epikloop/bin/doctor.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/bin/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
+node plugins/epikloop/evals/fixture.mjs --self-test
+node tools/evals.mjs --self-test
 node tools/laws.mjs --self-test
 node tools/laws.mjs
 ```
@@ -186,9 +194,16 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - It commits and pushes through the real hooks, and runs every gate's samples.
   - Then it checks that each mutation of the secret scan is caught.
   - CI runs it again on Node 22.0.0, the floor.
+- **The fixture's self-test** builds every eval fixture in a temporary folder with a home of its
+  own. It reads each fixture's stage as the briefing does, runs `existing`'s tests and the gates on
+  `planned`, and checks that each case's scaffold names a fixture.
+- **The eval runner's self-test** loads every case, holds its YAML reader and graders to samples,
+  and runs whole cases against a stand-in for `claude`. Those runs cover the fixture, the prompt,
+  the tools granted, a timeout, the cost cap and the cleaned events. It makes no model call.
 - **The laws** check this repository:
   - the prompt ceiling
-  - the one shell file, the `check.sh` shim
+  - a shell only as a thin shim: the `check.sh` template, and each eval case's `scaffold.sh`,
+    exactly the two lines that hand a fixture's name to `fixture.mjs`
   - no network call in hook code (what `hooks.json` runs, its imports and the git hooks) or in
     Harbor
   - a sign-off on every commit but a merge
@@ -213,15 +228,43 @@ To load a plugin for one session:
 
 ## Evals
 
-Suites live inside a plugin, in `plugins/<plugin>/evals/`. `claude plugin eval` doesn't read
-suites outside a plugin root.
+The suite is in `plugins/epikloop/evals/`, in the format `claude plugin eval` reads, inside the
+plugin root where it looks. From the repository's root:
 
 ```
-claude plugin eval .                                          # whole suite, from a plugin root
-claude plugin eval . --case <name> --runs 1 --ablation none   # one case
+node tools/evals.mjs              # the whole suite
+node tools/evals.mjs story plan   # the named cases
 ```
 
-- Every run is a real model call, billed to your plan or API key.
-- CI runs need credentials and `--trust-plugin --no-publish`.
-- Cases that grant Bash or PowerShell are refused on native Windows, so evals run on Linux and
-  macOS.
+- **Login and cost.** Runs use whatever Claude Code is logged in with, so a Claude plan is
+  enough; neither Epikloop nor its evals need an API key. Every run is a real model call, and a
+  pass comes to about $1.50 at list price, which a plan counts against its usage limits.
+- **When.** Run the suite in each slice whose change touches model-facing text, before reporting:
+  - the skills, the worker or the lanes
+  - the briefing or the state reader
+  - the hooks or the project file templates
+  - the evals
+- **Each case sets its own run.**
+  - `runs: 1` and `model: claude-sonnet-5-5`; the worker keeps its pinned Opus.
+  - Its graders are deterministic: `regex`, `tool_used` and `file_exists`, with no LLM judge.
+- **How a case runs.** The runner starts a headless `claude -p` session in `dontAsk` mode.
+  - It loads the plugin from this checkout, with no user settings, MCP servers or other plugins.
+  - It grants Bash, Write and Edit, plus the read-only tools the case lists.
+  - It starts in a throwaway folder: empty, or the fixture its `scaffold.sh` names.
+  - There's no OS sandbox. The guard stands in front of each shell command, and the runner deletes
+    what the sessions wrote to `~/.epikloop`.
+  - `--cap` (default $5) stops starting runs, `--jobs` (default 3) sets how many run at once, and
+    `--keep` keeps the folders and transcripts.
+- **Graders that work under both runners.** They read git state from `.git/logs/HEAD`, because
+  `claude plugin eval` switches git hooks off. A slash-command prompt doesn't count as a Skill
+  call there.
+- **`claude plugin eval`** reads the same files. From `plugins/epikloop`:
+  `claude plugin eval . --ablation none --scaffold --allow-tools Bash Write Edit --max-cost-usd 5`,
+  on Linux, macOS or WSL2 with `bubblewrap` and `socat`.
+  - On Claude Code 2.1.316, its Linux sandbox makes the run's temporary folder and `.git`
+    read-only. So the seven cases whose skills load a format or commit fail there.
+  - The run's home there is itself a git repository holding the workspace. That's why a case that
+    needs a repository starts in a fixture, `empty` at least.
+- **Not in CI.** CI would need a Claude credential stored on GitHub. A plan token there can't be
+  revoked before its year is up, so CI runs only the fixture's and the runner's self-tests, which
+  make no model call.

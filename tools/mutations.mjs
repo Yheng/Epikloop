@@ -13,6 +13,8 @@ const RUNNER = 'plugins/epikloop/templates/githooks/check.mjs'
 const WORKFLOW = 'plugins/epikloop/templates/github/workflows/check.yml'
 const EMIT = 'plugins/epikloop/hooks/emit.js'
 const LAWS = 'tools/laws.mjs'
+const FIXTURE = 'plugins/epikloop/evals/fixture.mjs'
+const EVALS = 'tools/evals.mjs'
 // The byte-order mark, which the code holds as the character itself.
 const BOM = String.fromCharCode(0xfeff)
 
@@ -158,4 +160,33 @@ export const MUTATIONS = [
   m(LAWS, ['laws'], 'ask merges for a sign-off', "commits(root, '%h%x00%ae%x00%s%x00%B', ['--no-merges'])", "commits(root, '%h%x00%ae%x00%s%x00%B', [])"),
   m(LAWS, ['laws'], 'pass a shallow clone', "if (gitOk(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true') {", 'if (false) {'),
   m(LAWS, ['laws'], 'forget Copilot', 'claude|anthropic|copilot|openai', 'claude|anthropic|openai'),
+  m(LAWS, ['laws'], 'accept a scaffold with more in it', "else if (!SCAFFOLD.test(fs.readFileSync(path.join(root, file), 'utf8')))", 'else if (false)'),
+  m(LAWS, ['laws'], 'accept a scaffold outside a case folder', 'const SCAFFOLD_PATH = /^plugins\\/[^/]+\\/evals\\/[^/]+\\/scaffold\\.sh$/', 'const SCAFFOLD_PATH = /scaffold\\.sh$/'),
+
+  // The eval suite's fixture project.
+  m(FIXTURE, ['fixture'], 'plan without freezing the MVP', "marker: { mvp_frozen: '2026-10-31', hours_per_day: 2, deadline: null },", 'marker: { hours_per_day: 2, deadline: null },'),
+  m(FIXTURE, ['fixture'], 'spec the greeter without its requirement', '## REQ-GREET-001 Greet by name', '## Greet by name'),
+  m(FIXTURE, ['fixture'], 'drop a fixture a case builds', '  parked: [SPECIFY, ARCHITECT, PLAN, PARK],\n', ''),
+  m(FIXTURE, ['fixture'], 'give the empty fixture a commit', '  empty: [],', '  empty: [SPECIFY],'),
+  m(FIXTURE, ['fixture'], 'build over a folder that has files in it', '  if (fs.readdirSync(dir).length > 0) throw new Error(', '  if (false) throw new Error('),
+  m(FIXTURE, ['fixture'], 'set gates that fail on the fixture', "marker: { gates: { commands: { test: 'node --test' } } },", "marker: { gates: { commands: { test: 'node --no-such-flag' } } },"),
+  m(FIXTURE, ['fixture'], "give existing code a test that fails", 'return `Hello, ${name}!`', 'return `Hi, ${name}!`'),
+  m(FIXTURE, ['fixture'], 'take any scaffold for the shim', 'const fixture = SHIM.exec(', 'const fixture = / ([a-z][a-z0-9-]*)\\n/.exec('),
+  m(FIXTURE, ['fixture'], "count a scaffold case.yaml never runs", "const runs = fs.existsSync(yaml) && /^\\s+scaffold_script: scaffold\\.sh\\s*$/m.test(fs.readFileSync(yaml, 'utf8'))", 'const runs = true'),
+
+  // The eval suite's runner.
+  m(EVALS, ['evals'], 'take not_contains for contains', 'return { ok: found === 0,', 'return { ok: found > 0,'),
+  m(EVALS, ['evals'], 'count no call as enough', 'const min = grader.min ?? 1', 'const min = grader.min ?? 0'),
+  m(EVALS, ['evals'], 'count the files that were already there', 'created: listFiles(work).filter((file) => !before.has(file)),', 'created: listFiles(work),'),
+  m(EVALS, ['evals'], "leave the run's events behind", "if (inside(JSON.parse(fs.readFileSync(file, 'utf8')).cwd)) {", 'if (false) {'),
+  m(EVALS, ['evals'], "leave the run's cost rows behind", "    fs.rmSync(folder, { recursive: true, force: true })\n", ''),
+  m(EVALS, ['evals'], 'delete events from elsewhere too', "const inside = (cwd) => typeof cwd === 'string' && roots.some(", 'const inside = (cwd) => true || roots.some('),
+  m(EVALS, ['evals'], 'ignore the cost cap', 'if (!ctx.budget()) return', 'if (false) return'),
+  m(EVALS, ['evals'], 'let a session run past its timeout', '      timedOut = true\n      stop(child)\n', '      timedOut = true\n'),
+  m(EVALS, ['evals'], 'read a file outside the workspace', "if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(", 'if (false) throw new Error('),
+  m(EVALS, ['evals'], "take a field the runner doesn't read", 'if (!known.includes(key)) say(', 'if (false) say('),
+  m(EVALS, ['evals'], 'grant Agent to every case', '...READ_ONLY.filter((tool) => !listed.includes(tool))', "...READ_ONLY.filter((tool) => !listed.includes(tool) && tool !== 'Agent')"),
+  m(EVALS, ['evals'], 'grant a case a tool beyond the read-only ones', 'if (!READ_ONLY.includes(tool)) say(', 'if (false) say('),
+  m(EVALS, ['evals'], 'pass a session that ended in error', 'runs.every((run) => run.error === null && run.graded.every(', 'runs.every((run) => run.graded.every('),
+  m(EVALS, ['evals'], 'start a case without its fixture', 'if (loaded.fixture !== null) {', 'if (false) {'),
 ]

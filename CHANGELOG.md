@@ -118,6 +118,36 @@ All notable changes to Epikloop are recorded here.
   - On Linux, its first CI run found that `init`'s self-test couldn't tell whether a shim had been
     staged without `--chmod=+x`, because git there reads the mode from the file. Its test
     repositories now take no mode from the file system, as on Windows.
+- The plugin eval suite, `plugins/epikloop/evals/`.
+  - **The cases.** There are ten, each a `case.yaml` with one run on Sonnet 5.5 and deterministic
+    graders over the reply, the tool calls and the files left behind.
+  - **What they cover:**
+    - the front door, inside and outside a project
+    - a question answered from the briefing
+    - a story landed by its worker, with its open product call parked
+    - `decide` and `triage`
+    - `architect` waiting for confirmation
+    - `plan`, `discover` and `adopt`
+  - **The fixture.** `evals/fixture.mjs` builds the project each case starts in, from that case's
+    `scaffold.sh`: a greeter repository at one of six stages. Its self-test runs on every push, on
+    Linux, macOS and Windows.
+  - **The runner.** `tools/evals.mjs` runs each case as a headless Claude Code session under the
+    contributor's own login, on Linux, macOS or Windows.
+    - Each session starts in a throwaway folder, with the case's tools and no OS sandbox. The
+      runner then deletes what the sessions wrote to `~/.epikloop`.
+    - A Claude plan is enough; no API key is needed.
+    - A pass comes to about $1.50 at list price, under a $5 cap. Its first full pass passed 9 of 10
+      cases. The tenth's reply asked for confirmation without a question mark, and its grader now
+      takes either.
+    - Its self-test runs on every push, with a stand-in for `claude`.
+  - **Not in CI.** Running the suite there would need a Claude credential stored on GitHub, and a
+    plan token stored there can't be revoked before its year is up (decided 2026-11-01).
+  - **`claude plugin eval` reads the same files,** but can't run most of them yet.
+    - On 2026-11-01, on Claude Code 2.1.316 and 2.1.309 under WSL2, its Linux sandbox made the
+      run's temporary folder and `.git` read-only.
+    - Every skill that loads a format through `!` aborted before the model ran, and nothing could
+      commit, so 7 of the 10 cases failed there.
+    - So the runner is ours, and the case files stay in its format for when it can.
 
 ### Changed
 
@@ -143,6 +173,10 @@ All notable changes to Epikloop are recorded here.
     symlink would have injected nothing.
   - The laws' self-test found it on macOS on 2026-10-31, and the state reader's self-test now runs
     it through a link.
+- The shell law allows each eval case's `scaffold.sh` beside `scripts/check.sh`.
+  - It allows a scaffold only as exactly the two-line shim that hands a fixture's name to
+    `fixture.mjs`.
+  - "One shell file" became "a shell only as a thin shim", which is article 7's own wording.
 
 ### Removed
 
@@ -467,3 +501,11 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
 - **The `CLAUDE.md` template isn't named `CLAUDE.md`.** Claude Code loads a `CLAUDE.md` from any
   folder whose files it reads, so one among the plugin's templates would load in sessions on
   Epikloop itself.
+
+### Law rules (adopted 2026-11-01)
+
+- **An eval case's `scaffold.sh` is allowed beside `scripts/check.sh`, as exactly the two-line
+  shim that hands a fixture's name to `evals/fixture.mjs`.**
+  - `claude plugin eval` sets a case up only by running a Bash script in the case's own folder.
+  - On 2026-11-01, a probe on Windows showed the harness passing that script a backslash path,
+    which `${0%/*}` can't cut. So the shim finds its folder with `dirname`.

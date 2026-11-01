@@ -500,8 +500,8 @@ tool's name and docs are not nautical.
 | `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke and doctor | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, an example of each project file in `spec/` and `docs/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
-| `plugins/epikloop/evals/` | The eval suite and its fixture project, inside the plugin where `claude plugin eval` reads it | M1 |
+| `plugins/epikloop/evals/` | The eval suite, inside the plugin where `claude plugin eval` reads it: a folder per case, and `fixture.mjs`, which builds the fixture project each case starts in | now |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
-| `tools/` | This repository's own checks: `laws.mjs` for the constitution's mechanical rules, and the self-tests' mutation check, `mutate.mjs` with `mutations.mjs` | now |
-| `.github/workflows/ci.yml` | Validation, every self-test and the laws on Linux, macOS and Windows; the mutation check on Linux; lint and evals as they arrive | now |
+| `tools/` | This repository's own checks: `laws.mjs` for the constitution's mechanical rules, the self-tests' mutation check (`mutate.mjs` with `mutations.mjs`), and `evals.mjs`, which runs the eval suite under the machine's own login | now |
+| `.github/workflows/ci.yml` | Validation, every self-test and the laws on Linux, macOS and Windows; the mutation check on Linux; lint as it arrives. The eval suite runs on a contributor's machine, so no Claude credential is stored on GitHub | now |

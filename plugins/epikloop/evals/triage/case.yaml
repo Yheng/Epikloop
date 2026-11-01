@@ -1,0 +1,39 @@
+schema_version: "1.1"
+name: triage
+description: /epikloop:triage files a real finding that breaks nothing in the MVP as one dated backlog line, and nothing else.
+tags: [triage]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: '/epikloop:triage "One day the greeter could greet in Spanish too. Nothing in the MVP needs it."'
+  model: claude-sonnet-5-5
+  max_turns: 20
+  timeout_seconds: 300
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: files-a-backlog-line
+    type: regex
+    target: { source: file, path: docs/queue.md }
+    pattern: '\n- \d{4}-\d{2}-\d{2} [^\n]*[Ss]panish'
+  - name: parks-no-question
+    type: regex
+    target: { source: file, path: docs/queue.md }
+    pattern: '### Q-'
+    match: not_contains
+  - name: writes-no-code
+    type: tool_used
+    tool: Write
+    input_match: 'src[/\\]+'
+    min: 0
+    max: 0
+  - name: edits-no-code
+    type: tool_used
+    tool: Edit
+    input_match: 'src[/\\]+'
+    min: 0
+    max: 0
+  - name: commits
+    type: regex
+    target: { source: file, path: .git/logs/HEAD }
+    pattern: '\tcommit: (?!fixture: )'
