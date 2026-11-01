@@ -38,7 +38,7 @@ graders:
     pattern: '- Default taken: \S'
   - name: reports-the-landing
     type: regex
-    pattern: '1\.1 landed\b[^\n]*\b[0-9a-f]{7}\b'
+    pattern: '1\.1(?: \([^)\n]*\))? landed\b[^\n]*\b[0-9a-f]{7}\b'
   - name: reports-the-gauge
     type: regex
     pattern: 'MVP\W{0,6}1/1'

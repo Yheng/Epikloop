@@ -211,6 +211,15 @@ All notable changes to Epikloop are recorded here.
   - All `bin/` added was its files on the Bash tool's `PATH`, which nothing used. Every hook and
     skill reaches a script through `${CLAUDE_PLUGIN_ROOT}`.
   - Product repos are unaffected: nothing they carry names the plugin's folder.
+- Each eval session starts with `PWD` set to its own folder, and without the variables naming the
+  Claude Code session the runner was started from.
+  - On 2026-11-01, run from inside Claude Code, a `story` session inherited this checkout as
+    `PWD`, and Claude Code reset its shell there after its last command. A command after that would
+    have run in the checkout.
+  - It also inherited the caller's `CLAUDE_EFFORT`, along with its session id and messaging socket.
+- The `story` case's landing grader allows the story's title between its number and "landed", as in
+  "Story 1.1 (Greet by name) landed as commit `332a9ce`". Two runs on 2026-11-01 reported it that
+  way, and the grader still refuses "1.1 hasn't landed".
 
 ### Removed
 

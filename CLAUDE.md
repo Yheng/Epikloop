@@ -269,6 +269,8 @@ node tools/evals.mjs story plan   # the named cases
   - It loads the plugin from this checkout, with no user settings, MCP servers or other plugins.
   - It grants Bash, Write and Edit, plus the read-only tools the case lists.
   - It starts in a throwaway folder: empty, or the fixture its `scaffold.sh` names.
+  - Its environment is the runner's, with `PWD` set to that folder and none of the variables naming
+    the Claude Code session the runner was started from, so its effort and its shell are its own.
   - There's no OS sandbox. The guard stands in front of each shell command, and the runner deletes
     what the sessions wrote to `~/.epikloop`.
   - `--cap` (default $5) stops starting runs, `--jobs` (default 3) sets how many run at once, and

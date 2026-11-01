@@ -434,6 +434,11 @@ export function cleanEvents(home, root, projects = []) {
 
 // ---- A run of the suite
 
+// What Claude Code sets for the commands it runs, naming its own session: a session the runner
+// starts from inside one would inherit them, its effort among them. The runner also sets PWD to
+// each session's folder, since Claude Code resets a session's shell to the PWD it inherits.
+const INHERITED = /^(?:CLAUDECODE|CLAUDE_CODE_(?:ENTRYPOINT|SESSION_ID|CHILD_SESSION|SESSION_ATTENDED|MESSAGING_SOCKET|MESSAGING_TOKEN|SSE_PORT|EXECPATH)|CLAUDE_PID|CLAUDE_EFFORT|AI_AGENT|OLDPWD)$/i
+
 // Every run of one case, each in its own folder under `ctx.root`: { name, runs, passed, skipped }.
 async function runCase(loaded, ctx) {
   const ex = loaded.kase.execution
@@ -455,7 +460,8 @@ async function runCase(loaded, ctx) {
     const seconds = ex.timeout_seconds ?? 300
     // git looks for a repository no higher than the run's folder, so a case without a fixture starts
     // outside any repository.
-    const env = { ...process.env, DISABLE_AUTOUPDATER: '1', GIT_CEILING_DIRECTORIES: ctx.root, ...ctx.env }
+    const own = Object.fromEntries(Object.entries(process.env).filter(([key]) => !INHERITED.test(key)))
+    const env = { ...own, PWD: work, DISABLE_AUTOUPDATER: '1', GIT_CEILING_DIRECTORIES: ctx.root, ...ctx.env }
     const ran = await session(ctx.claude, claudeArgs(loaded.kase), { cwd: work, input: ex.prompt, env, ms: seconds * 1000 })
     fs.writeFileSync(path.join(ctx.root, loaded.name, `${i}.jsonl`), ran.out)
     try {
@@ -586,7 +592,12 @@ process.stdin.on('end', () => {
     fs.mkdirSync(cost, { recursive: true })
     fs.writeFileSync(path.join(cost, process.pid + '.json'), JSON.stringify({ format: 1, story: '1.1', cost: 0.2 }))
   }
-  const reply = [plan.reply || '', 'prompt=' + input, 'marker=' + fs.existsSync('.epikloop/project.json'), 'args=' + process.argv.slice(2).join(' ')].join(' | ')
+  let pwdIsCwd = false
+  try {
+    pwdIsCwd = fs.realpathSync(process.env.PWD) === fs.realpathSync(process.cwd())
+  } catch {}
+  const inherited = ['CLAUDECODE', 'CLAUDE_EFFORT', 'CLAUDE_CODE_SESSION_ID'].filter((key) => process.env[key] !== undefined)
+  const reply = [plan.reply || '', 'prompt=' + input, 'marker=' + fs.existsSync('.epikloop/project.json'), 'args=' + process.argv.slice(2).join(' '), 'pwd-is-cwd=' + pwdIsCwd, 'inherited=' + (inherited.join(',') || 'none')].join(' | ')
   const lines = [
     { type: 'system', subtype: 'init', cwd: process.cwd() },
     ...(plan.tools || []).map((tool) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', name: tool.name, input: tool.input }] } })),
@@ -726,7 +737,7 @@ async function selfTest() {
     [
       'tool_used counts the matching calls between min and max, at least one by default',
       () => {
-        const run = fakeRun(temp, { tools: [{ name: 'Bash', input: { command: 'node "/p/bin/state.mjs" --ready 1.1' } }, { name: 'Bash', input: { command: 'git fetch' } }, { name: 'Agent', input: { subagent_type: 'epikloop:story-worker' } }] })
+        const run = fakeRun(temp, { tools: [{ name: 'Bash', input: { command: 'node "/p/scripts/state.mjs" --ready 1.1' } }, { name: 'Bash', input: { command: 'git fetch' } }, { name: 'Agent', input: { subagent_type: 'epikloop:story-worker' } }] })
         return verdicts(run, [
           [{ type: 'tool_used', tool: 'Bash', input_match: 'state\\.mjs' }, true],
           [{ type: 'tool_used', tool: 'Write' }, false],
@@ -771,6 +782,21 @@ async function selfTest() {
         const left = walk(path.join(home, '.epikloop')).map((file) => path.relative(home, file))
         if (left.length !== 2 || !fs.existsSync(outside) || !fs.existsSync(other)) problems.push(`left ${JSON.stringify(left)} in the home, not only the files from elsewhere`)
         return problems
+      },
+    ],
+    [
+      "a session gets its own folder as PWD, and none of the Claude Code session that started the runner",
+      async () => {
+        const saved = { ...process.env }
+        Object.assign(process.env, { PWD: temp, CLAUDECODE: '1', CLAUDE_EFFORT: 'max', CLAUDE_CODE_SESSION_ID: 'the-caller' })
+        try {
+          const graders = "  - name: pwd\n    type: regex\n    pattern: 'pwd-is-cwd=true'\n  - name: clean\n    type: regex\n    pattern: 'inherited=none'\n"
+          const { results } = await run([['clean', yaml('clean', { graders })]])
+          return results[0].passed ? [] : [`it failed: ${JSON.stringify(results[0].runs)}`]
+        } finally {
+          for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key]
+          Object.assign(process.env, saved)
+        }
       },
     ],
     [

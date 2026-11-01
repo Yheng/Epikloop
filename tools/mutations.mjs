@@ -210,4 +210,6 @@ export const MUTATIONS = [
   m(EVALS, ['evals'], 'grant a case a tool beyond the read-only ones', 'if (!READ_ONLY.includes(tool)) say(', 'if (false) say('),
   m(EVALS, ['evals'], 'pass a session that ended in error', 'runs.every((run) => run.error === null && run.graded.every(', 'runs.every((run) => run.graded.every('),
   m(EVALS, ['evals'], 'start a case without its fixture', 'if (loaded.fixture !== null) {', 'if (false) {'),
+  m(EVALS, ['evals'], "hand a session the Claude Code session that started the runner", 'Object.entries(process.env).filter(([key]) => !INHERITED.test(key))', 'Object.entries(process.env)'),
+  m(EVALS, ['evals'], "leave a session the caller's PWD", '{ ...own, PWD: work, DISABLE_AUTOUPDATER', '{ ...own, DISABLE_AUTOUPDATER'),
 ]
