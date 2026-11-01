@@ -16,6 +16,9 @@
   <img alt="Claude Code 2.1.295 or later" src="https://img.shields.io/badge/Claude%20Code-2.1.295%2B-0f766e">
   <img alt="Node 22 or later" src="https://img.shields.io/badge/Node-22%2B-0f766e">
   <img alt="Linux, macOS and Windows" src="https://img.shields.io/badge/OS-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-0f766e">
+  <a href="https://github.com/Yheng/Epikloop/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Yheng/Epikloop?color=0f766e"></a>
+  <a href="https://github.com/Yheng/Epikloop/forks"><img alt="GitHub forks" src="https://img.shields.io/github/forks/Yheng/Epikloop?color=0f766e"></a>
+  <img alt="Visitors" src="https://visitor-badge.laobi.icu/badge?page_id=Yheng.Epikloop&left_text=visitors&right_color=%230f766e">
 </p>
 
 <p align="center">
