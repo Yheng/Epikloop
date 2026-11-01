@@ -148,6 +148,28 @@ All notable changes to Epikloop are recorded here.
     - Every skill that loads a format through `!` aborted before the model ran, and nothing could
       commit, so 7 of the 10 cases failed there.
     - So the runner is ours, and the case files stay in its format for when it can.
+- Lint, as three more laws in `tools/laws.mjs`. Like the first five, they make existing rules into
+  laws (article 5) and add no rule:
+  - **Skill and agent frontmatter:**
+    - a one-sentence description
+    - `name` only on the front door
+    - `effort` on every skill a person can invoke
+    - `model` only on the worker
+    - brackets and quotes quoted
+
+    Frontmatter the laws can't read fails, naming its line.
+  - **Hooks:**
+    - exec form on Node
+    - no worktree hooks
+    - no blocking hook on a tool but a shell
+    - the guard registered with `onFailure: "block"`
+    - forward slashes in `hooks.json` and the manifests
+
+    Until now nothing read the guard's registration, since its self-test spawns `guard.mjs`
+    directly.
+  - **JSON formats:** each schema requires a `format` version. Every key in the schemas, their
+    examples and the lane profiles is snake_case, apart from JSON Schema's `$schema` and the tiers
+    `T1`–`T3`.
 
 ### Changed
 
@@ -177,6 +199,12 @@ All notable changes to Epikloop are recorded here.
   - It allows a scaffold only as exactly the two-line shim that hands a fixture's name to
     `fixture.mjs`.
   - "One shell file" became "a shell only as a thin shim", which is article 7's own wording.
+- The `effort` rule now names the skills it covers: every skill a person can invoke.
+  - `spec-delta` has had no `effort` since it was added.
+  - The worker preloads it, and with no effort of its own it keeps the worker's tier effort.
+- The quoting rule now says what counts as a quote: a double quote anywhere, or a single quote that
+  opens a value, both of which YAML reads as syntax. An apostrophe inside a word is text, as in
+  `spec-delta`'s description.
 
 ### Removed
 

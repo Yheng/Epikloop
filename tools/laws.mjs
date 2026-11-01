@@ -5,6 +5,14 @@
 //   ceiling     the core plugin's model-facing text stays within 700 lines (article 2)
 //   shell       a shell appears only as a thin shim: check.sh and the eval scaffolds (article 7)
 //   network     hook and Harbor code makes no network call (article 6)
+//   frontmatter skills and agents: a one-sentence description, a name only on the front door, an
+//               effort on every skill a person can invoke, a model only on the worker, and brackets
+//               and quotes quoted (CLAUDE.md)
+//   hooks       exec form on Node, no worktree hooks, no blocking hook on a tool but a shell, the
+//               guard failing closed, and forward slashes in hooks.json and the manifests
+//               (CLAUDE.md)
+//   schemas     JSON that Epikloop writes has snake_case keys and a format version: its schemas,
+//               their examples and the lane profiles (CLAUDE.md)
 //   sign-off    every commit but a merge is signed off by its author, for the DCO
 //   AI credits  no commit credits an AI tool: not as its author or committer, a trailer or a footer
 //
@@ -214,6 +222,276 @@ export function networkLaw(root) {
   return { files: seen.size, problems }
 }
 
+// ---- Skill and agent frontmatter
+
+const FRONT_DOOR = 'plugins/epikloop/skills/epikloop/SKILL.md'
+const WORKER = 'plugins/epikloop/agents/story-worker.md'
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+// What YAML may read as syntax rather than text: a bracket or a double quote anywhere, or a single
+// quote that opens the value. An apostrophe inside a word is text.
+const NEEDS_QUOTES = /[[\]{}<>"]|^'/
+const QUOTED = /^(?:'(?:[^']|'')*'|"(?:[^"\\]|\\.)*")$/
+
+function unquote(raw) {
+  if (/^'.*'$/.test(raw)) return raw.slice(1, -1).replace(/''/g, "'")
+  if (/^".*"$/.test(raw)) {
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return raw.slice(1, -1)
+    }
+  }
+  return raw
+}
+
+// A frontmatter block's fields, in the forms skills and agents use: `key: value`, a `- item` list
+// under a key, and one level of `key: value` under a key. `values` holds each value's raw text with
+// its line, and `unread` each line in none of those forms.
+function readFront(block) {
+  const fields = {}
+  const values = []
+  const unread = []
+  let open = null
+  for (const [i, raw] of block.split('\n').entries()) {
+    const line = i + 2
+    if (raw.trim() === '' || raw.trimStart().startsWith('#')) continue
+    const top = /^([A-Za-z][\w-]*):(?:[ \t]+(\S.*?))?[ \t]*$/.exec(raw)
+    const item = /^[ \t]+-[ \t]+(\S.*?)[ \t]*$/.exec(raw)
+    const pair = /^[ \t]+([A-Za-z][\w-]*):[ \t]+(\S.*?)[ \t]*$/.exec(raw)
+    if (top !== null) {
+      open = top[2] === undefined ? top[1] : null
+      fields[top[1]] = top[2] === undefined ? null : unquote(top[2])
+      if (top[2] !== undefined) values.push([line, top[1], top[2]])
+    } else if (open !== null && item !== null && (fields[open] === null || Array.isArray(fields[open]))) {
+      fields[open] = [...(fields[open] ?? []), unquote(item[1])]
+      values.push([line, open, item[1]])
+    } else if (open !== null && pair !== null && !Array.isArray(fields[open])) {
+      fields[open] = { ...fields[open], [pair[1]]: unquote(pair[2]) }
+      values.push([line, `${open}.${pair[1]}`, pair[2]])
+    } else unread.push([line, raw.trim()])
+  }
+  return { fields, values, unread }
+}
+
+const oneSentence = (text) => /[.!?]$/.test(text) && !/[.!?]\s/.test(text)
+
+// Every plugin's skills and agents, by their frontmatter: a description of one sentence, since a
+// model-invocable description loads on every turn; a name only on the front door, since a name also
+// registers a bare command; an effort on every skill a person can invoke (spec-delta, which the
+// worker preloads, keeps the worker's); a model only on the worker; and a value that YAML may read
+// as syntax quoted whole.
+export function frontmatterLaw(root) {
+  const plugins = path.join(root, 'plugins')
+  const list = (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }) : [])
+  const files = list(plugins)
+    .filter((entry) => entry.isDirectory())
+    .flatMap((plugin) => {
+      const base = path.join(plugins, plugin.name)
+      const skills = list(path.join(base, 'skills'))
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => path.join(base, 'skills', entry.name, 'SKILL.md'))
+        .filter((file) => fs.existsSync(file))
+      const agents = list(path.join(base, 'agents'))
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+        .map((entry) => path.join(base, 'agents', entry.name))
+      return [...skills.map((file) => [file, 'skill']), ...agents.map((file) => [file, 'agent'])]
+    })
+  const problems = []
+  for (const [file, kind] of files) {
+    const shown = slash(path.relative(root, file))
+    const say = (text) => problems.push(`frontmatter: ${shown} ${text}`)
+    const front = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(read(file).replace(/\r\n/g, '\n'))
+    if (front === null) {
+      say('has no frontmatter')
+      continue
+    }
+    const { fields, values, unread } = readFront(front[1])
+    for (const [line, text] of unread) say(`line ${line} isn't read by the laws: "${text}". Write key: value, a list of "- " items, or one level of key: value under a key`)
+    for (const [line, key, raw] of values) {
+      if (NEEDS_QUOTES.test(raw) && !QUOTED.test(raw)) say(`line ${line}: ${key} holds a bracket or a quote, so quote the whole value`)
+    }
+    const description = typeof fields.description === 'string' ? fields.description.trim() : ''
+    if (description === '') say('has no description')
+    else if (!oneSentence(description)) say("has a description that isn't one sentence; a description loads on every turn")
+    if (kind === 'agent') {
+      if (shown === WORKER && (typeof fields.model !== 'string' || fields.model === 'inherit')) say('is the worker, which pins a model')
+      if (shown !== WORKER && 'model' in fields) say('pins a model; only the worker does')
+      continue
+    }
+    if (shown === FRONT_DOOR && fields.name !== 'epikloop') say('is the front door, which sets name: epikloop to register /epikloop')
+    if (shown !== FRONT_DOOR && 'name' in fields) say(`sets name, which registers a bare /${fields.name}; only the front door sets one`)
+    if (fields['user-invocable'] !== 'false' && !EFFORTS.includes(fields.effort)) {
+      say(`${'effort' in fields ? `pins effort ${fields.effort}, which isn't one of ${EFFORTS.join(', ')}` : 'pins no effort'}; every skill a person can invoke pins one`)
+    }
+    if ('model' in fields) say('pins a model; only the worker does')
+  }
+  return { files: files.length, problems }
+}
+
+// ---- Hooks and plugin paths
+
+const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest'])
+const SHELLS = ['Bash', 'PowerShell']
+const WORKTREE = /^Worktree(?:Create|Remove)$/
+const WORKTREE_NAME = /['"`](?:classic\.)?worktree[._-]?(?:create|remove)['"`]/i
+const GUARD = '${CLAUDE_PLUGIN_ROOT}/bin/guard.mjs'
+
+// Each string in a JSON value, with its place in it.
+const strings = (value, at) =>
+  typeof value === 'string'
+    ? [[at, value]]
+    : value !== null && typeof value === 'object'
+      ? Object.entries(value).flatMap(([key, item]) => strings(item, Array.isArray(value) ? `${at}[${key}]` : at === '' ? key : `${at}.${key}`))
+      : []
+
+// The manifests, and every plugin's hooks: hooks/hooks.json and any hooks a manifest names or
+// holds, with the hooks module and what it imports. A hook runs Node in exec form, which needs no
+// shell on any system; none registers a worktree event, since a WorktreeCreate hook replaces git's
+// own worktree creation; a command hook on a tool event waits on a shell tool only; the guard fails
+// closed; and a path takes forward slashes, since a backslash path loads on Windows only.
+export function hooksLaw(root) {
+  const problems = []
+  const shown = (file) => slash(path.relative(root, file))
+  const json = (file) => JSON.parse(read(file))
+  const slashes = (file, value) => {
+    for (const [at, text] of strings(value, '')) {
+      if (text.includes('\\')) problems.push(`hooks: ${shown(file)} ${at} holds a backslash; a path takes forward slashes, which load on every system`)
+    }
+  }
+  let hooks = 0
+  let manifests = 0
+  const marketplace = path.join(root, '.claude-plugin', 'marketplace.json')
+  if (fs.existsSync(marketplace)) {
+    manifests += 1
+    slashes(marketplace, json(marketplace))
+  }
+  const plugins = path.join(root, 'plugins')
+  for (const plugin of fs.existsSync(plugins) ? fs.readdirSync(plugins, { withFileTypes: true }).filter((entry) => entry.isDirectory()) : []) {
+    const base = path.join(plugins, plugin.name)
+    const standard = path.join(base, 'hooks', 'hooks.json')
+    const configs = fs.existsSync(standard) ? [[standard, json(standard)]] : []
+    const manifestFile = path.join(base, '.claude-plugin', 'plugin.json')
+    if (fs.existsSync(manifestFile)) {
+      manifests += 1
+      const manifest = json(manifestFile)
+      slashes(manifestFile, manifest)
+      const named = manifest.hooks
+      if (typeof named === 'string' || Array.isArray(named)) {
+        for (const entry of [named].flat().map((file) => path.resolve(base, file))) if (entry !== path.resolve(standard)) configs.push([entry, json(entry)])
+      } else if (named !== null && typeof named === 'object') configs.push([manifestFile, 'hooks' in named ? named : { hooks: named }])
+    }
+    let guarded = false
+    for (const [file, config] of configs) {
+      if (file !== manifestFile) slashes(file, config)
+      for (const [event, groups] of Object.entries(config.hooks ?? {})) {
+        if (WORKTREE.test(event)) problems.push(`hooks: ${shown(file)} registers ${event}; no hook replaces git's own worktree handling`)
+        for (const group of groups ?? []) {
+          const matcher = group.matcher ?? ''
+          const tools = matcher.split('|')
+          for (const hook of group.hooks ?? []) {
+            hooks += 1
+            const where = `hooks: ${shown(file)} has a ${event}${matcher === '' ? '' : ` ${matcher}`} hook`
+            if (hook.type !== 'command' || hook.command !== 'node' || !Array.isArray(hook.args)) problems.push(`${where} that isn't in exec form: "type": "command", "command": "node" and "args": [...]`)
+            if (TOOL_EVENTS.has(event) && !tools.every((tool) => SHELLS.includes(tool))) problems.push(`${where} on a tool that isn't a shell; no blocking hook goes on one`)
+            if (event === 'PreToolUse' && [...tools].sort().join('|') === 'Bash|PowerShell' && (hook.args ?? []).includes(GUARD) && hook.onFailure === 'block') guarded = true
+          }
+        }
+      }
+      const queue = (config.modules ?? []).map((module) => path.resolve(path.dirname(file), module))
+      const seen = new Set()
+      while (queue.length > 0) {
+        const code = queue.shift()
+        if (seen.has(code)) continue
+        seen.add(code)
+        let text
+        try {
+          text = read(code)
+        } catch {
+          problems.push(`hooks: ${shown(code)} is a hooks module or imported by one, and can't be read`)
+          continue
+        }
+        for (const [i, line] of text.split(/\r?\n/).entries()) {
+          if (WORKTREE_NAME.test(line)) problems.push(`hooks: ${shown(code)}:${i + 1} names a worktree event; no hook registers one`)
+        }
+        for (const match of text.matchAll(RELATIVE_IMPORT)) queue.push(path.resolve(path.dirname(code), match[1]))
+      }
+    }
+    if (plugin.name === 'epikloop' && !guarded) {
+      problems.push('hooks: plugins/epikloop registers no guard on PreToolUse for Bash|PowerShell with "onFailure": "block", so a guard that crashed would let the command run')
+    }
+  }
+  return { hooks, manifests, problems }
+}
+
+// ---- JSON formats
+
+// A key in JSON that Epikloop writes: snake_case, JSON Schema's own `$schema`, or a story tier,
+// which keys the effort overrides.
+const KEY = /^(?:[a-z][a-z0-9]*(?:_[a-z0-9]+)*|\$schema|T[1-3])$/
+
+// The core plugin's schemas, each requiring a format version and declaring snake_case keys at any
+// depth, and the JSON they describe: each example and each lane profile carries its schema's format
+// and snake_case keys.
+export function schemasLaw(root) {
+  const plugin = path.join(root, 'plugins', 'epikloop')
+  const dir = path.join(plugin, 'schemas')
+  const problems = []
+  const shown = (file) => slash(path.relative(root, file))
+  const jsonFiles = (folder, suffix) =>
+    fs.existsSync(folder)
+      ? fs
+          .readdirSync(folder)
+          .filter((name) => name.endsWith(suffix))
+          .sort()
+          .map((name) => path.join(folder, name))
+      : []
+  const schemas = jsonFiles(dir, '.schema.json')
+  // Each schema's format version by its name, or null when it requires none.
+  const formats = new Map()
+  for (const file of schemas) {
+    const schema = JSON.parse(read(file))
+    const format = schema.properties?.format?.const
+    const name = path.basename(file, '.schema.json')
+    if ((schema.required ?? []).includes('format') && Number.isInteger(format) && format > 0) formats.set(name, format)
+    else {
+      formats.set(name, null)
+      problems.push(`schemas: ${shown(file)} doesn't require a format with a const version; JSON that Epikloop writes carries one`)
+    }
+    const walk = (node, at) => {
+      if (node === null || typeof node !== 'object') return
+      for (const [key, value] of Object.entries(node)) {
+        if (key === 'properties' && value !== null && typeof value === 'object' && !Array.isArray(value)) {
+          for (const property of Object.keys(value)) if (!KEY.test(property)) problems.push(`schemas: ${shown(file)} declares ${at}/properties/${property}, which isn't snake_case`)
+        }
+        walk(value, `${at}/${key}`)
+      }
+    }
+    walk(schema, '#')
+  }
+  const data = [
+    ...jsonFiles(path.join(dir, 'examples'), '.json').map((file) => [file, path.basename(file, '.json')]),
+    ...jsonFiles(path.join(plugin, 'lanes'), '.json').map((file) => [file, 'lane']),
+  ]
+  for (const [file, name] of data) {
+    const value = JSON.parse(read(file))
+    const format = formats.get(name)
+    if (format === undefined) problems.push(`schemas: ${shown(file)} has no schema, ${name}.schema.json`)
+    else if (format !== null && value?.format !== format) {
+      problems.push(`schemas: ${shown(file)} carries ${value?.format === undefined ? 'no format' : `format ${JSON.stringify(value.format)}`}, not its schema's ${format}`)
+    }
+    const keys = (node, at) => {
+      if (node === null || typeof node !== 'object') return
+      for (const [key, item] of Object.entries(node)) {
+        const place = Array.isArray(node) ? `${at}[${key}]` : at === '' ? key : `${at}.${key}`
+        if (!Array.isArray(node) && !KEY.test(key)) problems.push(`schemas: ${shown(file)} has the key ${place}, which isn't snake_case`)
+        keys(item, place)
+      }
+    }
+    keys(value, '')
+  }
+  return { schemas: schemas.length, files: data.length, problems }
+}
+
 // ---- The commits
 
 const hasHead = (root) => git(root, ['rev-parse', '--verify', '-q', 'HEAD']).status === 0
@@ -270,11 +548,12 @@ function main() {
   const started = performance.now()
   const parts = []
   const failures = []
+  const verdict = (problems) => (problems.length === 0 ? 'ok' : `FAIL ${problems.length}`)
   const law = (name, body) => {
     try {
       const { problems, shown } = body()
       failures.push(...problems)
-      parts.push(shown ?? `${name} ${problems.length === 0 ? 'ok' : `FAIL ${problems.length}`}`)
+      parts.push(shown ?? `${name} ${verdict(problems)}`)
     } catch (error) {
       failures.push(`${name}: ${String(error?.message ?? error).split('\n')[0]}`)
       parts.push(`${name} FAIL`)
@@ -286,15 +565,27 @@ function main() {
   })
   law('shell', () => {
     const { problems, scaffolds } = shellLaw(ROOT)
-    return { problems, shown: `shell ${problems.length === 0 ? 'ok' : `FAIL ${problems.length}`} (${scaffolds} eval scaffolds)` }
+    return { problems, shown: `shell ${verdict(problems)} (${scaffolds} eval scaffolds)` }
   })
   law('network', () => {
     const { files, problems } = networkLaw(ROOT)
-    return { problems, shown: `network ${problems.length === 0 ? 'ok' : `FAIL ${problems.length}`} (${files} files)` }
+    return { problems, shown: `network ${verdict(problems)} (${files} files)` }
+  })
+  law('frontmatter', () => {
+    const { files, problems } = frontmatterLaw(ROOT)
+    return { problems, shown: `frontmatter ${verdict(problems)} (${files} files)` }
+  })
+  law('hooks', () => {
+    const { hooks, manifests, problems } = hooksLaw(ROOT)
+    return { problems, shown: `hooks ${verdict(problems)} (${hooks} hooks, ${manifests} manifests)` }
+  })
+  law('schemas', () => {
+    const { schemas, files, problems } = schemasLaw(ROOT)
+    return { problems, shown: `schemas ${verdict(problems)} (${schemas} schemas, ${files} files)` }
   })
   law('sign-off', () => {
     const { commits: count, problems } = signoffLaw(ROOT)
-    return { problems, shown: `sign-off ${problems.length === 0 ? 'ok' : `FAIL ${problems.length}`} (${count} commits)` }
+    return { problems, shown: `sign-off ${verdict(problems)} (${count} commits)` }
   })
   law('AI credits', () => creditsLaw(ROOT))
   for (const line of failures) console.log(line)
@@ -368,6 +659,32 @@ async function selfTest() {
       'plugins/epikloop-harbor/.claude-plugin/plugin.json': '{}\n',
     }
     for (const [file, content] of Object.entries({ ...defaults, ...files })) k.write(root, file, content)
+    return root
+  }
+  // A repository whose manifests and hooks are clean, unless `change` edits its JSON files or
+  // `code` replaces the hooks module's files.
+  const hooksRepo = (change = () => {}, code = {}) => {
+    const root = k.dir()
+    const guard = { type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/bin/guard.mjs'], onFailure: 'block' }
+    const files = {
+      '.claude-plugin/marketplace.json': { name: 'epikloop', plugins: [{ name: 'epikloop', source: './plugins/epikloop' }] },
+      'plugins/epikloop/.claude-plugin/plugin.json': { name: 'epikloop' },
+      'plugins/epikloop-harbor/.claude-plugin/plugin.json': { name: 'epikloop-harbor' },
+      'plugins/epikloop/hooks/hooks.json': {
+        modules: ['./emit.js'],
+        hooks: {
+          SessionStart: [{ hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/bin/brief.mjs'] }] }],
+          PreToolUse: [{ matcher: 'Bash|PowerShell', hooks: [guard] }],
+        },
+      },
+    }
+    change(files)
+    for (const [file, value] of Object.entries(files)) k.write(root, file, JSON.stringify(value, null, 2))
+    const modules = {
+      'plugins/epikloop/hooks/emit.js': "import { x } from './helper.js'\nexport function register(on) {\n  on('session.start', ($, e, next) => next(e))\n}\n",
+      'plugins/epikloop/hooks/helper.js': 'export const x = 1\n',
+    }
+    for (const [file, text] of Object.entries({ ...modules, ...code })) k.write(root, file, text)
     return root
   }
   const real = path.join(ROOT, 'plugins', 'epikloop')
@@ -474,6 +791,152 @@ async function selfTest() {
       ['the gate runner', { 'plugins/epikloop/templates/githooks/check.mjs': "const http = require('http')\n" }, 'network: plugins/epikloop/templates/githooks/check.mjs:1 uses a network module'],
       ['Harbor', { 'plugins/epikloop-harbor/server/feed.mjs': 'const feed = new EventSource(url)\n' }, 'network: plugins/epikloop-harbor/server/feed.mjs:1 uses EventSource'],
     ].map(([where, files, text]) => [`a network call in ${where} fails`, () => k.has(networkLaw(networkRepo(files)).problems, text)]),
+    [
+      "the real skills, agents, hooks, manifests and formats pass",
+      () => {
+        const front = frontmatterLaw(ROOT)
+        const hooks = hooksLaw(ROOT)
+        const formats = schemasLaw(ROOT)
+        const read = front.files > 0 && hooks.hooks > 0 && hooks.manifests > 0 && formats.schemas > 0 && formats.files > 0
+        return [
+          ...k.none([...front.problems, ...hooks.problems, ...formats.problems]),
+          ...(read ? [] : [`read ${front.files} frontmatters, ${hooks.hooks} hooks, ${hooks.manifests} manifests, ${formats.schemas} schemas and ${formats.files} files`]),
+        ]
+      },
+    ],
+    [
+      'frontmatter that breaks each rule fails',
+      () => {
+        const root = k.dir()
+        const skill = (name, front, plugin = 'epikloop') => k.write(root, `plugins/${plugin}/skills/${name}/SKILL.md`, `---\n${front}\n---\n\nBody.\n`)
+        const agent = (name, front) => k.write(root, `plugins/epikloop/agents/${name}.md`, `---\n${front}\n---\n\nBody.\n`)
+        skill('epikloop', `name: epikloop\ndescription: Show where the project stands.\neffort: low\nallowed-tools:\n  - 'Bash(node "\${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'`)
+        skill('story', 'description: Run one story, then stop.\nargument-hint: "<X.X>"\neffort: medium')
+        skill('spec-delta', "description: Apply a story's spec delta to the story's spec.\nuser-invocable: false")
+        skill('view', `description: Open the view.\nargument-hint: '"on|off"'\neffort: low`, 'epikloop-harbor')
+        agent('story-worker', 'name: story-worker\ndescription: Builds one story, to a landed feat(N.M) commit.\nmodel: opus\nskills:\n  - spec-delta\nexperimental:\n  cacheTtl: 1h')
+        const clean = frontmatterLaw(root)
+        skill('two', 'description: Run it. Then stop.\neffort: low')
+        skill('bare', 'description: Run it\neffort: low')
+        skill('named', 'name: named\ndescription: Named.\neffort: low')
+        skill('open', 'name: open\ndescription: Open it.\neffort: low', 'epikloop-harbor')
+        skill('lazy', 'description: No effort.')
+        skill('wrong', 'description: Wrong effort.\neffort: extreme')
+        skill('modeled', 'description: Modeled.\neffort: low\nmodel: opus')
+        agent('helper', 'name: helper\ndescription: Helps.\nmodel: sonnet')
+        skill('hint', 'description: Hint.\nargument-hint: [name]\neffort: low')
+        skill('tools', 'description: Tools.\neffort: low\nallowed-tools:\n  - Bash(node "${CLAUDE_PLUGIN_ROOT}/x" *)')
+        skill('opened', "description: 'Opens' and goes on.\neffort: low")
+        skill('folded', 'description: >\n  Folded.\neffort: low')
+        skill('hooked', 'description: Hooked.\neffort: low\nhooks:\n  PreToolUse:\n    - matcher: Edit')
+        k.write(root, 'plugins/epikloop/skills/plain/SKILL.md', '# Plain\n')
+        const dirty = frontmatterLaw(root).problems
+        const other = k.dir()
+        k.write(other, 'plugins/epikloop/skills/epikloop/SKILL.md', '---\ndescription: The door.\neffort: low\n---\n')
+        k.write(other, 'plugins/epikloop/agents/story-worker.md', '---\nname: story-worker\ndescription: Builds.\nmodel: inherit\n---\n')
+        const unnamed = frontmatterLaw(other).problems
+        const at = (name, plugin = 'epikloop') => `frontmatter: plugins/${plugin}/skills/${name}/SKILL.md`
+        return [
+          ...k.none(clean.problems),
+          ...(clean.files === 5 ? [] : [`read ${clean.files} files, not 5`]),
+          ...k.has(
+            dirty,
+            `${at('two')} has a description that isn't one sentence`,
+            `${at('bare')} has a description that isn't one sentence`,
+            `${at('named')} sets name, which registers a bare /named`,
+            `${at('open', 'epikloop-harbor')} sets name, which registers a bare /open`,
+            `${at('lazy')} pins no effort`,
+            `${at('wrong')} pins effort extreme`,
+            `${at('modeled')} pins a model`,
+            'frontmatter: plugins/epikloop/agents/helper.md pins a model',
+            `${at('hint')} line 3: argument-hint holds a bracket or a quote`,
+            `${at('tools')} line 5: allowed-tools holds a bracket or a quote`,
+            `${at('opened')} line 2: description holds a bracket or a quote`,
+            `${at('folded')} line 3 isn't read by the laws`,
+            `${at('hooked')} line 5 isn't read by the laws`,
+            `${at('plain')} has no frontmatter`,
+          ),
+          ...(dirty.length === 16 ? [] : [`found ${dirty.length}, not 16: ${JSON.stringify(dirty)}`]),
+          ...k.has(unnamed, `${at('epikloop')} is the front door, which sets name: epikloop`, 'frontmatter: plugins/epikloop/agents/story-worker.md is the worker, which pins a model'),
+          ...(unnamed.length === 2 ? [] : [`found ${unnamed.length}, not 2: ${JSON.stringify(unnamed)}`]),
+        ]
+      },
+    ],
+    [
+      'clean hooks and manifests pass',
+      () => {
+        const { hooks, manifests, problems } = hooksLaw(hooksRepo())
+        return [...k.none(problems), ...(hooks === 2 && manifests === 3 ? [] : [`read ${hooks} hooks and ${manifests} manifests, not 2 and 3`])]
+      },
+    ],
+    [
+      'hooks that break each rule fail',
+      () => {
+        const HOOKS = 'plugins/epikloop/hooks/hooks.json'
+        const blocking = (matcher) => ({ ...(matcher === undefined ? {} : { matcher }), hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/bin/x.mjs'] }] })
+        const breaks = [
+          [(f) => (f[HOOKS].hooks.SessionStart[0].hooks[0] = { type: 'command', command: 'node ${CLAUDE_PLUGIN_ROOT}/bin/brief.mjs' }), {}, `hooks: ${HOOKS} has a SessionStart hook that isn't in exec form`],
+          [(f) => (f[HOOKS].hooks.SessionStart[0].hooks[0].command = 'bash'), {}, `hooks: ${HOOKS} has a SessionStart hook that isn't in exec form`],
+          [(f) => (f[HOOKS].hooks.WorktreeCreate = [blocking()]), {}, `hooks: ${HOOKS} registers WorktreeCreate`],
+          [() => {}, { 'plugins/epikloop/hooks/helper.js': "export const x = (on) => on('classic.WorktreeRemove', () => {})\n" }, 'hooks: plugins/epikloop/hooks/helper.js:1 names a worktree event'],
+          [(f) => f[HOOKS].hooks.PreToolUse.push(blocking('Edit')), {}, `hooks: ${HOOKS} has a PreToolUse Edit hook on a tool that isn't a shell`],
+          [(f) => (f[HOOKS].hooks.PostToolUse = [blocking()]), {}, `hooks: ${HOOKS} has a PostToolUse hook on a tool that isn't a shell`],
+          [(f) => delete f[HOOKS].hooks.PreToolUse[0].hooks[0].onFailure, {}, 'hooks: plugins/epikloop registers no guard on PreToolUse'],
+          [(f) => (f[HOOKS].hooks.SessionStart[0].hooks[0].args = ['${CLAUDE_PLUGIN_ROOT}\\bin\\brief.mjs']), {}, `hooks: ${HOOKS} hooks.SessionStart[0].hooks[0].args[0] holds a backslash`],
+          [(f) => (f['.claude-plugin/marketplace.json'].plugins[0].source = '.\\plugins\\epikloop'), {}, 'hooks: .claude-plugin/marketplace.json plugins[0].source holds a backslash'],
+          [
+            (f) => {
+              f['plugins/epikloop-harbor/.claude-plugin/plugin.json'].hooks = './more.json'
+              f['plugins/epikloop-harbor/more.json'] = { hooks: { PreToolUse: [blocking('*')] } }
+            },
+            {},
+            "hooks: plugins/epikloop-harbor/more.json has a PreToolUse * hook on a tool that isn't a shell",
+          ],
+        ]
+        return breaks.flatMap(([change, code, text]) => k.has(hooksLaw(hooksRepo(change, code)).problems, text))
+      },
+    ],
+    [
+      'formats that break each rule fail',
+      () => {
+        const root = k.dir()
+        const json = (file, value) => k.write(root, `plugins/epikloop/${file}`, JSON.stringify(value, null, 2))
+        const tiers = { type: 'object', properties: { T1: { type: 'string' }, T3: { type: 'string' } } }
+        const project = { type: 'object', required: ['format', 'id'], properties: { $schema: {}, format: { const: 1 }, id: {}, effort: { $ref: '#/$defs/tiers' }, gates: { properties: { allow_workflows: { items: {} } } } }, $defs: { tiers } }
+        const lane = (allow) => ({ required: ['format'], properties: { $schema: {}, format: { const: 1 }, name: {}, ui_test: { oneOf: [{ type: 'null' }, { type: 'object', properties: { [allow]: {} } }] } } })
+        json('schemas/project.schema.json', project)
+        json('schemas/lane.schema.json', lane('allow'))
+        json('schemas/examples/project.json', { format: 1, id: '3f9c2a7b1e04', effort: { T3: 'max' }, gates: { allow_workflows: ['deploy.yml'] } })
+        json('lanes/web.json', { $schema: '../schemas/lane.schema.json', format: 1, name: 'web', ui_test: { allow: ['npx playwright test'] } })
+        const clean = schemasLaw(root)
+        json('schemas/event.schema.json', { required: ['ts'], properties: { format: { const: 1 }, ts: {} } })
+        json('schemas/cost.schema.json', { required: ['format'], properties: { format: { type: 'integer' } } })
+        json('schemas/project.schema.json', { ...project, properties: { ...project.properties, projectId: {} } })
+        json('schemas/lane.schema.json', lane('allowList'))
+        json('schemas/examples/project.json', { format: 1, id: '3f9c2a7b1e04', gates: { allowWorkflows: [] } })
+        json('schemas/examples/lane.json', { format: 2, name: 'x' })
+        json('schemas/examples/config.json', { format: 1 })
+        json('lanes/service.json', { $schema: '../schemas/lane.schema.json', name: 'service', uiTest: null })
+        const dirty = schemasLaw(root).problems
+        return [
+          ...k.none(clean.problems),
+          ...(clean.schemas === 2 && clean.files === 2 ? [] : [`read ${clean.schemas} schemas and ${clean.files} files, not 2 and 2`]),
+          ...k.has(
+            dirty,
+            "schemas: plugins/epikloop/schemas/event.schema.json doesn't require a format",
+            "schemas: plugins/epikloop/schemas/cost.schema.json doesn't require a format",
+            "schemas: plugins/epikloop/schemas/project.schema.json declares #/properties/projectId, which isn't snake_case",
+            "schemas: plugins/epikloop/schemas/lane.schema.json declares #/properties/ui_test/oneOf/1/properties/allowList, which isn't snake_case",
+            "schemas: plugins/epikloop/schemas/examples/project.json has the key gates.allowWorkflows, which isn't snake_case",
+            "schemas: plugins/epikloop/schemas/examples/lane.json carries format 2, not its schema's 1",
+            'schemas: plugins/epikloop/schemas/examples/config.json has no schema, config.schema.json',
+            "schemas: plugins/epikloop/lanes/service.json carries no format, not its schema's 1",
+            "schemas: plugins/epikloop/lanes/service.json has the key uiTest, which isn't snake_case",
+          ),
+          ...(dirty.length === 9 ? [] : [`found ${dirty.length}, not 9: ${JSON.stringify(dirty)}`]),
+        ]
+      },
+    ],
     [
       'every commit but a merge is signed off by its author',
       () => {

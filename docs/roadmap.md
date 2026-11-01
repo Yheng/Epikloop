@@ -58,7 +58,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - the check runs the pre-push gates over every commit a pull request adds
   - story 1.1, or `adopt`, writes the stack's setup and install into it
   - the human makes it required in the default branch's protection
-- CI self-test (done), on top of validation; lint is next, as laws for the frontmatter, hook and
+- CI self-test and lint (done), on top of validation. Lint is laws for the frontmatter, hook and
   schema rules that `CLAUDE.md` states in sentences. The evals run on a contributor's machine
   instead, since CI would need a Claude credential stored on GitHub
 - the CI mutation check (done): `tools/mutate.mjs` breaks each rule in a copy and expects its
@@ -77,6 +77,10 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - prompt ceiling
   - a shell only as a thin shim: `check.sh`, and each eval case's `scaffold.sh`
   - no network calls in hook or Harbor code
+  - skill and agent frontmatter
+  - hooks: exec form on Node, no worktree hooks, no blocking hook on a tool but a shell, the guard
+    failing closed, and forward slashes in plugin paths
+  - snake_case keys and a format version in Epikloop's JSON
   - DCO sign-off on every commit
   - no AI co-author trailers, nor AI authors, committers or "Generated with" footers
 

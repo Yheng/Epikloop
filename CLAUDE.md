@@ -22,8 +22,10 @@ Every skill has its body except `design` (M2) and `harbor` (M4), which have fron
 purpose paragraph only, and so does the worker. The git guard, the emitter, the gate runner, the
 SessionStart briefing, project setup, the state reader, the staging smoke, `doctor`, the project
 file formats, the `web` and `service` lanes, the team-mode workflow and the product `CLAUDE.md`
-template are in place. CI checks this repository's laws and the self-tests' mutations, and the
-eval suite runs on a contributor's machine. Lint, as laws, is next in M1 (`docs/roadmap.md`).
+template are in place. CI checks this repository's laws, lint among them, and the self-tests'
+mutations, and the eval suite runs on a contributor's machine. M1 is done when Harbor's own web app
+has been built with Epikloop and an existing production repo adopted, each end to end
+(`docs/roadmap.md`).
 
 ## Map
 
@@ -68,7 +70,8 @@ eval suite runs on a contributor's machine. Lint, as laws, is next in M1 (`docs/
     starts from, with its self-test
 - `plugins/epikloop-harbor/` — a manifest only, until M4.
 - `tools/` — this repository's own checks, which no plugin ships:
-  - `laws.mjs` checks the constitution's mechanical rules
+  - `laws.mjs` checks the mechanical rules: the constitution's, and those below for frontmatter,
+    hooks, plugin paths and JSON
   - `mutate.mjs`, with its list in `mutations.mjs`, is the self-tests' mutation check
   - `evals.mjs` runs the eval suite, each case as a headless session under the machine's own
     login, with its self-test
@@ -83,6 +86,8 @@ eval suite runs on a contributor's machine. Lint, as laws, is next in M1 (`docs/
 - **Cite the failure.** A new rule, gate, hook or skill instruction needs a `CHANGELOG.md` entry
   naming the failure it fixes and the date it was adopted. No preemptive rules.
 - **Laws, not sentences.** Anything mechanically checkable is a script, not a sentence in a prompt.
+  `node tools/laws.mjs` checks the rules below for the prompt ceiling, shells, network calls, skill
+  frontmatter, hooks, plugin paths and JSON.
 - **Node, built-ins only.** Shipped scripts use Node built-ins with no runtime dependencies.
   - No bash, `jq` or `timeout`.
   - Node 22 is the floor.
@@ -116,9 +121,11 @@ eval suite runs on a contributor's machine. Lint, as laws, is next in M1 (`docs/
   - The `description` is one sentence, because model-invocable descriptions load on every turn of
     every session.
   - Only the front door sets `name`, because a `name` also registers a bare `/<name>`.
-  - `effort` is pinned per skill.
+  - `effort` is pinned on every skill a person can invoke. `spec-delta`, which the worker
+    preloads, has none, so it keeps the worker's tier effort.
   - `model` is pinned only on the worker agent.
-  - Brackets and quotes in YAML values are quoted.
+  - Brackets and quotes in YAML values are quoted: a bracket or a double quote anywhere, or a
+    single quote that opens the value. An apostrophe inside a word is text.
 - **JSON that Epikloop writes** uses snake_case keys and a `format` version. Its schemas live in
   `plugins/epikloop/schemas/`.
 - **Public text** never names the tool's predecessor, never cites internal planning documents, and
@@ -206,6 +213,13 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
     exactly the two lines that hand a fixture's name to `fixture.mjs`
   - no network call in hook code (what `hooks.json` runs, its imports and the git hooks) or in
     Harbor
+  - skill and agent frontmatter: a one-sentence description, `name` only on the front door,
+    `effort` on every skill a person can invoke, `model` only on the worker, and brackets and
+    quotes quoted. Frontmatter the laws can't read fails, naming its line.
+  - hooks: exec form on Node, no worktree hooks, no blocking hook on a tool but a shell, and the
+    guard registered with `onFailure: "block"`; forward slashes in `hooks.json` and the manifests
+  - JSON formats: each schema requires a `format` version, and every key in the schemas, their
+    examples and the lane profiles is snake_case, apart from `$schema` and the tiers `T1`–`T3`
   - a sign-off on every commit but a merge
   - no AI credits
 

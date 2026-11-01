@@ -34,7 +34,7 @@ Thanks for helping. Epikloop is small on purpose, and these rules keep it that w
   - a calm tone
   - no instructions to verify one's own work, or to verify through a subagent
 
-  Keep each skill `description` to one sentence.
+  Keep each skill `description` to one sentence; the laws check it.
 
 ## Checking your change
 
@@ -61,10 +61,14 @@ node tools/mutate.mjs --self-test
 node tools/mutate.mjs
 ```
 
-- **`tools/laws.mjs`** checks this repository against the constitution's mechanical rules:
+- **`tools/laws.mjs`** checks this repository against its mechanical rules:
   - the prompt ceiling
   - a shell only as a thin shim: `scripts/check.sh`, and each eval case's `scaffold.sh`
   - no network call in hook or Harbor code
+  - skill and agent frontmatter, by the rules in `CLAUDE.md`
+  - hooks: exec form on Node, no worktree hooks, no blocking hook on a tool but a shell, the guard
+    failing closed, and forward slashes in `hooks.json` and the manifests
+  - snake_case keys and a `format` version in the schemas, their examples and the lanes
   - a sign-off on every commit but a merge
   - no AI credits
 

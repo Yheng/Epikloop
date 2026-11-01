@@ -389,7 +389,8 @@ the model through the state reader's briefs instead (see [Lanes](#lanes)).
 
 **Frontmatter conventions:**
 
-- `effort` is pinned per skill.
+- `effort` is pinned on every skill a person can invoke. `spec-delta`, which the worker preloads,
+  has none, so it keeps the worker's tier effort.
 - `model` is pinned only on the worker. A skill whose model differs from the session's makes that
   turn re-read the whole conversation uncached.
 - User-only ceremonies set `disable-model-invocation: true`, which also keeps their descriptions out
@@ -503,5 +504,5 @@ tool's name and docs are not nautical.
 | `plugins/epikloop/evals/` | The eval suite, inside the plugin where `claude plugin eval` reads it: a folder per case, and `fixture.mjs`, which builds the fixture project each case starts in | now |
 | `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
-| `tools/` | This repository's own checks: `laws.mjs` for the constitution's mechanical rules, the self-tests' mutation check (`mutate.mjs` with `mutations.mjs`), and `evals.mjs`, which runs the eval suite under the machine's own login | now |
-| `.github/workflows/ci.yml` | Validation, every self-test and the laws on Linux, macOS and Windows; the mutation check on Linux; lint as it arrives. The eval suite runs on a contributor's machine, so no Claude credential is stored on GitHub | now |
+| `tools/` | This repository's own checks: `laws.mjs` for the mechanical rules, lint included, the self-tests' mutation check (`mutate.mjs` with `mutations.mjs`), and `evals.mjs`, which runs the eval suite under the machine's own login | now |
+| `.github/workflows/ci.yml` | Validation, every self-test and the laws, lint among them, on Linux, macOS and Windows; the mutation check on Linux. The eval suite runs on a contributor's machine, so no Claude credential is stored on GitHub | now |
