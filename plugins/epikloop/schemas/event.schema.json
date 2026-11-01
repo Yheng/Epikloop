@@ -31,6 +31,7 @@
         "stop",
         "story.started",
         "story.committed",
+        "gate.started",
         "gate.passed",
         "gate.failed",
         "question.parked",

@@ -1025,36 +1025,51 @@ async function hooksNote(top) {
   return null
 }
 
-// One gate.passed or gate.failed line per gate that ran, written the way the emitter writes its
-// own, so fold() and Harbor read both. Only where ~/.epikloop exists; a failed write fails nothing.
+// One line of a run, written the way the emitter writes its own, so fold() and Harbor read both: a
+// file named for its time, the run's id and its place in the run, whose detail carries the run's
+// mode and id. Only where ~/.epikloop exists and the marker has an id.
+function writeEvent(ctx, seq, kind, state, detail = {}) {
+  const root = path.join(os.homedir(), '.epikloop')
+  if (!fs.existsSync(root) || !/^[0-9a-f]{12}$/.test(ctx.config?.id ?? '')) return
+  const ms = Date.now()
+  const ts = new Date(ms).toISOString()
+  const event = {
+    format: 1,
+    ts,
+    project_id: ctx.config.id,
+    cwd: ctx.top,
+    session_id: process.env.CLAUDE_CODE_SESSION_ID || 'none',
+    kind,
+    ...(state === undefined ? {} : { state }),
+    detail: { mode: ctx.mode, run: ctx.run, ...detail },
+  }
+  const day = path.join(root, 'events', ts.slice(0, 10))
+  fs.mkdirSync(day, { recursive: true })
+  fs.writeFileSync(path.join(day, `${ms}-${ctx.run}-${seq}.json`), `${JSON.stringify(event)}\n`, { flag: 'wx' })
+}
+
+// gate.started, as soon as the marker is read and before the first gate, so Harbor can show the
+// gates running. A failed write fails nothing.
+function writeStart(ctx) {
+  try {
+    writeEvent(ctx, 0, 'gate.started')
+  } catch {}
+}
+
+// One gate.passed or gate.failed line per gate that ran, all written when the run ends. A run that
+// read its marker always writes its shims and secrets lines, so the first result line with a run's
+// id marks the run's end. A failed write fails nothing.
 function writeEvents(ctx, results) {
   try {
-    const root = path.join(os.homedir(), '.epikloop')
-    if (!fs.existsSync(root) || !/^[0-9a-f]{12}$/.test(ctx.config?.id ?? '')) return
-    const run8 = crypto.randomBytes(4).toString('hex')
     let seq = 0
     for (const r of results) {
       if (r.status === 'none' || r.status === 'off') continue
-      const ms = Date.now()
-      const ts = new Date(ms).toISOString()
-      const detail = { mode: ctx.mode, ms: Math.round(r.ms ?? 0) }
+      const detail = { ms: Math.round(r.ms ?? 0) }
       if (r.skipped) detail.skipped = r.skipped
       if (r.first?.file) detail.file = r.first.file.slice(0, 512)
       if (r.first?.line) detail.line = r.first.line
-      const event = {
-        format: 1,
-        ts,
-        project_id: ctx.config.id,
-        cwd: ctx.top,
-        session_id: process.env.CLAUDE_CODE_SESSION_ID || 'none',
-        kind: r.status === 'fail' ? 'gate.failed' : 'gate.passed',
-        state: r.name,
-        detail,
-      }
-      const day = path.join(root, 'events', ts.slice(0, 10))
-      fs.mkdirSync(day, { recursive: true })
       seq += 1
-      fs.writeFileSync(path.join(day, `${ms}-${run8}-${seq}.json`), `${JSON.stringify(event)}\n`, { flag: 'wx' })
+      writeEvent(ctx, seq, r.status === 'fail' ? 'gate.failed' : 'gate.passed', r.name, detail)
     }
   } catch {}
 }
@@ -1088,13 +1103,14 @@ async function main(argv) {
   const started = performance.now()
   const top = text(await git(['rev-parse', '--show-toplevel']))
   process.chdir(top)
-  const ctx = { mode, top, config: null, push: null, before: null, stamped: null }
+  const ctx = { mode, top, config: null, push: null, before: null, stamped: null, run: crypto.randomBytes(4).toString('hex') }
   let results = null
   try {
     ctx.config = readConfig()
   } catch (error) {
     results = [{ name: 'config', status: 'fail', lines: error.message.split('\n').map((line) => `config: ${line}`) }]
   }
+  if (results === null) writeStart(ctx)
   const envFiles = await ignoredEnvFiles().catch(() => [])
   secretValues = envValues(envFiles)
   if (results === null) {
@@ -2231,16 +2247,33 @@ function eventCases(k) {
         const events = path.join(home, '.epikloop', 'events')
         const files = fs.existsSync(events) ? fs.readdirSync(events).flatMap((day) => fs.readdirSync(path.join(events, day)).map((name) => [day, name])) : []
         const problems = []
-        for (const [day, name] of files) {
+        // Each name is <ms>-<run id>-<place in the run>; the start line is place 0.
+        const named = files.map(([day, name]) => [day, name, /^(\d+)-([0-9a-f]{8})-(\d+)\.json$/.exec(name)])
+        for (const [day, name, parts] of named) {
+          if (parts === null) {
+            problems.push(`name ${name}`)
+            continue
+          }
           const e = JSON.parse(fs.readFileSync(path.join(events, day, name), 'utf8'))
-          if (!/^\d+-[0-9a-f]{8}-\d+\.json$/.test(name)) problems.push(`name ${name}`)
+          const start = parts[3] === '0'
           if (e.format !== 1 || e.ts.slice(0, 10) !== day || e.project_id !== 'abcdef012345') problems.push('format, ts or project_id')
-          if (e.session_id !== 'session-self-test' || !['gate.passed', 'gate.failed'].includes(e.kind)) problems.push('session_id or kind')
-          if (!/^[a-z][a-z0-9-]*$/.test(e.state) || typeof e.cwd !== 'string' || e.cwd === '') problems.push('state or cwd')
+          if (e.session_id !== 'session-self-test' || typeof e.cwd !== 'string' || e.cwd === '') problems.push('session_id or cwd')
+          if (start ? e.kind !== 'gate.started' || 'state' in e : !['gate.passed', 'gate.failed'].includes(e.kind) || !/^[a-z][a-z0-9-]*$/.test(e.state)) problems.push(`kind or state in ${name}`)
+          if (e.detail?.mode !== 'fast' || e.detail?.run !== parts[2]) problems.push(`mode or run id in ${name}`)
           const detail = Object.values(e.detail ?? {})
           if (detail.length > 16 || detail.some((v) => !['string', 'number', 'boolean'].includes(typeof v) || (typeof v === 'string' && v.length > 512))) problems.push('detail')
         }
-        return every(passes(res), files.length === 3 || `${files.length} events`, problems.length === 0 || problems.join(', '))
+        const ok = named.filter(([, , parts]) => parts !== null)
+        const starts = ok.filter(([, , parts]) => parts[3] === '0')
+        const runs = new Set(ok.map(([, , parts]) => parts[2]))
+        const first = starts.length === 1 && ok.every(([, , parts]) => Number(parts[1]) >= Number(starts[0][2][1]))
+        return every(
+          passes(res),
+          files.length === 4 || `${files.length} events`,
+          first || 'no one start line written before the results',
+          runs.size === 1 || `${runs.size} run ids`,
+          problems.length === 0 || problems.join(', '),
+        )
       },
     ],
     [

@@ -586,3 +586,14 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
     left out of the suite.
   - Nothing later caught it. A batch checks that the default branch is landed against the
     remote's copy of it, and a remote nothing has been pushed to has none.
+
+### Gate rules (adopted 2026-11-01)
+
+- **A gate run writes `gate.started` before its first gate, and every line of the run carries the
+  run's id in `detail.run`.**
+  - On 2026-11-01, Harbor's architecture found nothing that marked the start of a run. The runner
+    wrote its `gate.passed` and `gate.failed` lines together when the run ended, so Harbor could
+    show the gates running only after they had finished.
+  - A run that reads its marker always ends with its `shims` and `secrets` lines, so the first
+    result line with a run's id marks that run's end.
+  - The event schema gains the kind, and changes nothing else.

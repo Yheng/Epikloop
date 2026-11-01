@@ -206,7 +206,7 @@ The gates' self-test measures two targets:
     `tool`, `agent`, `state` and `detail`.
   - Kinds: `session.start|end`, `tool.pre|post`, `subagent.start|stop`, `task.created|completed`,
     `permission.requested`, `notification`, `stop`, `story.started|committed`,
-    `gate.passed|failed`, `question.parked`, `decision.recorded` and `phase.tagged`.
+    `gate.started|passed|failed`, `question.parked`, `decision.recorded` and `phase.tagged`.
   - Events say where, never what: no tool output, prompts, file contents or secret values.
 - **`~/.epikloop/projects/<id>/cost.jsonl`** has one row per closed story
   ([schema](../plugins/epikloop/schemas/cost-row.schema.json)): `ts`, `story`, `tier`, `wall`,
@@ -250,8 +250,9 @@ How the gates run:
 - **The stamp.** A green full run stamps the working state. A push whose tips have exactly that
   tree skips tests and build; the secret scan always runs.
 - **The ratchet is held.** No brownfield baselines are enforced until an adoption needs them.
-- **Events.** Each gate writes a `gate.passed` or `gate.failed` event in the emitter's format, where
-  `~/.epikloop/` exists.
+- **Events.** A run writes `gate.started` before its first gate, and a `gate.passed` or
+  `gate.failed` event for each gate when it ends. Every line is in the emitter's format, carries the
+  run's id in `detail.run`, and is written only where `~/.epikloop/` exists.
 
 The secret scan:
 

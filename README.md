@@ -741,7 +741,7 @@ A cost row ([schema](plugins/epikloop/schemas/cost-row.schema.json)):
 
 The event kinds are `session.start|end`, `tool.pre|post`, `subagent.start|stop`,
 `task.created|completed`, `permission.requested`, `notification`, `stop`,
-`story.started|committed`, `gate.passed|failed`, `question.parked`, `decision.recorded` and
+`story.started|committed`, `gate.started|passed|failed`, `question.parked`, `decision.recorded` and
 `phase.tagged`.
 
 The emitter writes each event as a small file in `~/.epikloop/events/YYYY-MM-DD/`. Harbor and

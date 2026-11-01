@@ -85,7 +85,9 @@ export const MUTATIONS = [
   m(RUNNER, ['check'], "no line for the gates' own files", "...(log ? [`  full log: ${log}`] : []), ...own] }", "...(log ? [`  full log: ${log}`] : [])] }"),
   m(RUNNER, ['check'], "the gates' own files on every failure", "const own = OWN_FILES.test(output.replace(/\\\\/g, '/'))", 'const own = true'),
   m(RUNNER, ['check'], "the gates' own files missed in backslash paths", "const own = OWN_FILES.test(output.replace(/\\\\/g, '/'))", 'const own = OWN_FILES.test(output)'),
-  m(RUNNER, ['check'], "the gates' own files matched anywhere in a path", 'const OWN_FILES = /(?<![\\w.-])(?:\\.githooks\\/|scripts\\/check\\.sh(?![\\w.-]))/', 'const OWN_FILES = /(?:\\.githooks\\/|scripts\\/check\\.sh)/'),
+  m(RUNNER, ['check'], 'no line when a run starts', '  if (results === null) writeStart(ctx)\n', ''),
+  m(RUNNER, ['check'], 'each line with a run id of its own', 'detail: { mode: ctx.mode, run: ctx.run, ...detail },', "detail: { mode: ctx.mode, run: crypto.randomBytes(4).toString('hex'), ...detail },"),
+  m(RUNNER, ['check'], "the gates' own files matched anywhere in a path",'const OWN_FILES = /(?<![\\w.-])(?:\\.githooks\\/|scripts\\/check\\.sh(?![\\w.-]))/', 'const OWN_FILES = /(?:\\.githooks\\/|scripts\\/check\\.sh)/'),
 
   // The state reader: the batch.
   m(STATE, ['state'], 'drop the After check', 'const waits = story.after.filter((id) => !state.done.has(id))', 'const waits = []'),
