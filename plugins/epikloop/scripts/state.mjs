@@ -1660,7 +1660,7 @@ const CASES = [
       fs.cpSync(path.join(import.meta.dirname, '..'), copy, { recursive: true })
       const link = path.join(dir, 'linked')
       fs.symlinkSync(copy, link, 'junction')
-      const linked = k.cli(dir, ['--lanes'], path.join(link, 'bin', 'state.mjs'))
+      const linked = k.cli(dir, ['--lanes'], path.join(link, 'scripts', 'state.mjs'))
       return k.expect([[`${linked.status} ${linked.stdout}`, `0 ${k.cli(dir, ['--lanes']).stdout}`]])
     },
   ],

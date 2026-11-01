@@ -4,8 +4,8 @@ argument-hint: '"<what you found>"'
 effort: low
 disable-model-invocation: true
 allowed-tools:
-  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'
-  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'
+  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
+  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
 ---
 
 Outcome: a finding the human reports lands where the threshold router sends it, and nowhere else.
@@ -16,4 +16,4 @@ an explicit scope question. Nothing is filed by default. Scope: routing; fixes b
 mechanical case happen in planned stories.
 
 A parked question or backlog line takes its number and form from
-`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --ids`. Commit what the routing writes, and land it.
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --ids`. Commit what the routing writes, and land it.

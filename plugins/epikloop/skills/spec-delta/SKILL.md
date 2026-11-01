@@ -2,8 +2,8 @@
 description: Apply a story's spec delta to spec/ in the same commit as the story's code.
 user-invocable: false
 allowed-tools:
-  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'
-  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'
+  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
+  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
 ---
 
 Outcome: `spec/` describes the product as it stands once the story lands, because the story's
@@ -18,4 +18,4 @@ Business rules stay quoted verbatim with their source, and a change to how the p
 also updates `spec/architecture.md`. A script reads these files, so headings and markers follow
 this format exactly:
 
-!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --example spec`
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example spec`

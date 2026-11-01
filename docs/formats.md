@@ -1,7 +1,7 @@
 # Project file formats
 
 The four project files Epikloop keeps in a product repository, and how their state is read. Each
-format has an example in the core plugin's `templates/`. `bin/state.mjs` reads these files, and
+format has an example in the core plugin's `templates/`. `scripts/state.mjs` reads these files, and
 its self-test parses the templates, so an example can't drift from the reader.
 
 A line the reader can't place is reported as `file:line what`. The SessionStart briefing names the

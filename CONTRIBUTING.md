@@ -44,14 +44,14 @@ Run the same checks CI runs (Claude Code 2.1.295 or later):
 claude plugin validate . --strict
 claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
-node plugins/epikloop/bin/guard.mjs --self-test
-node plugins/epikloop/bin/brief.mjs --self-test
-node plugins/epikloop/bin/init.mjs --self-test
-node plugins/epikloop/bin/state.mjs --self-test
-node plugins/epikloop/bin/smoke.mjs --self-test
-node plugins/epikloop/bin/doctor.mjs --self-test
+node plugins/epikloop/scripts/guard.mjs --self-test
+node plugins/epikloop/scripts/brief.mjs --self-test
+node plugins/epikloop/scripts/init.mjs --self-test
+node plugins/epikloop/scripts/state.mjs --self-test
+node plugins/epikloop/scripts/smoke.mjs --self-test
+node plugins/epikloop/scripts/doctor.mjs --self-test
 claude plugin test plugins/epikloop
-node plugins/epikloop/bin/fold.mjs --self-test
+node plugins/epikloop/scripts/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
 node plugins/epikloop/evals/fixture.mjs --self-test
 node tools/evals.mjs --self-test
@@ -69,6 +69,7 @@ node tools/mutate.mjs
   - hooks: exec form on Node, no worktree hooks, no blocking hook on a tool but a shell, the guard
     failing closed, and forward slashes in `hooks.json` and the manifests
   - snake_case keys and a `format` version in the schemas, their examples and the lanes
+  - no top-level `bin/` in a plugin, which claude.ai and Cowork refuse to install
   - a sign-off on every commit but a merge
   - no AI credits
 

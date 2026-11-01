@@ -25,8 +25,8 @@ All notable changes to Epikloop are recorded here.
 - The emitter: a hooks module that, inside an Epikloop project, writes one file per event under
   `~/.epikloop/events/YYYY-MM-DD/` and one cost row per story-worker under
   `~/.epikloop/projects/<id>/cost/`. It sets each story-worker's effort from its story's tier and
-  keeps the worker in the foreground. `bin/fold.mjs` folds those files into `.jsonl` files. CI runs
-  the module's `claude plugin test` suite and the fold's self-test on Linux, macOS and Windows.
+  keeps the worker in the foreground. `scripts/fold.mjs` folds those files into `.jsonl` files. CI
+  runs the module's `claude plugin test` suite and the fold's self-test on Linux, macOS and Windows.
 - The gate runner. Product repos carry it as `.githooks/check.mjs`, beside two-line `pre-commit` and
   `pre-push` hooks that run it, and `scripts/check.sh` runs it by hand and in CI.
   - Its gates are the hooks' modes, solo mode's workflows, the secret scan, the token gate, and the
@@ -39,15 +39,15 @@ All notable changes to Epikloop are recorded here.
   when nothing else owns them and gives Claude one line on the stage and the next step, followed
   by the pipeline protocol. Outside a project it gives one line. CI runs its self-test on Linux,
   macOS and Windows.
-- Project setup, `bin/init.mjs`: given a lane and a mode, it writes `.epikloop/project.json` with
-  the project id derived from the git remote, copies `.githooks/` and `scripts/check.sh` from the
-  plugin's templates, stages them and arms the hooks. It never overwrites a file and never
+- Project setup, `scripts/init.mjs`: given a lane and a mode, it writes `.epikloop/project.json`
+  with the project id derived from the git remote, copies `.githooks/` and `scripts/check.sh` from
+  the plugin's templates, stages them and arms the hooks. It never overwrites a file and never
   commits. CI runs its self-test on Linux, macOS and Windows.
 - The project file formats, in `docs/formats.md`: `spec/<capability>.md`,
   `docs/stories/<N>-<slug>.md`, `docs/queue.md` and `docs/decisions.md`. Each has an example in
   `templates/spec/` or `templates/docs/`. One epic is one phase, tagged `phase-N`. A story is done
   when a commit on the default branch starts `feat(N.M):`.
-- The state reader, `bin/state.mjs`. It parses those files and reads git into the stage and the
+- The state reader, `scripts/state.mjs`. It parses those files and reads git into the stage and the
   fuel gauge, and reports each line it can't place as `file:line what`. The briefing now opens
   with the fuel gauge, covers stages 1 to 7, and names waiting questions and format problems. CI
   runs the reader's self-test on Linux, macOS and Windows.
@@ -74,9 +74,9 @@ All notable changes to Epikloop are recorded here.
 - The stage machine's stages 8 to 10. The briefing covers all ten stages.
 - The state reader's ceremony commands: `--retro` and `--release` print the briefs of those two
   skills, and, once their records have landed, the tags those records leave.
-- The staging smoke, `bin/smoke.mjs`: one GET to `staging_url` or a given URL, which passes on a
+- The staging smoke, `scripts/smoke.mjs`: one GET to `staging_url` or a given URL, which passes on a
   2xx answer. CI runs its self-test on Linux, macOS and Windows.
-- The machine check, `bin/doctor.mjs`. It checks:
+- The machine check, `scripts/doctor.mjs`. It checks:
   - Node, git and Claude Code against their floors
   - the account's prompt cache
   - in a project: its files, its git hooks, its gate files and this session's events
@@ -205,6 +205,12 @@ All notable changes to Epikloop are recorded here.
 - The quoting rule now says what counts as a quote: a double quote anywhere, or a single quote that
   opens a value, both of which YAML reads as syntax. An apostrophe inside a word is text, as in
   `spec-delta`'s description.
+- The core plugin's scripts moved from `bin/` to `scripts/`.
+  - claude.ai and Cowork refuse a plugin with a top-level `bin/`, so Anthropic's directory couldn't
+    list Epikloop.
+  - All `bin/` added was its files on the Bash tool's `PATH`, which nothing used. Every hook and
+    skill reaches a script through `${CLAUDE_PLUGIN_ROOT}`.
+  - Product repos are unaffected: nothing they carry names the plugin's folder.
 
 ### Removed
 
@@ -370,7 +376,7 @@ The rest come from the hook spike of 2026-10-21 and from failures the maintainer
 
 - **A script reads the project's state.** An earlier pipeline's model talked itself past
   checkable rules written as prose (article 5). So each project file has a fixed format, and the
-  stage, the next step and the fuel gauge are computed by `bin/state.mjs`, never by the model
+  stage, the next step and the fuel gauge are computed by `scripts/state.mjs`, never by the model
   reading the files. The templates are the model's examples, and the reader's self-test parses
   them.
 
@@ -537,3 +543,8 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   - `claude plugin eval` sets a case up only by running a Bash script in the case's own folder.
   - On 2026-11-01, a probe on Windows showed the harness passing that script a backslash path,
     which `${0%/*}` can't cut. So the shim finds its folder with `dirname`.
+- **No plugin has a top-level `bin/`.** On 2026-11-01, Claude Code's plugin components docs and
+  claude.com's platform-support table both said that claude.ai and Cowork refuse to install a
+  plugin with one. Epikloop's scripts were in `bin/`, which kept Epikloop out of Anthropic's
+  directory, where a listed plugin's author can see its usage. Claude Code's docs offer `bin/` as
+  the way to ship a command-line tool, so the laws keep one from coming back.

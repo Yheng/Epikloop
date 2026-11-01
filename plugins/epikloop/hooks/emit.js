@@ -1,7 +1,7 @@
 // Epikloop's emitter, a hooks module: it runs inside Claude Code and reaches everything through
 // `$`. It injects no text and never holds a call back. Inside an Epikloop project it writes one
 // JSON file per event under ~/.epikloop/events/YYYY-MM-DD/ and one cost row per story-worker under
-// ~/.epikloop/projects/<id>/cost/, which bin/fold.mjs folds into .jsonl files. It also sets each
+// ~/.epikloop/projects/<id>/cost/, which scripts/fold.mjs folds into .jsonl files. It also sets each
 // story-worker's effort from its story's tier and keeps the worker in the foreground.
 //
 // The batch spawns epikloop:story-worker with a description that starts with the story and its

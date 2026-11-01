@@ -12,9 +12,9 @@ Outcome: the story named in the prompt lands as one commit whose subject starts 
 holding its code, its tests and its spec delta, after the gates pass. Scope: this story; anything
 beyond it is a finding, routed as below.
 
-The brief comes from `node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --story N.M`: the story with its
-acceptance criteria and spec delta, the requirements it cites and the decisions that name it, how
-its commit lands in this repository, and the numbers for anything parked. Beyond the brief, read
+The brief comes from `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --story N.M`: the story with
+its acceptance criteria and spec delta, the requirements it cites and the decisions that name it,
+how its commit lands in this repository, and the numbers for anything parked. Beyond the brief, read
 only the code the work touches.
 
 The tier sets what the commit carries. T1: the gates, and evidence for each acceptance criterion.

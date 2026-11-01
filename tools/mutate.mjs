@@ -25,13 +25,13 @@ const JOBS = Math.max(1, Math.min(Number(process.env.MUTATE_JOBS) || os.availabl
 
 // Each self-test a mutation can name, as the command that runs it from the repository's root.
 const TESTS = {
-  guard: [process.execPath, 'plugins/epikloop/bin/guard.mjs', '--self-test'],
-  brief: [process.execPath, 'plugins/epikloop/bin/brief.mjs', '--self-test'],
-  init: [process.execPath, 'plugins/epikloop/bin/init.mjs', '--self-test'],
-  state: [process.execPath, 'plugins/epikloop/bin/state.mjs', '--self-test'],
-  smoke: [process.execPath, 'plugins/epikloop/bin/smoke.mjs', '--self-test'],
-  doctor: [process.execPath, 'plugins/epikloop/bin/doctor.mjs', '--self-test'],
-  fold: [process.execPath, 'plugins/epikloop/bin/fold.mjs', '--self-test'],
+  guard: [process.execPath, 'plugins/epikloop/scripts/guard.mjs', '--self-test'],
+  brief: [process.execPath, 'plugins/epikloop/scripts/brief.mjs', '--self-test'],
+  init: [process.execPath, 'plugins/epikloop/scripts/init.mjs', '--self-test'],
+  state: [process.execPath, 'plugins/epikloop/scripts/state.mjs', '--self-test'],
+  smoke: [process.execPath, 'plugins/epikloop/scripts/smoke.mjs', '--self-test'],
+  doctor: [process.execPath, 'plugins/epikloop/scripts/doctor.mjs', '--self-test'],
+  fold: [process.execPath, 'plugins/epikloop/scripts/fold.mjs', '--self-test'],
   check: [process.execPath, 'plugins/epikloop/templates/githooks/check.mjs', '--self-test'],
   emit: ['claude', 'plugin', 'test', 'plugins/epikloop'],
   laws: [process.execPath, 'tools/laws.mjs', '--self-test'],
@@ -188,7 +188,7 @@ async function main(names) {
 }
 
 async function selfTest() {
-  const guard = 'plugins/epikloop/bin/guard.mjs'
+  const guard = 'plugins/epikloop/scripts/guard.mjs'
   const cases = [
     ['an edit that changes nothing survives', { file: guard, tests: ['guard'], name: 'reword a comment', from: '// Where one command ends and the next begins, for the rules.', to: '// Where each command ends.' }, 'survived'],
     ["text that isn't there is stale", { file: guard, tests: ['guard'], name: 'a missing text', from: 'this text is nowhere in the guard', to: '' }, 'stale'],

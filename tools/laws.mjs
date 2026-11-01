@@ -13,6 +13,7 @@
 //               (CLAUDE.md)
 //   schemas     JSON that Epikloop writes has snake_case keys and a format version: its schemas,
 //               their examples and the lane profiles (CLAUDE.md)
+//   layout      no plugin has a top-level bin/, which claude.ai and Cowork refuse to install
 //   sign-off    every commit but a merge is signed off by its author, for the DCO
 //   AI credits  no commit credits an AI tool: not as its author or committer, a trailer or a footer
 //
@@ -59,7 +60,7 @@ function injected(plugin, script, args) {
   if (script === 'state.mjs' && words[0] === '--lane' && words.length === 2) return { text: '' }
   const known = script === 'state.mjs' && ((words[0] === '--example' && words.length === 2) || (words[0] === '--lanes' && words.length === 1))
   if (!known) return { problem: `injects ${script} ${words.join(' ')}, which the ceiling can't count` }
-  const run = spawnSync(process.execPath, [path.join(plugin, 'bin', script), ...words], { cwd: os.tmpdir(), encoding: 'utf8', windowsHide: true })
+  const run = spawnSync(process.execPath, [path.join(plugin, 'scripts', script), ...words], { cwd: os.tmpdir(), encoding: 'utf8', windowsHide: true })
   if (run.status !== 0 || run.stdout.trim() === '') return { problem: `injects ${script} ${words.join(' ')}, which printed nothing to count` }
   return { text: run.stdout }
 }
@@ -81,7 +82,7 @@ export function ceilingLaw(plugin) {
     }
     const description = (/^description:[ \t]*(.*)$/m.exec(front[1])?.[1] ?? '').replace(/^(['"])(.*)\1$/, '$2')
     const body = front[2].replace(/!`([^`\n]*)`/g, (_, command) => {
-      const call = /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/([\w.-]+)"(.*)$/.exec(command)
+      const call = /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/([\w.-]+)"(.*)$/.exec(command)
       const key = call === null ? null : `${call[1]}${call[2]}`
       if (key !== null && !outputs.has(key)) outputs.set(key, injected(plugin, call[1], call[2]))
       const out = key === null ? { problem: `injects \`${command}\`, which the ceiling can't count` } : outputs.get(key)
@@ -107,10 +108,10 @@ export function ceilingLaw(plugin) {
   }
   const template = path.join(plugin, 'templates', 'CLAUDE.template.md')
   if (fs.existsSync(template)) rows.push([lineCount(read(template)), name(template)])
-  const brief = read(path.join(plugin, 'bin', 'brief.mjs'))
+  const brief = read(path.join(plugin, 'scripts', 'brief.mjs'))
   const pieces = [/const PROTOCOL = `((?:\\.|[^`\\])*)`/, /const OUTSIDE = '((?:\\.|[^'\\])*)'/, /const failure = \(reason\) =>\s*`((?:\\.|[^`\\])*)`/].map((re) => re.exec(brief)?.[1])
-  if (pieces.some((piece) => piece === undefined)) problems.push("ceiling: bin/brief.mjs's protocol, outside line or failure line isn't where the ceiling reads it")
-  else rows.push([pieces.reduce((sum, piece) => sum + lineCount(piece), 0), 'bin/brief.mjs (the protocol, the outside line and the failure line)'])
+  if (pieces.some((piece) => piece === undefined)) problems.push("ceiling: scripts/brief.mjs's protocol, outside line or failure line isn't where the ceiling reads it")
+  else rows.push([pieces.reduce((sum, piece) => sum + lineCount(piece), 0), 'scripts/brief.mjs (the protocol, the outside line and the failure line)'])
   rows.sort((a, b) => b[0] - a[0])
   const count = rows.reduce((sum, [lines]) => sum + lines, 0)
   if (count > CEILING) {
@@ -334,7 +335,7 @@ const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 
 const SHELLS = ['Bash', 'PowerShell']
 const WORKTREE = /^Worktree(?:Create|Remove)$/
 const WORKTREE_NAME = /['"`](?:classic\.)?worktree[._-]?(?:create|remove)['"`]/i
-const GUARD = '${CLAUDE_PLUGIN_ROOT}/bin/guard.mjs'
+const GUARD = '${CLAUDE_PLUGIN_ROOT}/scripts/guard.mjs'
 
 // Each string in a JSON value, with its place in it.
 const strings = (value, at) =>
@@ -492,6 +493,21 @@ export function schemasLaw(root) {
   return { schemas: schemas.length, files: data.length, problems }
 }
 
+// ---- Plugin layout
+
+// No plugin tracks a top-level bin/. Claude Code puts such a folder on the Bash tool's PATH, but
+// claude.ai and Cowork refuse to install a plugin that has one, which would keep it out of
+// Anthropic's directory. Epikloop's scripts live in scripts/, reached through ${CLAUDE_PLUGIN_ROOT}.
+// Only tracked files count, since an install is a clone.
+export function layoutLaw(root) {
+  const files = gitOk(root, ['ls-files', '-z']).split('\0').filter(Boolean)
+  const plugins = [...new Set(files.map((file) => /^plugins\/([^/]+)\//.exec(file)?.[1]).filter(Boolean))]
+  const problems = plugins
+    .filter((plugin) => files.some((file) => file.startsWith(`plugins/${plugin}/bin/`)))
+    .map((plugin) => `layout: plugins/${plugin} has a top-level bin/, which claude.ai and Cowork refuse to install; its scripts go in scripts/`)
+  return { plugins: plugins.length, problems }
+}
+
 // ---- The commits
 
 const hasHead = (root) => git(root, ['rev-parse', '--verify', '-q', 'HEAD']).status === 0
@@ -583,6 +599,10 @@ function main() {
     const { schemas, files, problems } = schemasLaw(ROOT)
     return { problems, shown: `schemas ${verdict(problems)} (${schemas} schemas, ${files} files)` }
   })
+  law('layout', () => {
+    const { plugins, problems } = layoutLaw(ROOT)
+    return { problems, shown: `layout ${verdict(problems)} (${plugins} plugins)` }
+  })
   law('sign-off', () => {
     const { commits: count, problems } = signoffLaw(ROOT)
     return { problems, shown: `sign-off ${verdict(problems)} (${count} commits)` }
@@ -634,26 +654,26 @@ async function selfTest() {
   // A plugin with one of each counted thing, each of a known size.
   const fixturePlugin = () => {
     const dir = k.dir()
-    k.write(dir, 'skills/a/SKILL.md', `---\ndescription: One line.\neffort: low\n---\n\nBody line one.\n\n${'x'.repeat(250)}\n\n!\`node "\${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --example spec\`\n\n!\`node "\${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --lane plan\`\n`)
+    k.write(dir, 'skills/a/SKILL.md', `---\ndescription: One line.\neffort: low\n---\n\nBody line one.\n\n${'x'.repeat(250)}\n\n!\`node "\${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example spec\`\n\n!\`node "\${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --lane plan\`\n`)
     k.write(dir, 'skills/a/notes.md', 'Note one.\nNote two.\n')
     k.write(dir, 'agents/w.md', '---\nname: w\ndescription: "Two words."\n---\n\nAgent body.\n')
     k.write(dir, 'lanes/web.md', '## Plan\n\nPlan text.\n')
     k.write(dir, 'lanes/web.json', '{"not": "counted"}\n')
     k.write(dir, 'templates/CLAUDE.template.md', '# Rules\n\nKeep it short.\n')
-    k.write(dir, 'bin/brief.mjs', "const OUTSIDE = 'Outside, `/x`.'\nconst PROTOCOL = `P one\nP two`\nconst failure = (reason) => `It failed (${reason}); \\`/x\\` helps.`\n")
-    k.write(dir, 'bin/state.mjs', "const [flag, name] = process.argv.slice(2)\nif (flag === '--example' && name === 'spec') console.log('E one\\nE two')\nelse if (flag === '--lanes') console.log('- web: a lane')\nelse process.exitCode = 1\n")
+    k.write(dir, 'scripts/brief.mjs', "const OUTSIDE = 'Outside, `/x`.'\nconst PROTOCOL = `P one\nP two`\nconst failure = (reason) => `It failed (${reason}); \\`/x\\` helps.`\n")
+    k.write(dir, 'scripts/state.mjs', "const [flag, name] = process.argv.slice(2)\nif (flag === '--example' && name === 'spec') console.log('E one\\nE two')\nelse if (flag === '--lanes') console.log('- web: a lane')\nelse process.exitCode = 1\n")
     return dir
   }
   // A repository whose hook code is clean unless `files` says otherwise.
   const networkRepo = (files = {}) => {
     const root = k.dir()
     const defaults = {
-      'plugins/epikloop/hooks/hooks.json': JSON.stringify({ modules: ['./emit.js'], hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/bin/brief.mjs'] }] }] } }),
+      'plugins/epikloop/hooks/hooks.json': JSON.stringify({ modules: ['./emit.js'], hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/scripts/brief.mjs'] }] }] } }),
       'plugins/epikloop/hooks/emit.js': 'export default function setup() {}\n',
-      'plugins/epikloop/bin/brief.mjs': "import { a } from './helper.mjs'\nconst later = await import('./late.mjs')\n",
-      'plugins/epikloop/bin/helper.mjs': 'export const a = 1\n',
-      'plugins/epikloop/bin/late.mjs': 'export const b = 2\n',
-      'plugins/epikloop/bin/smoke.mjs': 'const answer = await fetch(process.argv[2])\n',
+      'plugins/epikloop/scripts/brief.mjs': "import { a } from './helper.mjs'\nconst later = await import('./late.mjs')\n",
+      'plugins/epikloop/scripts/helper.mjs': 'export const a = 1\n',
+      'plugins/epikloop/scripts/late.mjs': 'export const b = 2\n',
+      'plugins/epikloop/scripts/smoke.mjs': 'const answer = await fetch(process.argv[2])\n',
       'plugins/epikloop/templates/githooks/check.mjs': "// Nothing is fetched here.\nimport fs from 'node:fs'\n",
       'plugins/epikloop/templates/githooks/pre-commit': "#!/usr/bin/env node\nimport('./check.mjs')\n",
       'plugins/epikloop-harbor/.claude-plugin/plugin.json': '{}\n',
@@ -665,7 +685,7 @@ async function selfTest() {
   // `code` replaces the hooks module's files.
   const hooksRepo = (change = () => {}, code = {}) => {
     const root = k.dir()
-    const guard = { type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/bin/guard.mjs'], onFailure: 'block' }
+    const guard = { type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/scripts/guard.mjs'], onFailure: 'block' }
     const files = {
       '.claude-plugin/marketplace.json': { name: 'epikloop', plugins: [{ name: 'epikloop', source: './plugins/epikloop' }] },
       'plugins/epikloop/.claude-plugin/plugin.json': { name: 'epikloop' },
@@ -673,7 +693,7 @@ async function selfTest() {
       'plugins/epikloop/hooks/hooks.json': {
         modules: ['./emit.js'],
         hooks: {
-          SessionStart: [{ hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/bin/brief.mjs'] }] }],
+          SessionStart: [{ hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/scripts/brief.mjs'] }] }],
           PreToolUse: [{ matcher: 'Bash|PowerShell', hooks: [guard] }],
         },
       },
@@ -703,7 +723,7 @@ async function selfTest() {
       'the ceiling refuses an injection it cannot count',
       () => {
         const dir = fixturePlugin()
-        k.write(dir, 'skills/b/SKILL.md', '---\ndescription: B.\n---\n\n!`node "${CLAUDE_PLUGIN_ROOT}/bin/init.mjs" --help`\n!`git status`\n')
+        k.write(dir, 'skills/b/SKILL.md', '---\ndescription: B.\n---\n\n!`node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" --help`\n!`git status`\n')
         return k.has(ceilingLaw(dir).problems, "skills/b/SKILL.md injects init.mjs --help, which the ceiling can't count", "skills/b/SKILL.md injects `git status`, which the ceiling can't count")
       },
     ],
@@ -728,7 +748,7 @@ async function selfTest() {
       'the briefing text moved out of reach fails the ceiling',
       () => {
         const dir = fixturePlugin()
-        k.write(dir, 'bin/brief.mjs', 'export const text = 1\n')
+        k.write(dir, 'scripts/brief.mjs', 'export const text = 1\n')
         return k.has(ceilingLaw(dir).problems, "isn't where the ceiling reads it")
       },
     ],
@@ -738,7 +758,7 @@ async function selfTest() {
         const dir = k.repo()
         k.write(dir, 'plugins/epikloop/templates/scripts/check.sh', '#!/bin/sh\nexec node x\n')
         k.write(dir, 'plugins/epikloop/templates/githooks/pre-commit', '#!/usr/bin/env node\nimport("./check.mjs")\n')
-        k.write(dir, 'plugins/epikloop/bin/tool.mjs', '#!/usr/bin/env node\n')
+        k.write(dir, 'plugins/epikloop/scripts/tool.mjs', '#!/usr/bin/env node\n')
         gitOk(dir, ['add', '-A'])
         const clean = shellLaw(dir).problems
         k.write(dir, 'tools/run.sh', 'echo hi\n')
@@ -785,8 +805,8 @@ async function selfTest() {
       },
     ],
     ...[
-      ['a helper a hook imports', { 'plugins/epikloop/bin/helper.mjs': 'export const a = await fetch(url)\n' }, 'network: plugins/epikloop/bin/helper.mjs:1 uses fetch()'],
-      ['a module a hook imports late', { 'plugins/epikloop/bin/late.mjs': 'export const b = new WebSocket(url)\n' }, 'network: plugins/epikloop/bin/late.mjs:1 uses WebSocket'],
+      ['a helper a hook imports', { 'plugins/epikloop/scripts/helper.mjs': 'export const a = await fetch(url)\n' }, 'network: plugins/epikloop/scripts/helper.mjs:1 uses fetch()'],
+      ['a module a hook imports late', { 'plugins/epikloop/scripts/late.mjs': 'export const b = new WebSocket(url)\n' }, 'network: plugins/epikloop/scripts/late.mjs:1 uses WebSocket'],
       ['the hooks module', { 'plugins/epikloop/hooks/emit.js': "import https from 'node:https'\n" }, 'network: plugins/epikloop/hooks/emit.js:1 uses a network module'],
       ['the gate runner', { 'plugins/epikloop/templates/githooks/check.mjs': "const http = require('http')\n" }, 'network: plugins/epikloop/templates/githooks/check.mjs:1 uses a network module'],
       ['Harbor', { 'plugins/epikloop-harbor/server/feed.mjs': 'const feed = new EventSource(url)\n' }, 'network: plugins/epikloop-harbor/server/feed.mjs:1 uses EventSource'],
@@ -810,7 +830,7 @@ async function selfTest() {
         const root = k.dir()
         const skill = (name, front, plugin = 'epikloop') => k.write(root, `plugins/${plugin}/skills/${name}/SKILL.md`, `---\n${front}\n---\n\nBody.\n`)
         const agent = (name, front) => k.write(root, `plugins/epikloop/agents/${name}.md`, `---\n${front}\n---\n\nBody.\n`)
-        skill('epikloop', `name: epikloop\ndescription: Show where the project stands.\neffort: low\nallowed-tools:\n  - 'Bash(node "\${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'`)
+        skill('epikloop', `name: epikloop\ndescription: Show where the project stands.\neffort: low\nallowed-tools:\n  - 'Bash(node "\${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'`)
         skill('story', 'description: Run one story, then stop.\nargument-hint: "<X.X>"\neffort: medium')
         skill('spec-delta', "description: Apply a story's spec delta to the story's spec.\nuser-invocable: false")
         skill('view', `description: Open the view.\nargument-hint: '"on|off"'\neffort: low`, 'epikloop-harbor')
@@ -873,16 +893,16 @@ async function selfTest() {
       'hooks that break each rule fail',
       () => {
         const HOOKS = 'plugins/epikloop/hooks/hooks.json'
-        const blocking = (matcher) => ({ ...(matcher === undefined ? {} : { matcher }), hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/bin/x.mjs'] }] })
+        const blocking = (matcher) => ({ ...(matcher === undefined ? {} : { matcher }), hooks: [{ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/scripts/x.mjs'] }] })
         const breaks = [
-          [(f) => (f[HOOKS].hooks.SessionStart[0].hooks[0] = { type: 'command', command: 'node ${CLAUDE_PLUGIN_ROOT}/bin/brief.mjs' }), {}, `hooks: ${HOOKS} has a SessionStart hook that isn't in exec form`],
+          [(f) => (f[HOOKS].hooks.SessionStart[0].hooks[0] = { type: 'command', command: 'node ${CLAUDE_PLUGIN_ROOT}/scripts/brief.mjs' }), {}, `hooks: ${HOOKS} has a SessionStart hook that isn't in exec form`],
           [(f) => (f[HOOKS].hooks.SessionStart[0].hooks[0].command = 'bash'), {}, `hooks: ${HOOKS} has a SessionStart hook that isn't in exec form`],
           [(f) => (f[HOOKS].hooks.WorktreeCreate = [blocking()]), {}, `hooks: ${HOOKS} registers WorktreeCreate`],
           [() => {}, { 'plugins/epikloop/hooks/helper.js': "export const x = (on) => on('classic.WorktreeRemove', () => {})\n" }, 'hooks: plugins/epikloop/hooks/helper.js:1 names a worktree event'],
           [(f) => f[HOOKS].hooks.PreToolUse.push(blocking('Edit')), {}, `hooks: ${HOOKS} has a PreToolUse Edit hook on a tool that isn't a shell`],
           [(f) => (f[HOOKS].hooks.PostToolUse = [blocking()]), {}, `hooks: ${HOOKS} has a PostToolUse hook on a tool that isn't a shell`],
           [(f) => delete f[HOOKS].hooks.PreToolUse[0].hooks[0].onFailure, {}, 'hooks: plugins/epikloop registers no guard on PreToolUse'],
-          [(f) => (f[HOOKS].hooks.SessionStart[0].hooks[0].args = ['${CLAUDE_PLUGIN_ROOT}\\bin\\brief.mjs']), {}, `hooks: ${HOOKS} hooks.SessionStart[0].hooks[0].args[0] holds a backslash`],
+          [(f) => (f[HOOKS].hooks.SessionStart[0].hooks[0].args = ['${CLAUDE_PLUGIN_ROOT}\\scripts\\brief.mjs']), {}, `hooks: ${HOOKS} hooks.SessionStart[0].hooks[0].args[0] holds a backslash`],
           [(f) => (f['.claude-plugin/marketplace.json'].plugins[0].source = '.\\plugins\\epikloop'), {}, 'hooks: .claude-plugin/marketplace.json plugins[0].source holds a backslash'],
           [
             (f) => {
@@ -934,6 +954,28 @@ async function selfTest() {
             "schemas: plugins/epikloop/lanes/service.json has the key uiTest, which isn't snake_case",
           ),
           ...(dirty.length === 9 ? [] : [`found ${dirty.length}, not 9: ${JSON.stringify(dirty)}`]),
+        ]
+      },
+    ],
+    [
+      'a plugin that tracks a top-level bin/ fails the layout',
+      () => {
+        const dir = k.repo()
+        k.write(dir, 'plugins/epikloop/scripts/state.mjs', 'export {}\n')
+        k.write(dir, 'plugins/epikloop/templates/tool/bin/run.mjs', 'export {}\n')
+        k.write(dir, 'plugins/epikloop-harbor/.claude-plugin/plugin.json', '{}\n')
+        k.write(dir, 'bin/tool.mjs', 'export {}\n')
+        gitOk(dir, ['add', '-A'])
+        k.write(dir, 'plugins/epikloop/bin/stray.mjs', 'export {}\n')
+        const clean = layoutLaw(dir)
+        k.write(dir, 'plugins/epikloop-harbor/bin/harbor', '#!/usr/bin/env node\n')
+        gitOk(dir, ['add', '--', 'plugins/epikloop-harbor/bin/harbor'])
+        const dirty = layoutLaw(dir).problems
+        return [
+          ...k.none(clean.problems),
+          ...(clean.plugins === 2 ? [] : [`counted ${clean.plugins} plugins, not 2`]),
+          ...k.has(dirty, 'layout: plugins/epikloop-harbor has a top-level bin/'),
+          ...(dirty.length === 1 ? [] : [`found ${dirty.length}, not 1: ${JSON.stringify(dirty)}`]),
         ]
       },
     ],

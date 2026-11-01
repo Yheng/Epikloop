@@ -1,14 +1,14 @@
 // The self-tests' mutations, which tools/mutate.mjs runs. Each one breaks one rule in a copy of the
 // repository and names the self-tests that must then fail. Its `from` text must appear exactly once
 // in its file, so a mutation goes stale, and fails the run, when the code it breaks changes.
-const BIN = 'plugins/epikloop/bin/'
-const GUARD = `${BIN}guard.mjs`
-const BRIEF = `${BIN}brief.mjs`
-const INIT = `${BIN}init.mjs`
-const STATE = `${BIN}state.mjs`
-const SMOKE = `${BIN}smoke.mjs`
-const DOCTOR = `${BIN}doctor.mjs`
-const FOLD = `${BIN}fold.mjs`
+const SCRIPTS = 'plugins/epikloop/scripts/'
+const GUARD = `${SCRIPTS}guard.mjs`
+const BRIEF = `${SCRIPTS}brief.mjs`
+const INIT = `${SCRIPTS}init.mjs`
+const STATE = `${SCRIPTS}state.mjs`
+const SMOKE = `${SCRIPTS}smoke.mjs`
+const DOCTOR = `${SCRIPTS}doctor.mjs`
+const FOLD = `${SCRIPTS}fold.mjs`
 const RUNNER = 'plugins/epikloop/templates/githooks/check.mjs'
 const WORKFLOW = 'plugins/epikloop/templates/github/workflows/check.yml'
 const EMIT = 'plugins/epikloop/hooks/emit.js'
@@ -182,6 +182,7 @@ export const MUTATIONS = [
   m(LAWS, ['laws'], "check a schema's top-level properties only", '        walk(value, `${at}/${key}`)\n', ''),
   m(LAWS, ['laws'], "check a file's top-level keys only", '        keys(item, place)\n', ''),
   m(LAWS, ['laws'], 'leave the examples and lanes unread', 'for (const [file, name] of data) {', 'for (const [file, name] of []) {'),
+  m(LAWS, ['laws'], 'allow a top-level bin/', 'files.some((file) => file.startsWith(`plugins/${plugin}/bin/`))', 'false'),
 
   // The eval suite's fixture project.
   m(FIXTURE, ['fixture'], 'plan without freezing the MVP', "marker: { mvp_frozen: '2026-10-31', hours_per_day: 2, deadline: null },", 'marker: { hours_per_day: 2, deadline: null },'),

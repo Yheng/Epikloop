@@ -3,10 +3,10 @@ description: Break the spec into epics and tiered stories, freeze the MVP set, a
 argument-hint: "[--extend]"
 effort: high
 allowed-tools:
-  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'
-  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'
-  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/init.mjs" *)'
-  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/bin/init.mjs" *)'
+  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
+  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
+  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" *)'
+  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" *)'
 ---
 
 Outcome: `docs/stories/<epic>.md` holds every epic and story. Each story has a tier, T1 to T3,
@@ -17,7 +17,7 @@ deadline. Scope: planning only; nothing is built here.
 Each epic file follows this format. A script reads it for the stage, what is done and the fuel
 gauge, so its headings and fields stay exactly as shown:
 
-!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --example stories`
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example stories`
 
 Every current requirement in `spec/` is cited by at least one story. Most stories are T1; auth,
 money, migrations on live data and untrusted input are T3; T2 is for a story whose quoted business
@@ -27,12 +27,12 @@ rules need tests of their own. Epic 1 opens with 1.1 and 1.2. 1.1 adds
 setup and install into `.github/workflows/check.yml` where it marks them. 1.2 brings up staging.
 `After` names only the stories a story builds on. The project's lane adds this:
 
-!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --lane plan`
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --lane plan`
 
 Propose the MVP set and let the human decide it, along with solo or team mode, hours per day and
 any deadline. Record them in `.epikloop/project.json` as `mvp_frozen` (today's date), `mode`,
 `hours_per_day` and `deadline`, and commit them with the plan. In team mode, once the marker says
-so, `node "${CLAUDE_PLUGIN_ROOT}/bin/init.mjs" --refresh` lays down the check each pull request
+so, `node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" --refresh` lays down the check each pull request
 runs, `.github/workflows/check.yml`, for the same commit; tell the human to make its check job
 required in the default branch's protection. The plan's commit is the queue's baseline, and the
 MVP set moves afterwards only through a recorded decision. With `--extend`, new epics follow the

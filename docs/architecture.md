@@ -11,7 +11,7 @@ YOUR MACHINE                          PRODUCT REPO (what a teammate clones)     
 ───────────────────────────────       ──────────────────────────────────────      ────────────────────────
 epikloop plugin (user scope)          .epikloop/project.json                      origin/main
   skills/  agents/  hooks/            spec/<capability>.md, spec/architecture.md    (staging deploys from
-  bin/  lanes/  templates/            design/ (brief, directions/, screens/,          main via the host's
+  scripts/  lanes/  templates/        design/ (brief, directions/, screens/,          main via the host's
                                                tokens.css, manifest.md)             git deploy)
 ~/.epikloop/                          docs/stories/, docs/decisions.md,
   events/         append-only log            docs/queue.md                         team mode only:
@@ -58,7 +58,7 @@ Nothing else, ever.
     machine, such as a path or a `file://` URL, counts as no remote.
   - Normalizing drops the scheme, credentials, port, trailing slash and `.git`, and keeps the full
     path, so a GitLab subgroup stays distinct.
-- **Setup.** `bin/init.mjs --lane <lane> --mode solo|team` writes the marker and copies
+- **Setup.** `scripts/init.mjs --lane <lane> --mode solo|team` writes the marker and copies
   `.githooks/` and `scripts/check.sh` from the plugin's templates, then stages them and arms the
   hooks.
   - The shims are staged as executable.
@@ -94,8 +94,8 @@ Nothing else, ever.
 
 The core plugin's `hooks/hooks.json` is the backbone. Every command hook follows four rules:
 
-- It is written in exec form (`"command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/…"]`), which
-  runs without a shell on all three operating systems.
+- It is written in exec form (`"command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/…"]`),
+  which runs without a shell on all three operating systems.
 - It prints nothing to stdout but its JSON answer, because SessionStart stdout lands in Claude's
   context.
 - It exits 0.
@@ -118,7 +118,7 @@ What each event does:
     - It arms only a repository that carries the runner, and runs the plugin's own copy of the
       runner's `--arm`, so no code from the repository runs at session start.
     - When another tool owns the hooks, the briefing names it as something that needs the human.
-  - It is `bin/brief.mjs`, a spawned hook. Every source gets the same answer, so `compact` and
+  - It is `scripts/brief.mjs`, a spawned hook. Every source gets the same answer, so `compact` and
     `clear` get the protocol back.
 - **PreToolUse: the guard.** This is one spawned, synchronous hook, registered on `Bash|PowerShell`
   only.
@@ -303,8 +303,8 @@ only layers 2 and 3 gate them.
   document-sync step.
 - **`docs/queue.md`** holds parked questions and backlog lines, each dated.
 - **Formats.** Each file's format is in [formats](formats.md), with an example in the core
-  plugin's `templates/`. `bin/state.mjs` reads them, and the briefing's stage and fuel gauge come
-  from it.
+  plugin's `templates/`. `scripts/state.mjs` reads them, and the briefing's stage and fuel gauge
+  come from it.
 - **Where the spec comes from.** `discover` writes the initial spec. `adopt` reverse-engineers it,
   marking every requirement `observed` until a decide batch confirms it.
 - **The todo list is derived, never stored.** A story is done when a commit reachable from the
@@ -399,14 +399,14 @@ the model through the state reader's briefs instead (see [Lanes](#lanes)).
 
 **Scripts and formats in skill bodies:**
 
-- A skill runs the plugin's scripts as `node "${CLAUDE_PLUGIN_ROOT}/bin/…"`, which Claude Code
+- A skill runs the plugin's scripts as `node "${CLAUDE_PLUGIN_ROOT}/scripts/…"`, which Claude Code
   substitutes in the body and in `allowed-tools`. The same rule is written for `Bash` and
   `PowerShell`, so the call runs without a prompt in either shell.
 - A skill that writes a project file gets its format by injecting
-  `` !`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --example <name>` ``, which prints the template
-  the reader's self-test parses.
-- The stage, the fuel gauge and what waits come from `node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs"`,
-  never from the model reading the files.
+  `` !`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example <name>` ``, which prints the
+  template the reader's self-test parses.
+- The stage, the fuel gauge and what waits come from
+  `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs"`, never from the model reading the files.
 
 ## Stage machine
 
@@ -498,7 +498,7 @@ tool's name and docs are not nautical.
 | `plugins/epikloop/skills/` | Sixteen skills, with bodies for all but `design` and `harbor` | now, M2, M4 |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke and doctor | now |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke and doctor | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, an example of each project file in `spec/` and `docs/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
 | `plugins/epikloop/evals/` | The eval suite, inside the plugin where `claude plugin eval` reads it: a folder per case, and `fixture.mjs`, which builds the fixture project each case starts in | now |

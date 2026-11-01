@@ -36,21 +36,22 @@ has been built with Epikloop and an existing production repo adopted, each end t
   - `schemas/` — JSON Schemas, with `examples/`
   - `hooks/hooks.json` — the hook registrations
   - `hooks/emit.js` — the emitter, a hooks module, with its suite in `tests/emit.test.ts`
-  - `bin/guard.mjs` — the git guard, the PreToolUse hook on `Bash|PowerShell`, with its self-test
-  - `bin/brief.mjs` — the SessionStart briefing, which also arms a product's git hooks, with its
+  - `scripts/guard.mjs` — the git guard, the PreToolUse hook on `Bash|PowerShell`, with its
     self-test
-  - `bin/init.mjs` — project setup, with its self-test: writes the marker with its id and the gate
-    files, and lays down `CLAUDE.md` and, in team mode, the workflow; `--refresh` brings a
+  - `scripts/brief.mjs` — the SessionStart briefing, which also arms a product's git hooks, with
+    its self-test
+  - `scripts/init.mjs` — project setup, with its self-test: writes the marker with its id and the
+    gate files, and lays down `CLAUDE.md` and, in team mode, the workflow; `--refresh` brings a
     project's gate files up to the plugin's
-  - `bin/state.mjs` — reads the project files and git into the stage and the fuel gauge, and
+  - `scripts/state.mjs` — reads the project files and git into the stage and the fuel gauge, and
     prints the briefs a batch, a retro and a release read, with its self-test; the briefing imports
     it
-  - `bin/smoke.mjs` — the staging smoke that `retro` and `release` run, with its self-test
-  - `bin/doctor.mjs` — the machine check behind `doctor`, which also folds the emitter's files,
-    with its self-test
+  - `scripts/smoke.mjs` — the staging smoke that `retro` and `release` run, with its self-test
+  - `scripts/doctor.mjs` — the machine check behind `doctor`, which also folds the emitter's
+    files, with its self-test
   - `templates/spec/` and `templates/docs/` — an example of each project file, in the formats
     `docs/formats.md` defines; the state reader's self-test parses them
-  - `bin/fold.mjs` — folds the emitter's files into `.jsonl` files, with its self-test
+  - `scripts/fold.mjs` — folds the emitter's files into `.jsonl` files, with its self-test
   - `templates/githooks/check.mjs` — the gate runner, which product repos carry as
     `.githooks/check.mjs`, with its self-test. Beside it are `templates/githooks/pre-commit` and
     `pre-push`, and `templates/scripts/check.sh`, the shims that run it. The rest of the plugin
@@ -71,7 +72,7 @@ has been built with Epikloop and an existing production repo adopted, each end t
 - `plugins/epikloop-harbor/` — a manifest only, until M4.
 - `tools/` — this repository's own checks, which no plugin ships:
   - `laws.mjs` checks the mechanical rules: the constitution's, and those below for frontmatter,
-    hooks, plugin paths and JSON
+    hooks, plugin paths and layout, and JSON
   - `mutate.mjs`, with its list in `mutations.mjs`, is the self-tests' mutation check
   - `evals.mjs` runs the eval suite, each case as a headless session under the machine's own
     login, with its self-test
@@ -87,7 +88,7 @@ has been built with Epikloop and an existing production repo adopted, each end t
   naming the failure it fixes and the date it was adopted. No preemptive rules.
 - **Laws, not sentences.** Anything mechanically checkable is a script, not a sentence in a prompt.
   `node tools/laws.mjs` checks the rules below for the prompt ceiling, shells, network calls, skill
-  frontmatter, hooks, plugin paths and JSON.
+  frontmatter, hooks, plugin paths and layout, and JSON.
 - **Node, built-ins only.** Shipped scripts use Node built-ins with no runtime dependencies.
   - No bash, `jq` or `timeout`.
   - Node 22 is the floor.
@@ -97,6 +98,8 @@ has been built with Epikloop and an existing production repo adopted, each end t
   - Write hooks in exec form: `"command": "node", "args": [...]`.
   - Paths in manifests and `hooks.json` use forward slashes, because a backslash path loads on
     Windows only.
+- **Plugin layout.** No plugin has a top-level `bin/`, which claude.ai and Cowork refuse to
+  install. The plugin's scripts live in `scripts/`, reached through `${CLAUDE_PLUGIN_ROOT}`.
 - **Hook behaviour.**
   - Hooks print nothing to stdout but their JSON answer, and exit 0.
   - They never register `WorktreeCreate` or `WorktreeRemove`.
@@ -148,14 +151,14 @@ has been built with Epikloop and an existing production repo adopted, each end t
 claude plugin validate . --strict
 claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
-node plugins/epikloop/bin/guard.mjs --self-test
-node plugins/epikloop/bin/brief.mjs --self-test
-node plugins/epikloop/bin/init.mjs --self-test
-node plugins/epikloop/bin/state.mjs --self-test
-node plugins/epikloop/bin/smoke.mjs --self-test
-node plugins/epikloop/bin/doctor.mjs --self-test
+node plugins/epikloop/scripts/guard.mjs --self-test
+node plugins/epikloop/scripts/brief.mjs --self-test
+node plugins/epikloop/scripts/init.mjs --self-test
+node plugins/epikloop/scripts/state.mjs --self-test
+node plugins/epikloop/scripts/smoke.mjs --self-test
+node plugins/epikloop/scripts/doctor.mjs --self-test
 claude plugin test plugins/epikloop
-node plugins/epikloop/bin/fold.mjs --self-test
+node plugins/epikloop/scripts/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
 node plugins/epikloop/evals/fixture.mjs --self-test
 node tools/evals.mjs --self-test
@@ -220,6 +223,7 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
     guard registered with `onFailure: "block"`; forward slashes in `hooks.json` and the manifests
   - JSON formats: each schema requires a `format` version, and every key in the schemas, their
     examples and the lane profiles is snake_case, apart from `$schema` and the tiers `T1`–`T3`
+  - no top-level `bin/` in a plugin, among its tracked files
   - a sign-off on every commit but a merge
   - no AI credits
 

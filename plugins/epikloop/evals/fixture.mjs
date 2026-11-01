@@ -11,10 +11,10 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { openProject, readState } from '../bin/state.mjs'
+import { openProject, readState } from '../scripts/state.mjs'
 
 const PLUGIN = path.join(import.meta.dirname, '..')
-const INIT = path.join(PLUGIN, 'bin', 'init.mjs')
+const INIT = path.join(PLUGIN, 'scripts', 'init.mjs')
 const USAGE = 'usage: node fixture.mjs <name> [dir] | --self-test'
 
 // ---- The greeter at each stage

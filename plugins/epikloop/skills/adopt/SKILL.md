@@ -2,10 +2,10 @@
 description: Bring an existing codebase into Epikloop with an observed spec and architecture, gate config from its own commands, and a confirmation batch.
 effort: xhigh
 allowed-tools:
-  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'
-  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'
-  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/init.mjs" *)'
-  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/bin/init.mjs" *)'
+  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
+  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
+  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" *)'
+  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" *)'
 ---
 
 Outcome: an existing codebase becomes an Epikloop project without any change to what it does.
@@ -17,18 +17,18 @@ changing product behaviour is for planned stories.
 
 Read the code first. Propose the lane, the one of these that fits it:
 
-!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --lanes`
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --lanes`
 
 Propose the mode too, `team` when the repository merges through pull requests and `solo`
 otherwise, and write nothing until the human confirms both. Then run
-`node "${CLAUDE_PLUGIN_ROOT}/bin/init.mjs" --lane <lane> --mode <mode>`, which writes the project
-marker and the gate files and stages them.
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" --lane <lane> --mode <mode>`, which writes the
+project marker and the gate files and stages them.
 
 Each capability file follows this format, which a script reads, so its headings and markers stay
 exactly as shown. Every requirement adopt writes carries `Status: observed`, and each business
 rule is quoted from the code or its documents, with its source.
 
-!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --example spec`
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example spec`
 
 Where staging exists, its URL goes in `.epikloop/project.json` as `staging_url`. Run the full gates
 on the code as it stands: `scripts/check.sh` from Bash, or `node .githooks/check.mjs` from
@@ -43,8 +43,8 @@ the code or narrow the command. Once the gates pass, commit and land the adoptio
 The confirmation batch: while `spec/` holds observed requirements, put them to the human a few at a
 time. A confirmed one loses its `Status:` line, a corrected one is rewritten and then confirmed,
 and one the product shouldn't keep becomes `Status: retired`. One decision records the batch,
-numbered from `node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --ids`, in this format:
+numbered from `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --ids`, in this format:
 
-!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --example decisions`
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example decisions`
 
 Commit the spec and the decision together, and land the commit.

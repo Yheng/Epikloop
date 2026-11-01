@@ -111,7 +111,7 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | Closing the loop: `retro`, `release`, `adopt` and `doctor`, with full instructions, the staging smoke, and `init.mjs --refresh` | **Available** |
 | The `web` and `service` lanes: Playwright tests as a web story's UI evidence, the guard allowing the lane's test runner, `doctor`'s lane checks, and the [lane authoring guide](docs/lanes.md) | **Available** |
 | The team-mode workflow, `.github/workflows/check.yml`, which runs the pre-push gates over every commit a pull request adds, and the `CLAUDE.md` template | **Available** |
-| This repository's own law checks in CI (the prompt ceiling, a shell only as a thin shim, no network calls in hook or Harbor code, skill frontmatter, hooks and plugin paths, JSON formats, a sign-off on every commit, no AI credits), and a mutation check for every self-test | **Available** |
+| This repository's own law checks in CI (the prompt ceiling, a shell only as a thin shim, no network calls in hook or Harbor code, skill frontmatter, hooks and plugin paths, JSON formats, the plugin layout, a sign-off on every commit, no AI credits), and a mutation check for every self-test | **Available** |
 | The plugin eval suite: ten cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
 | `design`: direction variants, every screen, the gallery, and with them a screenshot per touched screen and retro's visual compare | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
@@ -532,7 +532,7 @@ The runner lives in your repository, so it works in a plain clone without the pl
 
 > [!NOTE]
 > The guard is available now. It ships in the core plugin as `hooks/hooks.json` and
-> `bin/guard.mjs`.
+> `scripts/guard.mjs`.
 
 The guard is a PreToolUse hook on the Bash and PowerShell tools. It reads each shell command Claude
 is about to run. Inside an Epikloop project, meaning the working directory or an ancestor has
@@ -595,7 +595,7 @@ operating systems.
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/bin/guard.mjs"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/guard.mjs"],
             "timeout": 10,
             "onFailure": "block"
           }
@@ -615,7 +615,7 @@ From a clone of this repository, run the guard's self-test. It spawns the hook o
 prints any sample that got the wrong answer, and ends with one summary line with spawn times:
 
 ```
-node plugins/epikloop/bin/guard.mjs --self-test
+node plugins/epikloop/scripts/guard.mjs --self-test
 ```
 
 To watch it in a session, use a scratch repository so nothing real is touched:
@@ -624,7 +624,7 @@ To watch it in a session, use a scratch repository so nothing real is touched:
 
    ```
    git init
-   node <your clone>/plugins/epikloop/bin/init.mjs --lane web --mode solo
+   node <your clone>/plugins/epikloop/scripts/init.mjs --lane web --mode solo
    ```
 
 2. Start Claude Code there with the plugin installed, or with
@@ -687,7 +687,7 @@ The project id is derived once, when the project is created: the first 12 hex di
 of the normalized git remote (`host/owner/repo`, lowercased), or of the repository path when there
 is no remote. It is committed, so a moved or re-cloned repository keeps its state.
 
-`discover` and `adopt` create these files with the core plugin's `bin/init.mjs`. It writes the
+`discover` and `adopt` create these files with the core plugin's `scripts/init.mjs`. It writes the
 marker with its id and copies `.githooks/` and `scripts/check.sh` from the plugin's templates. It
 lays down `CLAUDE.md` and, in team mode, `.github/workflows/check.yml`, wherever the repository has
 none. It stages what it wrote, with the shims marked executable, and arms the hooks. It never
@@ -918,7 +918,7 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 | `plugins/epikloop/skills/` | Sixteen skills, with full instructions for all but `design` (M2) and `harbor` (M4) | now, M2, M4 |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/bin/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke and `doctor` | now |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke and `doctor` | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, the examples of each project file in `spec/` and `docs/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
 | `plugins/epikloop/evals/` | The eval suite: one folder per case, and `fixture.mjs`, which builds the fixture project each case starts in | now |
@@ -935,14 +935,14 @@ CI runs these on Ubuntu, macOS and Windows, with Node 22 and a pinned Claude Cod
 claude plugin validate . --strict
 claude plugin validate plugins/epikloop --strict
 claude plugin validate plugins/epikloop-harbor --strict
-node plugins/epikloop/bin/guard.mjs --self-test
-node plugins/epikloop/bin/brief.mjs --self-test
-node plugins/epikloop/bin/init.mjs --self-test
-node plugins/epikloop/bin/state.mjs --self-test
-node plugins/epikloop/bin/smoke.mjs --self-test
-node plugins/epikloop/bin/doctor.mjs --self-test
+node plugins/epikloop/scripts/guard.mjs --self-test
+node plugins/epikloop/scripts/brief.mjs --self-test
+node plugins/epikloop/scripts/init.mjs --self-test
+node plugins/epikloop/scripts/state.mjs --self-test
+node plugins/epikloop/scripts/smoke.mjs --self-test
+node plugins/epikloop/scripts/doctor.mjs --self-test
 claude plugin test plugins/epikloop
-node plugins/epikloop/bin/fold.mjs --self-test
+node plugins/epikloop/scripts/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
 node plugins/epikloop/evals/fixture.mjs --self-test
 node tools/evals.mjs --self-test
@@ -964,6 +964,7 @@ gate runner's self-test also runs on Node 22.0.0, the floor.
     guard failing closed, and forward slashes in `hooks.json` and the manifests
   - snake_case keys and a `format` version in the JSON Epikloop writes, across its schemas, their
     examples and the lanes
+  - no top-level `bin/` in a plugin, which claude.ai and Cowork refuse to install
   - a sign-off on every commit but a merge
   - no commit crediting an AI tool
 - **The mutation check** runs in its own job on Ubuntu, as `node tools/mutate.mjs`. It breaks one

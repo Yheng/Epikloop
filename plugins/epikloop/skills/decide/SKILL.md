@@ -2,8 +2,8 @@
 description: Answer the questions parked in docs/queue.md in one sitting and unblock the stories waiting on them.
 effort: low
 allowed-tools:
-  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'
-  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" *)'
+  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
+  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
 ---
 
 Outcome: the human answers the questions parked in `docs/queue.md` in one sitting. Each answer is
@@ -11,7 +11,7 @@ appended to `docs/decisions.md` as a decision naming the question it answers, th
 the queue in the same commit, and the stories it blocked can run. Scope: questions already parked;
 new findings belong to `triage`, and no product code changes here.
 
-The waiting questions come from `node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs"`; read each in
+The waiting questions come from `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs"`; read each in
 `docs/queue.md`. Put them to the human a few at a time, each with the default the loop took and
 what it blocks. Keeping a default is an answer too. Some questions carry their own work:
 
@@ -23,9 +23,9 @@ what it blocks. Keeping a default is an answer too. Some questions carry their o
   story's epic, after it, with its tier and MVP mark. A story not built yet is rewritten in place.
 - The decision names every story it adds, since the MVP set moves only by a recorded decision.
 
-Decisions are numbered from `node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --ids`, and each carries
+Decisions are numbered from `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --ids`, and each carries
 `- Answers: Q-NNN`, in this format, which a script reads:
 
-!`node "${CLAUDE_PLUGIN_ROOT}/bin/state.mjs" --example decisions`
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example decisions`
 
 Commit the decisions, the queue and any story changes together, and land the commit.

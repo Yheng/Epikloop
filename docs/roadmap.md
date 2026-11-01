@@ -33,8 +33,8 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - baseline on 2026-10-20, on the maintainer's Windows 11 laptop: spawn median 128–133 ms, max
     175–209 ms; GitHub's windows-latest runner measures ~50 ms median
 - the SessionStart briefing (done: stages 1–10, the fuel gauge, the protocol and arming)
-- the project marker and project id (done; `bin/init.mjs` writes the marker and the gate files)
-- the living-spec format (done; [formats](formats.md), the templates, and `bin/state.mjs`, which
+- the project marker and project id (done; `scripts/init.mjs` writes the marker and the gate files)
+- the living-spec format (done; [formats](formats.md), the templates, and `scripts/state.mjs`, which
   reads them)
 - skill bodies for `/epikloop`, `doctor`, `discover`, `adopt`, `architect`, `plan`,
   `epic`/`next`/`story` (sequential workers), `decide`, `triage`, `retro` and `release`
@@ -81,6 +81,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - hooks: exec form on Node, no worktree hooks, no blocking hook on a tool but a shell, the guard
     failing closed, and forward slashes in plugin paths
   - snake_case keys and a format version in Epikloop's JSON
+  - no top-level `bin/` in a plugin
   - DCO sign-off on every commit
   - no AI co-author trailers, nor AI authors, committers or "Generated with" footers
 
@@ -116,13 +117,13 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - The self-test's real commits and pushes confirm Linux and macOS in CI.
 - **Worker effort.** Settled: mechanically, inside the hooks module, by rewriting the Agent call's
   `effort` in a `tool.call` hook. The spike saw the rewrite reach the subagent's requests.
-- **`bin/` or `scripts/`.** claude.ai and Cowork don't install a plugin that has a top-level
-  `bin/`, whose files go on the Bash tool's `PATH`. The hooks call their scripts through
-  `${CLAUDE_PLUGIN_ROOT}`, and `check.sh` lives in product repos. If nothing needs `PATH`, rename
-  `bin/` to `scripts/` before the first release.
-  - Skills reach plugin scripts the same way: Claude Code substitutes `${CLAUDE_PLUGIN_ROOT}` in a
-    plugin skill's body and its `allowed-tools`. The slice-1 skill bodies do so, and nothing needs
-    `PATH` so far.
+- **`bin/` or `scripts/`.** Settled on 2026-11-01: the core plugin's scripts live in `scripts/`.
+  - claude.ai and Cowork don't install a plugin that has a top-level `bin/`, so Anthropic's
+    directory couldn't list one.
+  - All `bin/` added was its files on the Bash tool's `PATH`, which nothing used. The hooks and the
+    skills reach every script through `${CLAUDE_PLUGIN_ROOT}`, which Claude Code substitutes in hook
+    commands, skill bodies and `allowed-tools`.
+  - The laws keep a top-level `bin/` out of every plugin.
 
 **Done when:**
 
