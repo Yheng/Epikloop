@@ -97,8 +97,14 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 
 **Open questions to settle along the way:**
 
-- **Auto mode.** Does a PreToolUse `allow` skip the auto-mode classifier? Default, acceptEdits and
-  dontAsk modes honour it; plan mode does not.
+- **Auto mode.** Partly settled on 2026-11-01, from Claude Code's permission-mode docs.
+  - The classifier allows a batch's own commands by default: pushing to any branch of the
+    repository being worked in, the default branch included, ordinary commits and local commands.
+    What it blocks by default, such as a force push or `git reset --hard`, the guard already
+    denies. So a batch runs unattended in auto mode.
+  - Default, acceptEdits and dontAsk modes honour the guard's `allow`; plan mode does not.
+  - Whether that `allow` skips the classifier isn't documented. It changes only the classifier's
+    work per shell command, and the first dogfood project runs in auto mode.
 - **Where the protocol lives.** Settled on 2026-10-28: SessionStart `additionalContext`.
   - A committed `CLAUDE.md` include can't name the plugin's files, whose install path differs by
     machine and version, so the only alternative was pasting the text into `CLAUDE.md`.
@@ -128,6 +134,8 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 **Done when:**
 
 - Harbor's own web app has been built with Epikloop, end to end.
+  - Started on 2026-11-01, in a private repository of its own, from a brief drawn from the
+    architecture's Harbor section. Its built server and client join `epikloop-harbor` in M4.
 - An existing production repo has been adopted, end to end.
 
 ## M2 — Design phase
