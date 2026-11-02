@@ -112,6 +112,8 @@ What each event does:
   - The text is written as plain facts. It stays under the 10,000-character cap; past the cap Claude
     sees only a 2,000-character preview.
   - Outside a project, it injects one line: "Not an Epikloop project. `/epikloop` to start."
+  - The session that sets a project up began outside it, so its briefing had no protocol.
+    `init.mjs` prints the protocol after its summary line when it writes the marker.
   - It never starts an interview unprompted.
   - It arms `.githooks/` by setting `core.hooksPath`, and only when that is unset and no other
     tool's hooks are present.
@@ -155,7 +157,10 @@ No blocking hook is registered on any non-shell tool.
 
 The emitter writes the event log and the cost rows; Harbor only reads what it writes.
 
-- It writes only inside an Epikloop project.
+- It writes only inside an Epikloop project. It looks for the project when the session starts,
+  and again at each prompt until it finds one, so the session that sets a project up writes from
+  its next prompt. A `/clear` goes on under a new session id with no session start, so the prompt
+  after one opens the project again, under the new id.
 - It never checks whether Harbor is on, because writing an event is cheaper than checking.
 - Hook input carries no timestamps, tokens or cost, so the emitter stamps time from its own clock.
 

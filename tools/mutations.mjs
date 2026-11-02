@@ -44,6 +44,7 @@ export const MUTATIONS = [
   m(BRIEF, ['brief'], 'say nothing outside a project', 'context = opened === null ? OUTSIDE : briefing(opened)', "context = opened === null ? '' : briefing(opened)"),
   m(BRIEF, ['brief'], 'arm a repository that lacks the runner', "if (!fs.existsSync(path.join(root, '.githooks', 'check.mjs'))) return {}", 'if (false) return {}'),
   m(BRIEF, ['brief'], 'drop what needs the human', "  if (needs.length > 0) parts.push(`Needs the human: ${needs.join('; ')}.`)\n", ''),
+  m(BRIEF, ['init'], 'run the briefing when it is imported', "if (fs.realpathSync.native(path.resolve(process.argv[1] ?? '.')) === fs.realpathSync.native(import.meta.filename)) {\n  if (process.argv[2] === '--self-test') await selfTest()", "if (true) {\n  if (process.argv[2] === '--self-test') await selfTest()"),
 
   // The fold.
   m(FOLD, ['fold'], "fold a file that doesn't parse yet", "lines.push(`${JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')))}\\n`)", "lines.push(fs.readFileSync(file, 'utf8'))"),
@@ -58,6 +59,9 @@ export const MUTATIONS = [
   // The emitter, by the plugin's test suite.
   m(EMIT, ['emit'], "put the user's effort over the project's", 'effort: { ...EFFORT, ...user.effort, ...project.effort },', 'effort: { ...EFFORT, ...project.effort, ...user.effort },'),
   m(EMIT, ['emit'], "drop a worker's cost row", '      save($, s, () => s.costs, row, end.at)\n', ''),
+  m(EMIT, ['emit'], 'open a project only at session start', "      if (startedIn !== null && (session === null || session.id !== (await $.session.id()))) {\n        session = await open($, startedIn)\n        if (session !== null) emit($, 'session.start', {})\n      }\n", ''),
+  m(EMIT, ['emit'], 'open the project again at every prompt', 'if (startedIn !== null && (session === null || session.id !== (await $.session.id()))) {', 'if (startedIn !== null) {'),
+  m(EMIT, ['emit'], 'keep the old session id after a /clear', '(session === null || session.id !== (await $.session.id()))', 'session === null'),
 
   // Project setup.
   m(INIT, ['init'], 'accept any lane', 'if (!lanes.includes(options.lane)) return console.log(', 'if (false) return console.log('),
@@ -76,6 +80,8 @@ export const MUTATIONS = [
   m(INIT, ['init'], 'refresh replaces a workflow that differs', '  const stale = staleGates(top)\n  for', "  const stale = [...staleGates(top), [WORKFLOW, 'github/workflows/check.yml', false]]\n  for"),
   m(INIT, ['init'], 'refresh leaves the workflow unstaged', 'const plain = [...stale.filter(([, , shim]) => !shim).map(([file]) => file), ...laid]', 'const plain = stale.filter(([, , shim]) => !shim).map(([file]) => file)'),
   m(INIT, ['init'], 'refresh reads a marker with a byte-order mark as no mode', `mode = JSON.parse(fs.readFileSync(marker, 'utf8').replace(/^${BOM}/, '')).mode`, "mode = JSON.parse(fs.readFileSync(marker, 'utf8')).mode"),
+  m(INIT, ['init'], "leave the protocol out of a new project's setup", "  if (wrote.includes('.epikloop/project.json')) console.log(`\\n${PROTOCOL}`)\n", ''),
+  m(INIT, ['init'], 'print the protocol for a kept marker', "if (wrote.includes('.epikloop/project.json')) console.log(", 'if (true) console.log('),
 
   // The team-mode workflow, through init's checks of its settled parts and its gates step.
   m(WORKFLOW, ['init'], 'fetch only the tip', '          fetch-depth: 0\n', ''),

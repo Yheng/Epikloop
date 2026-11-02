@@ -41,8 +41,9 @@ has been built with Epikloop and an existing production repo adopted, each end t
   - `scripts/brief.mjs` — the SessionStart briefing, which also arms a product's git hooks, with
     its self-test
   - `scripts/init.mjs` — project setup, with its self-test: writes the marker with its id and the
-    gate files, and lays down `CLAUDE.md` and, in team mode, the workflow; `--refresh` brings a
-    project's gate files up to the plugin's
+    gate files, and lays down `CLAUDE.md` and, in team mode, the workflow; it prints the protocol
+    for the session that set the project up; `--refresh` brings a project's gate files up to the
+    plugin's
   - `scripts/state.mjs` — reads the project files and git into the stage and the fuel gauge, and
     prints the briefs a batch, a retro and a release read, with its self-test; the briefing imports
     it
@@ -182,7 +183,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
 - **The briefing's self-test** spawns the hook once per case, in temporary folders and throwaway
   repos. It prints failures plus one summary line with the largest context and spawn times.
 - **The init self-test** runs setup in throwaway repos: remote forms, kept files, staged modes,
-  arming, an unknown lane, `CLAUDE.md`, the team workflow and `--refresh`.
+  arming, an unknown lane, `CLAUDE.md`, the team workflow, the protocol after a new marker and
+  `--refresh`.
   - It holds the workflow template to its settled parts and its pinned gates step, and runs that
     step over a pull request whose secret a later commit removed.
   - Its last case commits through the real pre-commit hook.
@@ -199,7 +201,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   fake `claude`, git version and `npx`. It covers each floor, each account, the lanes this machine
   can build, the UI test tool, the hooks, the gate files, team mode's workflow, this session's
   events and the fold.
-- **The plugin test** runs the emitter's suite against simulated events, with no login.
+- **The plugin test** runs the emitter's suite against simulated events, with no login. Among
+  them are a project set up mid-session and a `/clear`.
 - **The fold's self-test** folds sample files in a temporary folder. It covers the lock free,
   held, left stale and freed by a fold that throws, a folder that's gone, and four processes
   folding one folder at once.

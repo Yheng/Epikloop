@@ -15,8 +15,8 @@ import { openProject, readState, summary } from './state.mjs'
 const OUTSIDE = 'Not an Epikloop project. `/epikloop` to start.'
 
 // The pipeline protocol, after the briefing line. It reaches the model, so it counts toward the
-// prompt ceiling.
-const PROTOCOL = `Epikloop protocol for this project:
+// prompt ceiling. init.mjs prints it too, to the session that sets a project up.
+export const PROTOCOL = `Epikloop protocol for this project:
 
 - The project's state lives in its files and its git history, never in the conversation. spec/
   holds the current requirements, with stable IDs and business rules quoted verbatim, and
@@ -271,5 +271,8 @@ async function selfTest() {
   process.exitCode = failures.length > 0 ? 1 : 0
 }
 
-if (process.argv[2] === '--self-test') await selfTest()
-else await hook()
+// Run as the hook or its self-test; imported, as init.mjs imports the protocol, it does nothing.
+if (fs.realpathSync.native(path.resolve(process.argv[1] ?? '.')) === fs.realpathSync.native(import.meta.filename)) {
+  if (process.argv[2] === '--self-test') await selfTest()
+  else await hook()
+}

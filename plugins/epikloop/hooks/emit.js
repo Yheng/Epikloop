@@ -18,13 +18,17 @@ const SPAWN = /^(\d+\.\d+) (T[123])\b/
 // Story-worker effort per tier, beneath ~/.epikloop/config.json and .epikloop/project.json.
 const EFFORT = { T1: 'medium', T2: 'high', T3: 'xhigh' }
 
-// Set at session.start inside an Epikloop project. While it is null every hook passes its event
-// on and nothing is written.
+// Set inside an Epikloop project: at session.start, and at a prompt when none is open yet or the
+// session has gone on under another id. While it is null every hook passes its event on and
+// nothing is written.
 let session = null
+// The directory the session started in, where a project set up later is found.
+let startedIn = null
 
 export function register(on) {
   on('session.start', async ($, e, next) => {
-    session = await open($, e.cwd)
+    startedIn = e.cwd
+    session = await open($, startedIn)
     if (session !== null) emit($, 'session.start', {})
     return next(e)
   })
@@ -58,8 +62,17 @@ export function register(on) {
   // its spawn is the worker's. With parallel workers the rise is shared, and `cost` is an upper
   // bound.
   on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      // The session that sets a project up began outside it, and a /clear goes on under a new
+      // session id with no session.start; either opens here, at the next prompt.
+      if (startedIn !== null && (session === null || session.id !== (await $.session.id()))) {
+        session = await open($, startedIn)
+        if (session !== null) emit($, 'session.start', {})
+      }
+      return next(e)
+    }
     const s = session
-    if (s === null || e.agentId === undefined) return next(e)
+    if (s === null) return next(e)
     const spawn = s.spawning
     s.spawning = null
     if (spawn !== null) s.workers.set(e.agentId, { ...spawn, ...(await reading($)) })

@@ -3,6 +3,8 @@
 // gate runner and its shims from the plugin's templates, lays down CLAUDE.md and, in team mode, the
 // required check's workflow, stages what it wrote, and arms the hooks. It never overwrites a file
 // and never commits. It prints one summary line, and exits 1 only when it couldn't do its job.
+// When it wrote the marker, the pipeline protocol follows the line: the session that sets a
+// project up began outside it, so that session's briefing had none.
 //
 // `node init.mjs --refresh` brings an existing project's gate files up to the plugin's: it copies in
 // each one that is missing or differs from its template, and stages it, leaving the marker alone.
@@ -13,6 +15,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
+import { PROTOCOL } from './brief.mjs'
 import { laneNames } from './state.mjs'
 
 const USAGE = 'usage: node init.mjs --lane <lane> --mode solo|team | --refresh'
@@ -186,6 +189,7 @@ function init(argv) {
   if (armed) parts.push(armed)
   if (laid.includes(WORKFLOW)) parts.push(PROTECTION)
   console.log(`init: ${parts.join(' · ')}`)
+  if (wrote.includes('.epikloop/project.json')) console.log(`\n${PROTOCOL}`)
   process.exitCode = 0
 }
 
@@ -283,6 +287,20 @@ const CASES = [
     (k) => {
       const dir = k.repo()
       return k.marks(dir, k.init(dir), null)
+    },
+  ],
+  [
+    "the protocol follows a new marker's line, and no other run's",
+    (k) => {
+      const dir = k.repo()
+      const problems = []
+      const run = k.init(dir)
+      const [line] = run.stdout.split('\n')
+      if (!line.startsWith('init: .epikloop/project.json written') || run.stdout !== `${line}\n\n${PROTOCOL}\n`) problems.push(`printed ${JSON.stringify(run.stdout.slice(0, 160))}`)
+      const again = k.init(dir)
+      if (again.stdout.trim().includes('\n') || again.stdout.includes(PROTOCOL)) problems.push(`a kept marker printed ${JSON.stringify(again.stdout.slice(0, 160))}`)
+      if (k.init(dir, ['--refresh']).stdout.includes(PROTOCOL)) problems.push('--refresh printed the protocol')
+      return problems
     },
   ],
   [

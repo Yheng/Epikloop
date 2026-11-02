@@ -250,6 +250,8 @@ in the core plugin:
   points `core.hooksPath` at `.githooks`. When another tool owns them, the briefing says so instead.
 
 Outside an Epikloop project, Claude gets one line: "Not an Epikloop project. `/epikloop` to start."
+The session that sets a project up started outside it, so setup prints the protocol when it writes
+the project's marker.
 
 ### Stories and risk tiers
 

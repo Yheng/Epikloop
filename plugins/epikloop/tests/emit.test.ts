@@ -8,6 +8,8 @@ import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 
 const SESSION = '8d1e5c2a-4b7f-4e0a-9c3d-2f6b8a1e7c90'
+// The id a /clear goes on under.
+const CLEARED = '5b2e9d41-7c3a-4f18-a6e0-9d4c1b7f2e63'
 const ID = '3f9c2a7b1e04'
 const NOW = Date.UTC(2026, 9, 21, 10) // 2026-10-21T10:00:00.000Z
 const HOMES: Record<string, string> = { HOME: '/home/dev', USERPROFILE: 'C:\\Users\\dev' }
@@ -22,11 +24,11 @@ function project(effort: Record<string, string> = {}) {
 
 // What lies beneath the module, answered from memory and recorded.
 function world(on: On, files: Record<string, string>) {
-  const w = { now: NOW, usd: 0.25, cwd: '', writes: [] as Write[], asked: [] as string[] }
+  const w = { now: NOW, usd: 0.25, cwd: '', id: SESSION, writes: [] as Write[], asked: [] as string[] }
   const disk = (path: string) => path.replace(/\\/g, '/').replace(/^[A-Za-z]:/, '')
   on('env.get', (_, e) => ({ value: HOMES[e.name] }))
   on('clock.now', () => ({ value: w.now }))
-  on('session.id', () => ({ value: SESSION }))
+  on('session.id', () => ({ value: w.id }))
   on('session.usage', () => ({ value: { startedAt: NOW, context: {}, rateLimits: [], cost: { usd: w.usd } } }))
   on('fs.exists', (_, e) => {
     w.asked.push(disk(e.path))
@@ -64,7 +66,7 @@ function records(writes: Write[]) {
   return [...writes].sort((a, b) => seq(a) - seq(b)).map((write) => JSON.parse(write.text))
 }
 
-test('outside a project the project is looked for once, and nothing is written', async ($, on) => {
+test('outside a project the project is looked for at the start and at each prompt, and nothing is written', async ($, on) => {
   const w = world(on, {})
   on('tool.call', () => ({ result: {} }))
   await start($)
@@ -72,7 +74,65 @@ test('outside a project the project is looked for once, and nothing is written',
   await $.turn.start({ text: '', turnId: 't0' })
   await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't0', reason: 'answer' })
   await end($)
-  expect(w.asked).toEqual(['/work/shop/.epikloop/project.json', MARKER, '/.epikloop/project.json'])
+  const walk = ['/work/shop/.epikloop/project.json', MARKER, '/.epikloop/project.json']
+  expect(w.asked).toEqual([...walk, ...walk])
+  expect(w.writes).toEqual([])
+})
+
+test('a project set up during the session opens at the next prompt, and nothing before it is written', async ($, on) => {
+  const files: Record<string, string> = {}
+  const w = world(on, files)
+  on('tool.call', () => ({ result: {} }))
+  await start($)
+  await $.turn.start({ text: 'set it up', turnId: 't0' })
+  await $.tool.call({ tool: 'Bash', command: 'node init.mjs --lane web --mode solo' })
+  files[MARKER] = project()
+  await $.tool.call({ tool: 'Bash', command: 'git commit' })
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't0', reason: 'answer' })
+  expect(w.writes).toEqual([])
+  await $.turn.start({ text: 'go on', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'git push' })
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await end($)
+  expect(records(w.writes)).toMatchObject([
+    { format: 1, project_id: ID, cwd: w.cwd, session_id: SESSION, kind: 'session.start' },
+    { kind: 'tool.pre', tool: 'Bash' },
+    { kind: 'tool.post', tool: 'Bash' },
+    { kind: 'stop' },
+    { kind: 'session.end' },
+  ])
+})
+
+test('after a /clear the next prompt opens the project again, under the new session id', async ($, on) => {
+  const w = world(on, { [MARKER]: project() })
+  on('tool.call', () => ({ result: {} }))
+  await start($)
+  await $.session.end({ reason: 'clear', sessionId: SESSION, resume: { id: SESSION } })
+  w.id = CLEARED
+  await $.turn.start({ text: '', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'git status' })
+  await $.session.end({ reason: 'other', sessionId: CLEARED, resume: { id: CLEARED } })
+  const of = (id: string) => records(w.writes.filter((write) => write.path.includes(`-${id.slice(0, 8)}-`)))
+  expect(of(SESSION)).toMatchObject([
+    { kind: 'session.start', session_id: SESSION },
+    { kind: 'session.end', session_id: SESSION, detail: { reason: 'clear' } },
+  ])
+  expect(of(CLEARED)).toMatchObject([
+    { kind: 'session.start', session_id: CLEARED },
+    { kind: 'tool.pre', session_id: CLEARED },
+    { kind: 'tool.post', session_id: CLEARED },
+    { kind: 'session.end', session_id: CLEARED },
+  ])
+  expect(of(SESSION).length + of(CLEARED).length).toBe(w.writes.length)
+})
+
+test('a marker that does not parse opens nothing, at the start or at a prompt', async ($, on) => {
+  const w = world(on, { [MARKER]: '{ "format": 1, "id": ' })
+  on('tool.call', () => ({ result: {} }))
+  await start($)
+  await $.turn.start({ text: '', turnId: 't0' })
+  await $.tool.call({ tool: 'Bash', command: 'git status' })
+  await end($)
   expect(w.writes).toEqual([])
 })
 

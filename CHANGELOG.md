@@ -611,3 +611,32 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
     and folds nothing, so two folds that both find it stale can't both take it. The next pass
     folds.
   - A folder that another fold removed now folds nothing, where reading it used to throw.
+
+### Hook rules (adopted 2026-11-02)
+
+- **The emitter looks for the project again at each prompt until it finds one, and opens it again
+  after a `/clear`.**
+  - On 2026-11-02, the first dogfood project's only session turned out to have begun in its empty
+    folder, before `discover` set the project up. The emitter looked for a project only when the
+    session started, so from `discover` through epic 1 it wrote nothing: no session, tool or
+    subagent events, and no cost rows for the epic's four stories. The fuel gauge's ETA stayed
+    unknown, and `doctor` reported no events from the session, naming `--bare`, safe mode and mods.
+  - `/reload-plugins` starts a module's session again only when the module changed. Resuming the
+    session with `--continue`, a new process, brought the emitter back.
+  - Claude Code's module types say a `/clear` goes on under a new session id with no session
+    start, so the emitter would have written the new conversation's events under the old id.
+  - In a live check on 2026-11-02, a headless session ran `init.mjs` in its first prompt and asked
+    for nothing in its second. Before the change it wrote no events at all; after it, it wrote
+    from the second prompt on.
+  - Inside a project a prompt adds one comparison of session ids; outside one, one walk up the
+    folders for the marker.
+
+### Setup rules (adopted 2026-11-02)
+
+- **`init.mjs` prints the protocol when it writes the marker.** The protocol reaches a session in
+  its SessionStart briefing, and the session that sets a project up began outside it.
+  - On 2026-11-02, the same session's only briefing turned out to be "Not an Epikloop project", so
+    the protocol was never in it from `discover` through epic 1. The pushes it skipped and the
+    shell commands it chained break rules the protocol states.
+  - A kept marker and `--refresh` print no protocol. The text lives once, in `brief.mjs`, which
+    runs as the hook only when Node runs it, so `init.mjs` can import it.
