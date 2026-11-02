@@ -324,10 +324,16 @@ function refsOf(git) {
   return { branch: candidates.find((name) => names.includes(name)) ?? 'HEAD', tags }
 }
 
+// The feat commits stories land as, asked of git, so a log stays small however long the history:
+// Node keeps 1 MB of a child's output, about 15,000 subjects. The patterns are basic regexps
+// whatever the repository's grep.patternType says, and each subject's own match still decides,
+// since --grep matches any line of a message.
+const FEAT_LOG = ['--basic-regexp', '--grep=^feat([0-9][0-9]*\\.[0-9][0-9]*):']
+
 // When each story was done: the first commit on the default branch whose subject starts feat(N.M):.
 function doneTimes(git, branch) {
   const done = new Map()
-  const log = branch === null ? null : git(['log', '--format=%ct%x09%s', branch])
+  const log = branch === null ? null : git(['log', ...FEAT_LOG, '--format=%ct%x09%s', branch])
   for (const line of (log ?? '').split('\n')) {
     const [time, subject = ''] = line.split('\t')
     const feat = /^feat\((\d+\.\d+)\):/.exec(subject)
@@ -576,7 +582,7 @@ export function batchFacts(root) {
   }
   const status = git(['status', '--porcelain'])
   const review = new Set()
-  for (const subject of (git(['log', '--format=%s', '--branches', '--remotes', '--not', branch]) ?? '').split('\n')) {
+  for (const subject of (git(['log', ...FEAT_LOG, '--format=%s', '--branches', '--remotes', '--not', branch]) ?? '').split('\n')) {
     const feat = /^feat\((\d+\.\d+)\):/.exec(subject)
     if (feat !== null) review.add(feat[1])
   }
@@ -1060,6 +1066,24 @@ const CASES = [
       k.git(dir, 'switch', '-q', 'main')
       const s = k.read(dir)
       return k.expect([[[...s.done.keys()].join(' '), '1.1']])
+    },
+  ],
+  [
+    'a history whose log runs past 1 MB still counts its landed stories and those in review',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true], [3, 'T1', true]] }), { freeze: true })
+      // A repository's own grep setting can't change what counts.
+      k.git(dir, 'config', 'grep.patternType', 'extended')
+      k.commit(dir, 'feat(1.1): one', 2)
+      k.noise(dir, 'main', 600)
+      k.git(dir, 'switch', '-q', '-c', 'side')
+      k.noise(dir, 'side', 600)
+      k.commit(dir, 'feat(1.2): on a side branch', 1)
+      k.git(dir, 'switch', '-q', 'main')
+      return k.expect([
+        [[...k.read(dir).done.keys()].join(' '), '1.1'],
+        [k.ready(dir, '1.2'), '0 1.2 is in review, committed on another branch, so it is not ready.\n'],
+      ])
     },
   ],
   [
@@ -1712,6 +1736,19 @@ async function selfTest() {
         windowsHide: true,
       })
       if (run.status !== 0) throw new Error(`commit ${subject}: ${run.stderr.trim()}`)
+    },
+    // `count` empty commits on `branch`, each with a 2,000-character subject, made at once by
+    // fast-import: enough to take a log of the whole history past Node's 1 MB.
+    noise(dir, branch, count) {
+      const tip = k.git(dir, 'rev-parse', branch).trim()
+      const when = Math.floor((NOW - DAY) / 1000)
+      let stream = ''
+      for (let n = 1; n <= count; n += 1) {
+        const message = `chore: ${'n'.repeat(2000)} ${n}\n`
+        stream += `commit refs/heads/${branch}\ncommitter Self Test <self-test@example.com> ${when} +0000\ndata ${message.length}\n${message}${n === 1 ? `from ${tip}\n` : ''}\n`
+      }
+      const run = spawnSync('git', ['fast-import', '--quiet'], { cwd: dir, env, input: stream, encoding: 'utf8', windowsHide: true })
+      if (run.status !== 0) throw new Error(`fast-import: ${run.stderr.trim()}`)
     },
     // A repository holding `files`. With `freeze`, the first commit freezes the MVP set
     // `frozenAgo` days before NOW, so that commit is the queue's base.

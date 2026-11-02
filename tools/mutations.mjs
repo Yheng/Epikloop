@@ -102,6 +102,9 @@ export const MUTATIONS = [
   m(RUNNER, ['check'], "the gates' own files matched anywhere in a path",'const OWN_FILES = /(?<![\\w.-])(?:\\.githooks\\/|scripts\\/check\\.sh(?![\\w.-]))/', 'const OWN_FILES = /(?:\\.githooks\\/|scripts\\/check\\.sh)/'),
 
   // The state reader: the batch.
+  m(STATE, ['state'], 'read the whole history for landed stories', "git(['log', ...FEAT_LOG, '--format=%ct%x09%s', branch])", "git(['log', '--format=%ct%x09%s', branch])"),
+  m(STATE, ['state'], "read every branch's whole log for the review set", "git(['log', ...FEAT_LOG, '--format=%s', '--branches', '--remotes', '--not', branch])", "git(['log', '--format=%s', '--branches', '--remotes', '--not', branch])"),
+  m(STATE, ['state'], "match feat commits as the repository's grep setting says", "const FEAT_LOG = ['--basic-regexp', '--grep=", "const FEAT_LOG = ['--grep="),
   m(STATE, ['state'], 'drop the After check', 'const waits = story.after.filter((id) => !state.done.has(id))', 'const waits = []'),
   m(STATE, ['state'], 'drop the MVP filter', '(!signedOff && !story.mvp)', 'false'),
   m(STATE, ['state'], 'drop the blocking-question check', 'const blockers = state.questions.filter((q) => q.blocks.includes(story.id)).map((q) => q.id)', 'const blockers = []'),

@@ -190,7 +190,7 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - Its last case commits through the real pre-commit hook.
 - **The state reader's self-test** parses the templates and malformed files, and reads dated
   commits, tags, records and cost rows in throwaway repos into exact stages and gauges, stage 10
-  included.
+  included. One history's log runs past Node's 1 MB.
   - It also runs the batch's and the ceremonies' commands there: the ready list against branches,
     a bare remote and a team-mode review; a worker's exact brief; and the retro's and the release's
     briefs and tags.

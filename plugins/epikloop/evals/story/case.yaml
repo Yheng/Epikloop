@@ -41,4 +41,4 @@ graders:
     pattern: '1\.1(?: \([^)\n]*\))? landed\b[^\n]*\b[0-9a-f]{7}\b'
   - name: reports-the-gauge
     type: regex
-    pattern: 'MVP\W{0,6}1/1'
+    pattern: 'MVP\W+(?:[a-z]+\W+){0,2}1/1\b'

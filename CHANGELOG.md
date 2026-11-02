@@ -220,6 +220,9 @@ All notable changes to Epikloop are recorded here.
 - The `story` case's landing grader allows the story's title between its number and "landed", as in
   "Story 1.1 (Greet by name) landed as commit `332a9ce`". Two runs on 2026-11-01 reported it that
   way, and the grader still refuses "1.1 hasn't landed".
+- The `story` case's gauge grader allows up to two words between "MVP" and "1/1", as in "MVP is
+  1/1 done". Runs on 2026-11-01 and 2026-11-02 missed it three times, and the one kept read that
+  way. The grader still refuses "MVP is 0/1" and "MVP 1/10".
 - The fixtures before a batch (`empty`, `specified` and `architected`) carry a remote nothing has
   been pushed to, as a new project's GitHub repository is. The `discover` and `plan` cases check
   that their commit reached it.
@@ -611,6 +614,17 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
     and folds nothing, so two folds that both find it stale can't both take it. The next pass
     folds.
   - A folder that another fold removed now folds nothing, where reading it used to throw.
+- **The state reader asks git for story commits only.** It finds the stories that have landed, and
+  those in review, with `--grep` for `feat(N.M):` subjects, so a log stays small however long the
+  history.
+  - On 2026-11-02, the first dogfood project's git reader found that the state reader kept Node's
+    1 MB limit on git's output. It read the default branch's whole log for the stories landed, and
+    every other branch's log for those in review. Past the limit, at about 15,000 commits, the
+    reads came back empty.
+  - In a self-test history of 600 commits with 2,000-character subjects on each side of a branch,
+    no story counted as landed, and a story committed on the side branch was offered as ready to
+    start.
+  - The patterns are basic regexps whatever the repository's `grep.patternType` says.
 
 ### Hook rules (adopted 2026-11-02)
 
