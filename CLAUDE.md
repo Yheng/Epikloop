@@ -200,7 +200,9 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   can build, the UI test tool, the hooks, the gate files, team mode's workflow, this session's
   events and the fold.
 - **The plugin test** runs the emitter's suite against simulated events, with no login.
-- **The fold's self-test** folds sample files in a temporary folder.
+- **The fold's self-test** folds sample files in a temporary folder. It covers the lock free,
+  held, left stale and freed by a fold that throws, a folder that's gone, and four processes
+  folding one folder at once.
 - **The gate runner's self-test** builds throwaway repos with bare remotes in a temporary folder.
   - It commits and pushes through the real hooks, and runs every gate's samples.
   - Then it checks that each mutation of the secret scan is caught.

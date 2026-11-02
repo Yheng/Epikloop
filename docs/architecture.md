@@ -174,6 +174,10 @@ macOS and Windows, and reads session cost.
 - **Compaction.** Harbor and `doctor` fold each day's folder into `events/YYYY-MM-DD.jsonl` with a
   Node append, then delete what they folded. A file that doesn't parse yet is left for the next
   pass, because a module's writes aren't atomic.
+  - A fold holds `<target>.lock`, beside the file it appends to, while it runs, so two folds never
+    fold one folder at once. A fold that finds the lock taken folds nothing that pass.
+  - A lock older than ten minutes was left by a fold that died. The pass that finds it clears it,
+    and the next pass folds.
 - **Cost rows.** A story's `cost` is the rise in the session's cost total, read with
   `$.session.usage()`, from the worker's start to its end. `model` comes from the worker's
   `turn.complete`, `wall` from the module's clock, and `tier` and `effort` from the story. Each

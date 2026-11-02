@@ -48,6 +48,12 @@ export const MUTATIONS = [
   // The fold.
   m(FOLD, ['fold'], "fold a file that doesn't parse yet", "lines.push(`${JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')))}\\n`)", "lines.push(fs.readFileSync(file, 'utf8'))"),
   m(FOLD, ['fold'], 'delete files without folding them', "  if (lines.length > 0) fs.appendFileSync(target, lines.join(''))\n", ''),
+  m(FOLD, ['fold'], 'fold while another fold holds the lock', '  if (!take(lock)) return { folded: 0, left: names(folder).length, busy: true }\n', ''),
+  m(FOLD, ['fold'], 'clear a fresh lock as if it were stale', 'if (Date.now() - fs.statSync(lock).mtimeMs > STALE) fs.rmSync(lock, { force: true })', 'fs.rmSync(lock, { force: true })'),
+  m(FOLD, ['fold'], 'never clear a stale lock', 'if (Date.now() - fs.statSync(lock).mtimeMs > STALE) fs.rmSync(lock, { force: true })', 'if (false) fs.rmSync(lock, { force: true })'),
+  m(FOLD, ['fold'], 'keep the lock after a fold', '    try {\n      fs.rmSync(lock, { force: true })\n    } catch {}\n', ''),
+  m(FOLD, ['fold'], 'release the lock only when the fold succeeds', '  try {\n    return append(folder, target)\n  } finally {\n    try {\n      fs.rmSync(lock, { force: true })\n    } catch {}\n  }\n', '  const result = append(folder, target)\n  try {\n    fs.rmSync(lock, { force: true })\n  } catch {}\n  return result\n'),
+  m(FOLD, ['fold'], "throw on a folder that's gone", "    if (error.code === 'ENOENT') return []\n", ''),
 
   // The emitter, by the plugin's test suite.
   m(EMIT, ['emit'], "put the user's effort over the project's", 'effort: { ...EFFORT, ...user.effort, ...project.effort },', 'effort: { ...EFFORT, ...project.effort, ...user.effort },'),

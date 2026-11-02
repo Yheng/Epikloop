@@ -745,7 +745,8 @@ The event kinds are `session.start|end`, `tool.pre|post`, `subagent.start|stop`,
 `phase.tagged`.
 
 The emitter writes each event as a small file in `~/.epikloop/events/YYYY-MM-DD/`. Harbor and
-`doctor` fold each day's folder into that day's `.jsonl` file.
+`doctor` fold each day's folder into that day's `.jsonl` file, one fold at a time, through a lock
+file beside it.
 
 </details>
 

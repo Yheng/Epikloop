@@ -597,3 +597,17 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   - A run that reads its marker always ends with its `shims` and `secrets` lines, so the first
     result line with a run's id marks that run's end.
   - The event schema gains the kind, and changes nothing else.
+
+### Format rules (adopted 2026-11-02)
+
+- **One fold at a time.** A fold holds `<target>.lock`, beside the `.jsonl` file it appends to,
+  while it runs, and a fold that finds the lock taken folds nothing that pass.
+  - On 2026-11-01, Harbor's plan gave its server a fold of the event and cost folders at start and
+    once a minute, beside `doctor`'s. `scripts/fold.mjs` assumed it was the only folder.
+  - On 2026-11-02, on Windows, four processes folded one folder of 200 files at once, five times
+    over. Every line landed four times, 4,000 lines for 1,000 files, and 15 of the 20 processes
+    crashed deleting a file another fold had deleted. With the lock, each line landed once.
+  - A lock older than ten minutes was left by a fold that died. The pass that finds it clears it
+    and folds nothing, so two folds that both find it stale can't both take it. The next pass
+    folds.
+  - A folder that another fold removed now folds nothing, where reading it used to throw.
