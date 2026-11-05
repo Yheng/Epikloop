@@ -708,3 +708,15 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   - M1 runs one foreground worker at a time, as the cost rows assume, so a notification while one
     is at work is its story's. With none at work, or with several, it names none until M3 settles
     parallel workers.
+
+### Skill rules (adopted 2026-11-05)
+
+- **The release names the `live` tag, and a release that still waits records nothing.**
+  - On 2026-11-05 the first dogfood project ran `release` with its planned work done and a
+    `Go live later` decision standing. The brief named the `mvp` tag, as the build to promote, and
+    said only that `--release` prints "the tag" once the record lands. Twice the session said that
+    going live would place the `mvp` tag, which the sign-off had already placed.
+  - The brief said nothing about a release that still waits once the deferral was recorded, so the
+    session offered to record a second `Go live later`, which the state reader would never read.
+  - Now the brief and the skill name the `live` tag. Once a `Go live later` stands, the brief says
+    that if going live still waits, nothing is set up or recorded and the release ends there.

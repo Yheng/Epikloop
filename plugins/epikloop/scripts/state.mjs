@@ -843,8 +843,9 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
 }
 
 // The release's brief at stage 9: staging, where the hosting is described, the production smoke,
-// the record and how it lands, and, until going live has been put off, how to record that instead.
-// Once the go-live record is on the default branch, only the tag.
+// the record and how it lands, and, until going live has been put off, how to record that instead;
+// once it has been, that a release which still waits records nothing. Once the go-live record is on
+// the default branch, only the tag.
 export function releaseBrief(state, project, facts) {
   const { stage } = state
   if (stage.n !== 9) return refuse(`A release waits: ${stage.why}. Next: ${stage.next}.`)
@@ -867,8 +868,8 @@ export function releaseBrief(state, project, facts) {
       "The evidence: the production smoke, the same script given production's URL, once the build the mvp tag marks is promoted.",
       `The record: spec/architecture.md gains how production runs, how a build is promoted to it and how it is rolled back; and a decision in docs/decisions.md titled "Go live", ${nextDecision(state)}, whose implementation note holds the post-launch checklist.`,
       landing(project, facts, 'one commit whose subject is "chore(release): go live", holding the record and any production configuration', 'release/live'),
-      'Once it has landed, `--release` again prints the tag.',
-      ...(later === undefined ? deferral : []),
+      'Once it has landed, `--release` again prints the `live` tag.',
+      ...(later === undefined ? deferral : [`If going live still waits, nothing is set up or recorded: ${later.id} stands, and the release ends there.`]),
     ].join('\n'),
   }
 }
@@ -1609,7 +1610,7 @@ const CASES = [
         "The evidence: the production smoke, the same script given production's URL, once the build the mvp tag marks is promoted.",
         `The record: spec/architecture.md gains how production runs, how a build is promoted to it and how it is rolled back; and a decision in docs/decisions.md titled "Go live", ${next}, whose implementation note holds the post-launch checklist.`,
         'Landing: one commit whose subject is "chore(release): go live", holding the record and any production configuration, on main, then `git push origin main`.',
-        'Once it has landed, `--release` again prints the tag.',
+        'Once it has landed, `--release` again prints the `live` tag.',
       ]
       const wanted = [
         '0 Release: the MVP is signed off, and nothing is live yet.',
@@ -1618,7 +1619,12 @@ const CASES = [
         'Landing: one commit whose subject is "chore(release): go live later", holding that record, on main, then `git push origin main`.',
         '',
       ]
-      const waits = ['0 Release: the MVP is signed off, and going live waits, as DECISION-002 records.', ...going('DECISION-003'), '']
+      const waits = [
+        '0 Release: the MVP is signed off, and going live waits, as DECISION-002 records.',
+        ...going('DECISION-003'),
+        'If going live still waits, nothing is set up or recorded: DECISION-002 stands, and the release ends there.',
+        '',
+      ]
       return k.expect([
         [brief, wanted.join('\n')],
         [waiting, waits.join('\n')],

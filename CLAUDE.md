@@ -195,7 +195,7 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   Node's 1 MB.
   - It also runs the batch's and the ceremonies' commands there: the ready list against branches,
     a bare remote and a team-mode review; a worker's exact brief; and the retro's and the release's
-    briefs and tags, with the release's `Go live later` record.
+    briefs and tags, with the release's `Go live later` record and a release that still waits.
   - It holds every lane file to its format, and checks `--lanes`, `--lane` and an unknown lane.
 - **The smoke's self-test** smokes a server on 127.0.0.1: answers, redirects, a timeout, a closed
   port, the marker's URL, and credentials sent but never printed. In throwaway repos, it checks the

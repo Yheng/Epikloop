@@ -38,8 +38,8 @@ checklist in its implementation note, numbered as the script says, in this forma
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example decisions`
 
-Commit the record and land it. Then run `--release` again, which prints the tag once the commit is
-on the default branch.
+Commit the record and land it. Then run `--release` again, which prints the `live` tag once the
+commit is on the default branch.
 
 When the human says production comes later, nothing is set up or promoted. The record is then the
 `Go live later` decision the brief describes, saying what going live waits for, and landing it

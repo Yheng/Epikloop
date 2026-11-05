@@ -116,9 +116,10 @@ only at its stages, 7 and 8 for a retro and 9 for a release, and only where a ba
   sign-off, and the brief says what sign-off needs. At stage 8, the brief is the sign-off's alone,
   landing as `chore(mvp): sign-off`.
 - **The release's brief.** Staging, where the hosting is described, the production smoke, the
-  record, and how it lands, as `chore(release): go live`. Until a `Go live later` is recorded, it
-  also gives that record, for when production comes later, landing as
-  `chore(release): go live later`.
+  record, and how it lands, as `chore(release): go live`, after which it prints the `live` tag.
+  Until a `Go live later` is recorded, it also gives that record, for when production comes later,
+  landing as `chore(release): go live later`. Once one is, it says that a release which still
+  waits records nothing.
 - **Tags.** Once a record is on the default branch, the brief prints only the tags it leaves. It
   prints `mvp` only while queue Δ is at 0 or below.
 - **The staging smoke.** `smoke.mjs` sends one GET to `staging_url`, or to the URL it is given,
