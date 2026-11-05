@@ -277,3 +277,48 @@ test('task and notification events carry identifiers, never their text', async (
   ])
   expect(w.writes.some((write) => write.text.includes('canary'))).toBe(false)
 })
+
+test('a notification names the story of the one worker at work, and no story otherwise', async ($, on) => {
+  const w = world(on, { [MARKER]: project() })
+  on('classic.Notification', () => ({}))
+  // Each worker's Agent call stays open until its worker's turn completes, as a foreground spawn's
+  // does, so a second worker can start while the first is at work.
+  const reached: Record<string, () => void> = {}
+  const answer: Record<string, () => void> = {}
+  on('tool.call', (_, e) => {
+    reached[e.description]()
+    return new Promise((resolve) => {
+      answer[e.description] = () => resolve({ result: {} })
+    })
+  })
+  const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+  const work = async (description: string, agentId: string) => {
+    const at = new Promise<void>((resolve) => {
+      reached[description] = resolve
+    })
+    const call = $.tool.call({ tool: 'Agent', subagent_type: 'epikloop:story-worker', description, prompt: 'p' })
+    await at
+    await $.turn.start({ text: 'p', turnId: agentId, agentId })
+    return async () => {
+      const done = { answer: 'done', durationMs: 1, isAborted: false, turnId: agentId, agentId, reason: 'answer' }
+      await $.turn.complete({ ...done, usage: { ...usage, model: 'claude-opus-5-5' } })
+      answer[description]()
+      await call
+    }
+  }
+  const ask = () => $.classic.Notification({ message: 'canary message', notification_type: 'permission_prompt' })
+  await start($)
+  await ask()
+  const first = await work('2.3 T2 cart total', 'a1')
+  await ask()
+  const second = await work('2.4 T1 cart badge', 'a2')
+  await ask()
+  await second()
+  await ask()
+  await first()
+  await ask()
+  await end($)
+  const asked = records(w.writes).filter((event) => event.kind === 'notification')
+  expect(asked.map((event) => event.story ?? null)).toEqual([null, '2.3', null, '2.3', null])
+  expect(asked.every((event) => event.detail.notification_type === 'permission_prompt')).toBe(true)
+})

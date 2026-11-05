@@ -205,7 +205,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   can build, the UI test tool, the hooks, the gate files, team mode's workflow, this session's
   events and the fold.
 - **The plugin test** runs the emitter's suite against simulated events, with no login. Among
-  them are a project set up mid-session and a `/clear`.
+  them are a project set up mid-session, a `/clear`, and notifications while none, one and two
+  workers are at work.
 - **The fold's self-test** folds sample files in a temporary folder. It covers the lock free,
   held, left stale and freed by a fold that throws, a folder that's gone, and four processes
   folding one folder at once.

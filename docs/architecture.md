@@ -172,6 +172,9 @@ macOS and Windows, and reads session cost.
 
 - **Events.** It uses a native module event wherever one exists. `task.created`, `task.completed`
   and `notification` have none, so they come from `classic.*` hooks.
+  - A notification's documented input names no agent. While one story-worker is at work, as in
+    M1, a `notification` carries its story. With none at work, or with several, it carries none
+    until M3 settles parallel workers.
 - **Writes.** A module can't append, so each event is one small JSON file in
   `~/.epikloop/events/YYYY-MM-DD/`. The module finds home as Node's `os.homedir()` does:
   `USERPROFILE` on Windows, `HOME` elsewhere.

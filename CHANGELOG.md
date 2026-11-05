@@ -691,3 +691,14 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
     live off by itself. `release` takes the product live at any point.
   - Until one is recorded, the release's brief says how to record `Go live later`. The record
     leaves no tag.
+
+### Hook rules (adopted 2026-11-05)
+
+- **A notification names the story of the one story-worker at work.** A notification's documented
+  input names no agent, so the emitter wrote every `notification` without a story.
+  - On 2026-11-04, the first dogfood project built its bell, which rings while a session waits on
+    a permission prompt. A real prompt's bell could never say which story asked. The project's
+    office, built since, labels a prompt with its story only when the event names one.
+  - M1 runs one foreground worker at a time, as the cost rows assume, so a notification while one
+    is at work is its story's. With none at work, or with several, it names none until M3 settles
+    parallel workers.

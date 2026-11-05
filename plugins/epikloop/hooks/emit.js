@@ -115,8 +115,14 @@ export function register(on) {
     return next(e)
   })
 
+  // A notification's documented input names no agent. While one story-worker is at work, as in M1,
+  // whatever asks is its story's; with none at work, or with several, it names no story.
   on('classic.Notification', ($, e, next) => {
-    if (session !== null) emit($, 'notification', { detail: { notification_type: e.notification_type } })
+    const s = session
+    if (s !== null) {
+      const story = s.workers.size === 1 ? [...s.workers.values()][0].story : undefined
+      emit($, 'notification', { story, detail: { notification_type: e.notification_type } })
+    }
     return next(e)
   })
 

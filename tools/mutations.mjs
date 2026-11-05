@@ -62,6 +62,9 @@ export const MUTATIONS = [
   m(EMIT, ['emit'], 'open a project only at session start', "      if (startedIn !== null && (session === null || session.id !== (await $.session.id()))) {\n        session = await open($, startedIn)\n        if (session !== null) emit($, 'session.start', {})\n      }\n", ''),
   m(EMIT, ['emit'], 'open the project again at every prompt', 'if (startedIn !== null && (session === null || session.id !== (await $.session.id()))) {', 'if (startedIn !== null) {'),
   m(EMIT, ['emit'], 'keep the old session id after a /clear', '(session === null || session.id !== (await $.session.id()))', 'session === null'),
+  m(EMIT, ['emit'], "drop a notification's story", "emit($, 'notification', { story, detail:", "emit($, 'notification', { detail:"),
+  m(EMIT, ['emit'], 'name a story while several workers are at work', 's.workers.size === 1 ?', 's.workers.size > 0 ?'),
+  m(EMIT, ['emit'], 'keep a worker after its stop', '    s.workers.delete(e.agentId)\n', ''),
 
   // Project setup.
   m(INIT, ['init'], 'accept any lane', 'if (!lanes.includes(options.lane)) return console.log(', 'if (false) return console.log('),
