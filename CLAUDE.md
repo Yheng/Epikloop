@@ -196,7 +196,9 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
     briefs and tags.
   - It holds every lane file to its format, and checks `--lanes`, `--lane` and an unknown lane.
 - **The smoke's self-test** smokes a server on 127.0.0.1: answers, redirects, a timeout, a closed
-  port, the marker's URL, and credentials sent but never printed.
+  port, the marker's URL, and credentials sent but never printed. In throwaway repos, it checks the
+  commit staging names against HEAD: HEAD in full and short, a staging behind it, a commit HEAD
+  lacks, an unknown id, a value that isn't an id, no header and no commit.
 - **The doctor's self-test** runs the checks in process, against throwaway repos and homes, with a
   fake `claude`, git version and `npx`. It covers each floor, each account, the lanes this machine
   can build, the UI test tool, the hooks, the gate files, team mode's workflow, this session's

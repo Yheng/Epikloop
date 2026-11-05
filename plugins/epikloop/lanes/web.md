@@ -6,7 +6,9 @@ The first story with a UI installs Playwright, this lane's UI test tool: `@playw
 dev dependency, its Chromium through `npx playwright install chromium`, a `playwright.config`
 whose `webServer` starts the app, and a `test:e2e` script that runs `playwright test`, which the
 gates take as the e2e command. Staging, in 1.2, is the host's deploy from the default branch, and
-`staging_url` is its address.
+`staging_url` is its address. Staging's answers carry an `x-commit` header naming the commit it was
+built from, from the host's commit variable or `git rev-parse HEAD` at build; the retro's smoke
+passes only when that is HEAD.
 
 ## Story
 

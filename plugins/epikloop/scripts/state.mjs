@@ -306,7 +306,9 @@ function laneProblem(lane, file) {
   return null
 }
 
-function gitReader(root) {
+// Runs one git command at the root without a shell: its output, or null when git fails. The staging
+// smoke reads HEAD through it too.
+export function gitReader(root) {
   return (args) => {
     const run = spawnSync('git', args, { cwd: root, encoding: 'utf8', timeout: 10_000, windowsHide: true })
     return run.status === 0 ? run.stdout : null

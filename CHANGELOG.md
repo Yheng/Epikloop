@@ -654,3 +654,20 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
     shell commands it chained break rules the protocol states.
   - A kept marker and `--refresh` print no protocol. The text lives once, in `brief.mjs`, which
     runs as the hook only when Node runs it, so `init.mjs` can import it.
+
+### Gate rules (adopted 2026-11-05)
+
+- **The staging smoke checks which build staging serves.** Smoking `staging_url`,
+  `scripts/smoke.mjs` reads the `x-commit` header staging sends, naming the commit it was built
+  from, and passes only when that is the project's HEAD. A staging that doesn't send the header
+  fails. A URL given as an argument, such as release's production smoke, is checked for its
+  answer alone.
+  - On 2026-11-04, the first dogfood project's phase-4 retro got a 200 from a staging started 53
+    minutes before the phase's last story landed, so it served the build from before that story.
+    The smoke couldn't tell. The retro caught it only by comparing the server's start time with
+    the story's commit time, and the human restarted staging.
+  - A staging behind HEAD gets a line that says how far behind it is and asks for a restart or a
+    redeploy. A commit HEAD doesn't contain, an id the repository doesn't have, or a value that
+    isn't a commit id fails as well.
+  - The web and service lanes have 1.2 send the header, from the host's commit variable or
+    `git rev-parse HEAD` at build.

@@ -121,6 +121,11 @@ only at its stages, 7 and 8 for a retro and 9 for a release, and only where a ba
   prints `mvp` only while queue Δ is at 0 or below.
 - **The staging smoke.** `smoke.mjs` sends one GET to `staging_url`, or to the URL it is given,
   and passes on a 2xx answer within 15 seconds.
+  - Smoking `staging_url`, it also reads the answer's `x-commit` header, the commit staging was
+    built from, and passes only when that is the project's HEAD, in full or as a short id.
+  - A staging without the header fails, and so does one that is behind HEAD, on a commit HEAD
+    doesn't contain, or on one the repository doesn't have; the line says which.
+  - A URL it is given, such as production's, is checked for its answer alone.
 
 ## The fuel gauge
 

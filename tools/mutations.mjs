@@ -148,7 +148,11 @@ export const MUTATIONS = [
   m(STATE, ['state'], 'do nothing when run through a link', "if (fs.realpathSync.native(path.resolve(process.argv[1] ?? '.')) === fs.realpathSync.native(import.meta.filename)) {", "if (path.resolve(process.argv[1] ?? '') === import.meta.filename) {"),
 
   // The staging smoke.
-  m(SMOKE, ['smoke'], 'accept any answer', 'if (status >= 200 && status < 300) process.exitCode = 0', 'process.exitCode = 0'),
+  m(SMOKE, ['smoke'], 'accept any answer', '  if (status < 200 || status >= 300) return console.log(answered)\n', ''),
+  m(SMOKE, ['smoke'], 'skip the commit check', "const served = root === undefined ? { pass: true, line: '' } : servedCommit(root, response.headers.get('x-commit'))", "const served = { pass: true, line: '' }"),
+  m(SMOKE, ['smoke'], 'let a staging without x-commit pass', 'if (value === null) return { pass: false,', 'if (value === null) return { pass: true,'),
+  m(SMOKE, ['smoke'], 'let a staging behind HEAD pass', 'return { pass: false, line: `, but from ${commit.slice(0, 7)}, ${behind}', 'return { pass: true, line: `, but from ${commit.slice(0, 7)}, ${behind}'),
+  m(SMOKE, ['smoke'], 'take anything as a commit id', 'if (!/^[0-9a-f]{7,40}$/.test(id)) return', 'if (false) return'),
   m(SMOKE, ['smoke'], 'print the URL as given', 'const shown = shownUrl(url)', 'const shown = url'),
   m(SMOKE, ['smoke'], 'drop the timeout', ', signal: AbortSignal.timeout(CAP) }', ' }'),
   m(SMOKE, ['smoke'], 'drop Basic auth', "    headers.authorization = `Basic ${Buffer.from(pair).toString('base64')}`\n", ''),
