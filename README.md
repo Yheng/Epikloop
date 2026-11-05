@@ -390,7 +390,8 @@ step is also a command you can run directly.
    below and the staging smoke is green.
 10. **Release.** `/epikloop:release` runs the go-live story: the production environment, promotion
     from staging, a rollback note and a post-launch checklist. Production follows the hosting that
-    `spec/architecture.md` describes, and the release is tagged `live`.
+    `spec/architecture.md` describes, and the release is tagged `live`. When production comes
+    later, the release records that going live waits instead, and the planned work runs first.
 11. **Keep going.** After release the project is in post-MVP mode. The backlog becomes visible, and
     `/epikloop:plan --extend` plans new work without touching the frozen set.
 

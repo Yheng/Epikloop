@@ -429,8 +429,13 @@ function stageOf(root, project, s, delta) {
     return { n: 8, why: `every MVP epic is tagged, and the MVP isn't signed off${wait === null ? '' : `; sign-off waits while ${wait}`}`, next: '/epikloop:retro' }
   }
   if (epic === undefined && !s.tags.has('live')) {
-    const why = recorded(s, 'Go live') ? "the go-live is recorded, and live isn't tagged yet" : 'the MVP is signed off, and nothing is live yet'
-    return { n: 9, why, next: '/epikloop:release' }
+    if (recorded(s, 'Go live')) return { n: 9, why: "the go-live is recorded, and live isn't tagged yet", next: '/epikloop:release' }
+    // While a recorded decision puts going live off, the planned work runs first, epic by epic.
+    const later = recorded(s, 'Go live later')
+    if (later === undefined) return { n: 9, why: 'the MVP is signed off, and nothing is live yet', next: '/epikloop:release' }
+    const work = planOrder(s.stories).find((story) => !s.done.has(story.id))
+    if (work === undefined) return { n: 9, why: `the MVP is signed off, going live waits, as ${later.id} records, and nothing planned is left`, next: '/epikloop:release' }
+    return { n: 9, epic: work.epic, why: `the MVP is signed off, and going live waits, as ${later.id} records`, next: `/epikloop:epic ${work.epic}` }
   }
   if (epic === undefined) {
     // Post-MVP: the backlog is visible, and planned work runs epic by epic.
@@ -838,7 +843,8 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
 }
 
 // The release's brief at stage 9: staging, where the hosting is described, the production smoke,
-// the record and how it lands. Once the record is on the default branch, only the tag.
+// the record and how it lands, and, until going live has been put off, how to record that instead.
+// Once the go-live record is on the default branch, only the tag.
 export function releaseBrief(state, project, facts) {
   const { stage } = state
   if (stage.n !== 9) return refuse(`A release waits: ${stage.why}. Next: ${stage.next}.`)
@@ -847,16 +853,22 @@ export function releaseBrief(state, project, facts) {
   if (problem !== null) return refuse(problem)
   const live = recorded(state, 'Go live')
   if (live !== undefined) return { text: `Recorded: ${live.title} in ${live.id}. ${tagging(facts, ['live'])}` }
+  const later = recorded(state, 'Go live later')
+  const deferral = [
+    `When the human says production comes later, nothing is set up or promoted: the record is instead a decision titled "Go live later", ${nextDecision(state)}, saying what going live waits for, and until the release the planned work runs first.`,
+    landing(project, facts, 'one commit whose subject is "chore(release): go live later", holding that record', 'release/later'),
+  ]
   const url = typeof project.staging_url === 'string' && project.staging_url !== '' ? project.staging_url : null
   return {
     text: [
-      'Release: the MVP is signed off, and nothing is live yet.',
+      later === undefined ? 'Release: the MVP is signed off, and nothing is live yet.' : `Release: the MVP is signed off, and going live waits, as ${later.id} records.`,
       url === null ? 'Staging: .epikloop/project.json has no staging_url, so the human names where the signed-off build runs.' : `Staging: ${shownUrl(url)}.`,
       'The hosting: spec/architecture.md says how staging is hosted, and production follows it.',
       "The evidence: the production smoke, the same script given production's URL, once the build the mvp tag marks is promoted.",
       `The record: spec/architecture.md gains how production runs, how a build is promoted to it and how it is rolled back; and a decision in docs/decisions.md titled "Go live", ${nextDecision(state)}, whose implementation note holds the post-launch checklist.`,
       landing(project, facts, 'one commit whose subject is "chore(release): go live", holding the record and any production configuration', 'release/live'),
       'Once it has landed, `--release` again prints the tag.',
+      ...(later === undefined ? deferral : []),
     ].join('\n'),
   }
 }
@@ -1190,6 +1202,32 @@ const CASES = [
       k.write(dir, 'docs/queue.md', queueFile({ backlog: 2 }))
       k.commit(dir, 'feat(1.2): two', 0)
       got.push(k.stage(dir, '10 the product is live, and docs/queue.md holds 2 backlog lines → /epikloop:plan --extend'))
+      return got.flat()
+    },
+  ],
+  [
+    'stage 9 names the planned work while going live waits',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', false], [2, 'T1', false]] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 0)
+      k.git(dir, 'tag', 'phase-1')
+      k.git(dir, 'tag', 'mvp')
+      k.write(dir, 'docs/decisions.md', decisionsFile(['Phase 1 retro', 'MVP sign-off', 'Go live later']))
+      k.commit(dir, 'chore(release): go live later', 0)
+      const waits = 'the MVP is signed off, and going live waits, as DECISION-003 records'
+      const got = [
+        k.stage(dir, `9 ${waits} → /epikloop:epic 2`),
+        k.expect([
+          [k.run(dir, '--retro'), `1 A retro waits: ${waits}. Next: /epikloop:epic 2.\n`],
+          [k.ready(dir), '0 2.1 T1 Story 2.1\n2.2 T1 Story 2.2\n'],
+        ]),
+      ]
+      k.commit(dir, 'feat(2.1): two', 0)
+      k.commit(dir, 'feat(2.2): three', 0)
+      got.push(k.stage(dir, '9 the MVP is signed off, going live waits, as DECISION-003 records, and nothing planned is left → /epikloop:release'))
+      k.write(dir, 'docs/decisions.md', decisionsFile(['Phase 1 retro', 'MVP sign-off', 'Go live later', 'Go live']))
+      k.commit(dir, 'chore(release): go live', 0)
+      got.push(k.stage(dir, "9 the go-live is recorded, and live isn't tagged yet → /epikloop:release"))
       return got.flat()
     },
   ],
@@ -1558,22 +1596,33 @@ const CASES = [
       k.git(dir, 'tag', 'mvp')
       k.remote(dir)
       const brief = k.run(dir, '--release')
-      k.write(dir, 'docs/decisions.md', decisionsFile(['MVP sign-off', 'Go live']))
+      k.write(dir, 'docs/decisions.md', decisionsFile(['MVP sign-off', 'Go live later']))
+      k.commit(dir, 'chore(release): go live later', 0)
+      k.git(dir, 'push', '-q', 'origin', 'main')
+      const waiting = k.run(dir, '--release')
+      k.write(dir, 'docs/decisions.md', decisionsFile(['MVP sign-off', 'Go live later', 'Go live']))
       k.commit(dir, 'chore(release): go live', 0)
       k.git(dir, 'push', '-q', 'origin', 'main')
-      const wanted = [
-        '0 Release: the MVP is signed off, and nothing is live yet.',
+      const going = (next) => [
         'Staging: https://staging.example.com/.',
         'The hosting: spec/architecture.md says how staging is hosted, and production follows it.',
         "The evidence: the production smoke, the same script given production's URL, once the build the mvp tag marks is promoted.",
-        'The record: spec/architecture.md gains how production runs, how a build is promoted to it and how it is rolled back; and a decision in docs/decisions.md titled "Go live", DECISION-001, whose implementation note holds the post-launch checklist.',
+        `The record: spec/architecture.md gains how production runs, how a build is promoted to it and how it is rolled back; and a decision in docs/decisions.md titled "Go live", ${next}, whose implementation note holds the post-launch checklist.`,
         'Landing: one commit whose subject is "chore(release): go live", holding the record and any production configuration, on main, then `git push origin main`.',
         'Once it has landed, `--release` again prints the tag.',
+      ]
+      const wanted = [
+        '0 Release: the MVP is signed off, and nothing is live yet.',
+        ...going('DECISION-001'),
+        'When the human says production comes later, nothing is set up or promoted: the record is instead a decision titled "Go live later", DECISION-001, saying what going live waits for, and until the release the planned work runs first.',
+        'Landing: one commit whose subject is "chore(release): go live later", holding that record, on main, then `git push origin main`.',
         '',
       ]
+      const waits = ['0 Release: the MVP is signed off, and going live waits, as DECISION-002 records.', ...going('DECISION-003'), '']
       return k.expect([
         [brief, wanted.join('\n')],
-        [k.run(dir, '--release'), "0 Recorded: Go live in DECISION-002. What's left is the tag: `git tag live`, then `git push origin live`.\n"],
+        [waiting, waits.join('\n')],
+        [k.run(dir, '--release'), "0 Recorded: Go live in DECISION-003. What's left is the tag: `git tag live`, then `git push origin live`.\n"],
       ])
     },
   ],

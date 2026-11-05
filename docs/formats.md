@@ -68,8 +68,8 @@ Example: [`templates/docs/decisions.md`](../plugins/epikloop/templates/docs/deci
   `- Decision:`, `- Rejected:`, `- Trade-offs:` and `- Implementation note:`.
 - **Answers.** An entry that answers a parked question also carries `- Answers: Q-NNN`.
 - **Records.** The closing ceremonies record themselves as entries with fixed titles: `retro`
-  writes `Phase N retro`, the MVP sign-off `MVP sign-off`, and `release` `Go live`. The reader
-  finds them by title.
+  writes `Phase N retro`, the MVP sign-off `MVP sign-off`, and `release` `Go live`, or
+  `Go live later` when production comes later. The reader finds them by title.
 - **Append-only.** The file is never edited above its last entry.
 
 ## What is read from git
@@ -116,7 +116,9 @@ only at its stages, 7 and 8 for a retro and 9 for a release, and only where a ba
   sign-off, and the brief says what sign-off needs. At stage 8, the brief is the sign-off's alone,
   landing as `chore(mvp): sign-off`.
 - **The release's brief.** Staging, where the hosting is described, the production smoke, the
-  record, and how it lands, as `chore(release): go live`.
+  record, and how it lands, as `chore(release): go live`. Until a `Go live later` is recorded, it
+  also gives that record, for when production comes later, landing as
+  `chore(release): go live later`.
 - **Tags.** Once a record is on the default branch, the brief prints only the tags it leaves. It
   prints `mvp` only while queue Δ is at 0 or below.
 - **The staging smoke.** `smoke.mjs` sends one GET to `staging_url`, or to the URL it is given,

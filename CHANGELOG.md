@@ -234,6 +234,9 @@ All notable changes to Epikloop are recorded here.
   matches. `discover`'s spec graders read the spec files that way, so they check what was written,
   whichever tool wrote it. On 2026-11-01 a `discover` run wrote a correct spec through a Bash
   heredoc, and the graders, which watched Write calls, failed it.
+- Stage 9 names the planned work while a `Go live later` decision stands, which `release` records
+  when production comes later ([issue #3](https://github.com/Yheng/Epikloop/issues/3)). Without
+  that record, it still names `release`.
 
 ### Removed
 
@@ -671,3 +674,20 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
     isn't a commit id fails as well.
   - The web and service lanes have 1.2 send the header, from the host's commit variable or
     `git rev-parse HEAD` at build.
+
+### Format rules (adopted 2026-11-05)
+
+- **Going live can wait for planned work, by a recorded decision.** When the human says
+  production comes later, `release` sets nothing up and records a decision titled `Go live later`,
+  saying what going live waits for. While it stands, stage 9 names the planned work, epic by epic,
+  and once nothing planned is left it names `release` again
+  ([issue #3](https://github.com/Yheng/Epikloop/issues/3)).
+  - On 2026-11-05, the first dogfood project signed off its MVP. Its production comes with a later
+    milestone, so it planned four more epics to build first. From then on every briefing gave
+    `/epikloop:release`, which only the human starts, as the next step, and the human asked
+    whether to run it. Nothing could record that going live waits, so stage 9 would have said the
+    same through all four epics.
+  - Without the record, stage 9 still names `release`, so planning more work doesn't put going
+    live off by itself. `release` takes the product live at any point.
+  - Until one is recorded, the release's brief says how to record `Go live later`. The record
+    leaves no tag.

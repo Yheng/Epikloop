@@ -434,14 +434,17 @@ next step is the first one that fails, so the answer is the same after lunch or 
 7. The current phase is complete but not tagged → `retro`
 8. Every MVP epic is tagged, no `mvp` tag → `retro`, whose MVP sign-off waits until queue Δ ≤ 0
    and the staging smoke is green
-9. `mvp` tag, no `live` tag → `release`
+9. `mvp` tag, no `live` tag → `release`; while a `Go live later` decision stands, which `release`
+   records when production comes later, the planned work runs epic by epic first, and `release`
+   is next once nothing planned is left
+   ([issue #3](https://github.com/Yheng/Epikloop/issues/3))
 10. `live` tag → post-MVP mode: the backlog becomes visible, the planned work runs epic by epic,
     and `plan --extend` takes new work
 
 Each closing ceremony writes a record, a decision with a fixed title, and tags the default branch
-once the record has landed there: in team mode, after the human merges it. `state.mjs --retro`
-and `--release` print what each ceremony covers, and then the tags, so placing a tag is the
-script's call, not the model's.
+once the record has landed there: in team mode, after the human merges it. A `Go live later`
+record leaves no tag. `state.mjs --retro` and `--release` print what each ceremony covers, and
+then the tags, so placing a tag is the script's call, not the model's.
 
 ## Token economy
 

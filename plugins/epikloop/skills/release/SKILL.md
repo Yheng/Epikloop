@@ -15,8 +15,8 @@ Outcome: the signed-off MVP runs in production, delivered as the go-live story. 
 environment exists on the host the architecture chose, the build the `mvp` tag marks is promoted
 to it from staging, and how to promote and roll back is written down with a post-launch checklist.
 After the release the project is in post-MVP mode, where the backlog is visible and new work comes
-through `plan --extend`. Scope: going live once the MVP is signed off; product scope doesn't
-change here.
+through `plan --extend`. Scope: going live once the MVP is signed off, or recording that it waits;
+product scope doesn't change here.
 
 What the release covers comes from a script. Run `git fetch` on its own, then
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --release`, also on its own. It prints staging,
@@ -40,3 +40,7 @@ checklist in its implementation note, numbered as the script says, in this forma
 
 Commit the record and land it. Then run `--release` again, which prints the tag once the commit is
 on the default branch.
+
+When the human says production comes later, nothing is set up or promoted. The record is then the
+`Go live later` decision the brief describes, saying what going live waits for, and landing it
+ends the release.
