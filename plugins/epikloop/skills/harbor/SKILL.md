@@ -1,5 +1,5 @@
 ---
-description: Turn Harbor, the local 3D view of your Epikloop projects, on or off, or open it.
+description: Turn Harbor, the local view of your Epikloop projects as offices, on or off, or open it.
 argument-hint: "on|off|open"
 effort: low
 disable-model-invocation: true

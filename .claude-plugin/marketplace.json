@@ -13,7 +13,7 @@
     {
       "name": "epikloop-harbor",
       "source": "./plugins/epikloop-harbor",
-      "description": "Optional local 3D view of your Epikloop projects, drawn from files Epikloop already writes."
+      "description": "Optional local view of your Epikloop projects as offices, drawn from files Epikloop already writes."
     }
   ]
 }

@@ -67,7 +67,7 @@ It takes a product to production, starting from an idea or from an existing code
 - Progress is measured against a frozen finish line, with a computed ETA.
 
 The core plugin, `epikloop`, is the whole pipeline. The second plugin, `epikloop-harbor`, is
-optional: a local 3D view of your projects, drawn from files Epikloop already writes.
+optional: a local view of your projects as offices, drawn from files Epikloop already writes.
 
 ### Principles
 
@@ -115,7 +115,7 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The plugin eval suite: ten cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
 | `design`: direction variants, every screen, the gallery, and with them a screenshot per touched screen and retro's visual compare | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
-| Harbor (its server, its 3D view and the `harbor` command), then the Bridge | M4 |
+| Harbor (its server, its office view and the `harbor` command), then the Bridge | M4 |
 
 Until M1 lands, the loop hasn't yet taken a real project end to end, so Epikloop is not ready for
 real projects. See the [roadmap](#roadmap).
@@ -857,25 +857,29 @@ More in [Architecture → Token economy](docs/architecture.md#token-economy).
 > [!NOTE]
 > Harbor arrives in M4. Today the `epikloop-harbor` plugin is a manifest only.
 
-Harbor is an optional, local 3D view of your Epikloop projects. It is drawn from files Epikloop
-already writes: the event log in `~/.epikloop/events/` and each project's repository files.
+Harbor is an optional, local view of your Epikloop projects as offices. It is drawn from files
+Epikloop already writes: the event log in `~/.epikloop/events/` and each project's repository
+files.
 
-- There is one dock per active project, with a harbor overview, click to zoom, and a split view.
-- A dependency-free Node server (`http` and `fs` only) runs on localhost and sends server-sent
-  events to a prebuilt client.
-- Three.js is vendored into the bundle, the low-poly geometry is generated in code, and the camera
-  is a fixed isometric one. There is no asset pipeline and no Docker.
+- There is one office per active project, with an overview of every office, click to zoom, and a
+  split view.
+- A dependency-free Node server, using only Node's built-ins, runs on localhost and sends
+  server-sent events to a prebuilt client.
+- The page draws one fixed office picture on a 2D canvas, with sprites placed on it, and has no
+  runtime dependency. The art is a fixed set of PNG files, drawn once with an image model and cut
+  into sprites, and the build copies it unchanged. There is no Docker.
 
 | Pipeline state | Harbor shows |
 |---|---|
-| A phase | built up as keel → frames → planking → deck → rigging |
-| A committed story | a plank laid |
-| Gates running | an inspector with a lantern |
-| A parked question | a signal flag |
-| A T3 story awaiting review | the captain at the gangway |
-| A permission prompt | a bell |
-| A retro | a sea trial |
-| The `mvp` tag | the launch |
+| A phase | the office's whiteboard, with a sticky note per story |
+| A story in progress | its worker typing at its desk, with code on its screen |
+| A landed story | its note ticked, and its worker cheering |
+| Gates running | the QA lead checking at the desk, then a thumbs up or a red cross |
+| A parked question | the team lead on the phone |
+| A T3 story awaiting review | its worker reading at the glass office |
+| A permission prompt | a worker asking at the copier, while its red light blinks |
+| A retro | the crew gathered in the lounge |
+| The `mvp` tag | launch day |
 
 The loudest motion always means you are needed.
 
@@ -1051,7 +1055,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 | **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), this repository's own law checks and the CI mutation check (done), the eval suite with its fixture project, run on a contributor's machine (done), and lint as laws (done) |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
-| **M4: Harbor, then the Bridge** | Harbor's server and 3D scene, then the Bridge's review pages |
+| **M4: Harbor, then the Bridge** | Harbor's server and office view, then the Bridge's review pages |
 
 M1 is done when Harbor's own web app has been built with Epikloop end to end, and an existing
 production repository has been adopted end to end.

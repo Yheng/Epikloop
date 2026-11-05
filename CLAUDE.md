@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repository is
 
 Epikloop is an agentic delivery loop for Claude Code. This marketplace distributes it as two
-plugins: `epikloop` (the core) and `epikloop-harbor` (an optional local 3D view).
+plugins: `epikloop` (the core) and `epikloop-harbor` (an optional local view of projects as
+offices).
 
 - It takes a product from idea, or from existing code, to production.
 - It moves through discover or adopt, design, architect and plan, then runs unattended batches of

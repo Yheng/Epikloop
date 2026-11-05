@@ -473,37 +473,44 @@ then the tags, so placing a tag is the script's call, not the model's.
 ## Harbor
 
 Harbor lives in the optional `epikloop-harbor` plugin. It reads `~/.epikloop/events/` and each
-project's repo files for pipeline state.
+project's repo files for pipeline state, and draws each project as an office
+([issue #4](https://github.com/Yheng/Epikloop/issues/4)).
 
 How it is built:
 
-- a dependency-free Node server (`http` and `fs` only) on localhost
+- a dependency-free Node server on localhost, using Node's built-ins only
 - server-sent events to a prebuilt client
-- Three.js vendored into the bundle
-- procedural low-poly geometry generated in code, with a fixed isometric camera
-- no asset pipeline and no Docker
+- one fixed office picture drawn on a 2D canvas, with sprites placed on it, and no runtime
+  dependency in the page
+- the art as a fixed set of PNG files: the office, the crew's poses and the props, drawn once with
+  an image model and cut into sprites, kept with the guide, the source sheets and the tools that
+  cut them
+- the build copying the art unchanged, and the server serving each sprite at `/art/<name>.png`
+- no Docker
 
-There is one dock per active project, with a harbor overview, click to zoom, and a split view.
+There is one office per active project, with an overview of every office, click to zoom, and a
+split view.
 
 The visual vocabulary:
 
 | Pipeline state | Harbor shows |
 |---|---|
-| A phase | built up as keel → frames → planking → deck → rigging |
-| A committed story | a plank laid |
-| Gates running | an inspector with a lantern |
-| A parked question | a signal flag |
-| A T3 story awaiting review | the captain at the gangway |
-| A permission prompt | a bell |
-| A retro | a sea trial |
-| The `mvp` tag | the launch |
+| A phase | the office's whiteboard, with a sticky note per story |
+| A story in progress | its worker typing at its desk, with code on its screen |
+| A landed story | its note ticked, and its worker cheering |
+| Gates running | the QA lead checking at the desk, then a thumbs up or a red cross |
+| A parked question | the team lead on the phone |
+| A T3 story awaiting review | its worker reading at the glass office |
+| A permission prompt | a worker asking at the copier, while its red light blinks |
+| A retro | the crew gathered in the lounge |
+| The `mvp` tag | launch day |
 
 The loudest motion always means the human is needed.
 
 `/epikloop:harbor on|off` flips one line in `~/.epikloop/config.json`; off means no Harbor process
 exists. Later, the Bridge adds review pages on the same server (design pick, T3 diff, decide), and
-they write back the same repo files the CLI writes. Nautical imagery belongs to Harbor alone; the
-tool's name and docs are not nautical.
+they write back the same repo files the CLI writes. Office imagery belongs to Harbor alone; the
+tool's name and docs don't use it.
 
 ## Repository layout
 

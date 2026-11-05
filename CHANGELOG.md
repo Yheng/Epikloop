@@ -237,6 +237,12 @@ All notable changes to Epikloop are recorded here.
 - Stage 9 names the planned work while a `Go live later` decision stands, which `release` records
   when production comes later ([issue #3](https://github.com/Yheng/Epikloop/issues/3)). Without
   that record, it still names `release`.
+- Harbor draws each project as an office, one fixed 2D picture made from art kept as PNG files, in
+  place of the 3D harbor ([issue #4](https://github.com/Yheng/Epikloop/issues/4)).
+  - On 2026-11-02 the first dogfood project built the harbor as the architecture described, and
+    the human found its code-drawn ships and docks too plain. After its MVP it planned the office.
+  - The architecture now says the server uses Node's built-ins only, where it said `http` and `fs`
+    only. The server also reads git through `child_process`.
 
 ### Removed
 

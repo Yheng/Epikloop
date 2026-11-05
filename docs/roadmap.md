@@ -93,7 +93,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   adoption of one.
 - **Literal spacing in the token gate,** and Tailwind's spacing utilities.
 - **Perf budgets in a lane,** held for a project whose performance regresses unnoticed. Harbor's
-  own app vendors Three.js, so no generic web budget fits the first dogfood project.
+  own page loads about 5 MB of art, so no generic web budget fits the first dogfood project.
 
 **Open questions to settle along the way:**
 
@@ -170,5 +170,5 @@ With the full lane set in place, the core becomes 1.0.0, and the Node floor (22 
 
 ## M4 — Harbor, then the Bridge
 
-The emitter already exists. This milestone delivers the server, the 3D scene and, later, the
+The emitter already exists. This milestone delivers the server, the office view and, later, the
 Bridge's review pages.
