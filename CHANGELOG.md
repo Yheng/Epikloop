@@ -201,6 +201,22 @@ All notable changes to Epikloop are recorded here.
   - `architect` reads `design/` where it exists, since the design now comes first.
   - Three eval cases, on a greeter web page at three points of its design: the directions waiting
     for the pick, the screens after it, and an audit.
+- The screens as the truth, M2's second slice, in the web lane.
+  - A story's brief names the screens in `design/manifest.md` that show its requirements, with
+    their states and files.
+  - The story keeps the project's Playwright screens spec in step with the screens it builds or
+    changes. The spec renders each designed state at both widths, from its design file and from
+    the app, into `test-results/screens/`.
+  - The story's UI evidence includes one screenshot per screen it touches, its default state at the
+    narrow width, read beside its design render. What differs is fixed, or parked when the design
+    should change.
+  - Each retro's full visual compare reads every designed state, as built, beside its design at
+    both widths, from the deep gates' run. A difference, or a designed state nothing renders, is a
+    finding. The retro's brief says how many screens and states it covers.
+  - The first story with a UI loads `design/tokens.css` into the app, and keeps `test-results/` out
+    of git.
+  - An eval case runs `plan` on a designed and architected greeter page, and expects its stories to
+    load the tokens and build to the design.
 
 ### Changed
 
@@ -214,7 +230,7 @@ All notable changes to Epikloop are recorded here.
 - Lane fragments reach the model through the state reader's briefs, not as internal skills
   ([issue #2](https://github.com/Yheng/Epikloop/issues/2)). `spec-delta` is the one internal skill.
 - In M1 a web story's UI evidence is a Playwright test. The screenshot per touched screen and
-  retro's full visual compare join `design` later in M2. Perf budgets are held until a project
+  retro's full visual compare joined in M2's second slice. Perf budgets are held until a project
   needs them.
 - When a stack command fails and its output names `.githooks/` or `scripts/check.sh`, the gate
   runner adds a line: those ship as they are, so leave them out of what the command checks.

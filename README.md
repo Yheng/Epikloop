@@ -112,9 +112,10 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The `web` and `service` lanes: Playwright tests as a web story's UI evidence, the guard allowing the lane's test runner, `doctor`'s lane checks, and the [lane authoring guide](docs/lanes.md) | **Available** |
 | The team-mode workflow, `.github/workflows/check.yml`, which runs the pre-push gates over every commit a pull request adds, and the `CLAUDE.md` template | **Available** |
 | This repository's own law checks in CI (the prompt ceiling, a shell only as a thin shim, no network calls in hook or Harbor code, skill frontmatter, hooks and plugin paths, JSON formats, the plugin layout, a sign-off on every commit, no AI credits), and a mutation check for every self-test | **Available** |
-| The plugin eval suite: thirteen cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
+| The plugin eval suite: fourteen cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
 | `design`: the brief, three directions and your pick, every screen with its tokens, manifest and gallery, and `amend`, `add`, `audit` and `ingest`, with stage 3 | **Available** |
-| The screens as the truth: a screenshot per touched screen and retro's visual compare; `adopt`'s design tokens | M2 |
+| The screens as the truth: a screenshot per screen a story touches, read beside its design, and the retro's full visual compare | **Available** |
+| `adopt`'s design tokens, extracted from an existing UI | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor: its server, its office view, the `harbor` command and its start-of-session hook | **Available** |
 | The Bridge: review pages on Harbor's server for the design pick, the T3 diff and decide | M4 |
@@ -333,8 +334,8 @@ A lane is a profile for one kind of product: `lanes/<name>.json` inside the core
 optional fragment, `lanes/<name>.md`. Together they declare:
 
 - **how UI is verified:**
-  - in `web`, a Playwright test for each acceptance criterion a person sees, with a screenshot per
-    touched screen later in M2
+  - in `web`, a Playwright test for each acceptance criterion a person sees and, in a project with
+    a design, one screenshot per screen a story touches, read beside its design
   - a Maestro or Flutter integration test in the mobile lanes
   - contract tests in `service`
 - **how staging works:** a host's git-deploy URL, an EAS preview, TestFlight or the Play internal
@@ -388,8 +389,9 @@ step is also a command you can run directly.
    - the deep gates, with end-to-end tests
    - the gates' self-test
 
-   In the web lane, the deep gates run the whole Playwright suite. The full visual compare joins
-   later in M2, and perf budgets wait for a project that needs them. The retro then prunes
+   In the web lane, the deep gates run the whole Playwright suite. In a project with a design,
+   that run renders every designed state at both widths, and the retro compares each one, as
+   built, with its design. Perf budgets wait for a project that needs them. The retro then prunes
    the queue with you, reviews the cost rows, and deletes something from the pipeline, or records
    why nothing qualified. It records all this in `docs/decisions.md` and tags the phase.
 
@@ -856,8 +858,8 @@ you want to change a choice.
   `promptCacheTtl`, and `doctor` says so.
 - **Small outputs.** `check.sh` prints failures and a one-line summary, a product's `CLAUDE.md`
   stays under 200 lines, and a web story runs only the Playwright specs it touched, with the whole
-  suite once per epic. Later in M2, each story takes one screenshot per touched screen, with the
-  full visual compare once per epic. The design gallery is written by a script, not by the model.
+  suite once per epic. A web story reads one screenshot per screen it touches, and the full visual
+  compare runs once per epic. The design gallery is written by a script, not by the model.
 
 More in [Architecture → Token economy](docs/architecture.md#token-economy).
 
@@ -1017,12 +1019,13 @@ reads, and `node tools/evals.mjs` runs it.
   - architected
   - planned
   - planned with a question parked
-  - a greeter web page before its design, after the pick, and drawn but for one state
+  - a greeter web page before its design, after the pick, drawn but for one state, and designed and
+    architected
 
-  The first three, and the web page before its design and after the pick, carry a remote nothing
-  has been pushed to, as a new project's GitHub repository is; a push there goes to a bare
-  repository inside `.git`. The fixture's self-test runs in CI on every push, at no cost.
-- **What the thirteen cases cover:**
+  The first three, and the web page before its design, after the pick and once architected, carry
+  a remote nothing has been pushed to, as a new project's GitHub repository is; a push there goes
+  to a bare repository inside `.git`. The fixture's self-test runs in CI on every push, at no cost.
+- **What the fourteen cases cover:**
   - the front door, inside and outside a project
   - a plain question answered from the briefing
   - a story landed by its worker, with its open product call parked
@@ -1030,9 +1033,10 @@ reads, and `node tools/evals.mjs` runs it.
   - `architect` waiting for confirmation
   - `plan`, `discover` and `adopt`
   - `design`: three directions that wait for the pick, the screens after it, and an audit
+  - `plan` on a designed web page, whose stories load the tokens and build to the design
 
-  `discover`, `plan` and the first two `design` cases must also push their commit to the fixture's
-  remote.
+  `discover`, both `plan` cases and the first two `design` cases must also push their commit to the
+  fixture's remote.
 
 From the repository's root:
 
@@ -1072,7 +1076,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 |---|---|
 | **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), this repository's own law checks and the CI mutation check (done), the eval suite with its fixture project, run on a contributor's machine (done), and lint as laws (done) |
 | **Harbor, between M1 and M2** | Harbor's build in `epikloop-harbor`, its start-of-session hook, `/epikloop:harbor` and `doctor`'s Harbor check (done) |
-| **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references (done); then the screens as the truth at story and retro time, and `adopt`'s design tokens |
+| **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references (done); the screens as the truth at story and retro time (done); then `adopt`'s design tokens |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: The Bridge** | Review pages on Harbor's server: the design pick, the T3 diff and decide |
 

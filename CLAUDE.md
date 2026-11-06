@@ -25,8 +25,8 @@ gallery, the project file formats, the `web` and `service` lanes, the team-mode 
 product `CLAUDE.md` template and Harbor's plugin are in place. CI checks this repository's laws,
 lint among them, and the self-tests' mutations, and the eval suite runs on a contributor's machine.
 M1 is done when Harbor's own web app has been built with Epikloop and an existing production repo
-adopted, each end to end (`docs/roadmap.md`). M2's first slice, the design skill, is in; the
-screens as the truth at story and retro time, and `adopt`'s design tokens, come next.
+adopted, each end to end (`docs/roadmap.md`). M2's first two slices, the design skill and the
+screens as the truth at story and retro time, are in; `adopt`'s design tokens come next.
 
 ## Map
 
@@ -215,6 +215,9 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - It reads stage 3 at each point of a design, from no design to a complete one, for a project
     planned without one and for the service lane. It holds the manifest to its format, and checks
     `--design` before and after the pick, with an audit's findings and the missing files it names.
+  - With a design, a worker's brief names the screens that show its story's requirements and no
+    others, and the retro's brief says how far the visual compare reaches; without one, neither
+    does.
   - It holds every lane file to its format, and checks `--lanes`, `--lane` and an unknown lane.
 - **The smoke's self-test** smokes a server on 127.0.0.1: answers, redirects, a timeout, a closed
   port, the marker's URL, and credentials sent but never printed. In throwaway repos, it checks the
@@ -249,7 +252,7 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - Then it checks that each mutation of the secret scan is caught.
   - CI runs it again on Node 22.0.0, the floor.
 - **The fixture's self-test** builds every eval fixture in a temporary folder with a home of its
-  own. It reads each fixture's stage as the briefing does, the web page's three at stage 3, runs
+  own. It reads each fixture's stage as the briefing does, the web page's from stage 3 to 5, runs
   `existing`'s tests and the gates on `planned`, pushes to `architected`'s remote, and checks that
   each case's scaffold names a fixture.
 - **The eval runner's self-test** loads every case, holds its YAML reader and graders to samples,

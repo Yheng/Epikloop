@@ -181,6 +181,10 @@ export const MUTATIONS = [
   m(STATE, ['state'], 'name every missing file', 'const SHOWN_FILES = 10', 'const SHOWN_FILES = 100'),
   m(STATE, ['state'], "leave the manifest's unreadable lines out of --design", "  if (unread.length > 0) out.push('Unreadable lines:',", "  if (false) out.push('Unreadable lines:',"),
   m(STATE, ['state'], 'give a lane that skips design a design', 'if (!Array.isArray(lane?.design?.widths)) return null', 'if (lane === null) return null'),
+  m(STATE, ['state'], "leave the screens out of a story's brief", '  out.push(...screensSection(state, story))\n', ''),
+  m(STATE, ['state'], 'give a story every screen, whatever its requirements', '.filter((screen) => screen.requirements.some((req) => story.requirements.includes(req)))', '.filter(() => true)'),
+  m(STATE, ['state'], "leave the visual compare out of the retro's brief", '      ...compareLine(state),\n', ''),
+  m(STATE, ['state'], 'give a retro the visual compare without a design', 'if (!d?.complete) return []', 'if (d === null) return []'),
 
   // The gallery.
   m(GALLERY, ['gallery'], "leave the project's text unescaped", 'const escape = (text) => String(text).replace(', 'const escape = (text) => String(text) || String(text).replace('),
@@ -289,6 +293,8 @@ export const MUTATIONS = [
   m(FIXTURE, ['fixture'], 'push to the network URL', "    git(dir, ['config', `url.${bare}.pushInsteadOf`, url])\n", ''),
   m(FIXTURE, ['fixture'], 'set every fixture up in the service lane', "[INIT, '--lane', commit.init, '--mode', 'solo']", "[INIT, '--lane', 'service', '--mode', 'solo']"),
   m(FIXTURE, ['fixture'], 'leave the pick out of web-picked', "    'docs/decisions.md': PICKED,\n", ''),
+  m(FIXTURE, ['fixture'], 'leave the architecture out of web-architected', "  'web-architected': [WEB_SPECIFY, PICK, DRAW, DRAW_ERROR, WEB_ARCHITECT],", "  'web-architected': [WEB_SPECIFY, PICK, DRAW, DRAW_ERROR],"),
+  m(FIXTURE, ['fixture'], 'leave the error state out of web-architected', "  'web-architected': [WEB_SPECIFY, PICK, DRAW, DRAW_ERROR, WEB_ARCHITECT],", "  'web-architected': [WEB_SPECIFY, PICK, DRAW, WEB_ARCHITECT],"),
   m(FIXTURE, ['fixture'], 'draw every state of web-incomplete', "  'web-incomplete': [WEB_SPECIFY, PICK, DRAW],", "  'web-incomplete': [WEB_SPECIFY, PICK, DRAW, { subject: 'draw the error', date: '2026-11-06', files: { 'design/screens/greet.error.html': '' } }],"),
 
   // The eval suite's runner.

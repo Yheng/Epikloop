@@ -339,8 +339,8 @@ A lane is a profile inside the core plugin: `lanes/<name>.json`, plus an optiona
 `lanes/<name>.md`. Together they declare:
 
 - how UI is verified
-  - `web`: a Playwright test for each acceptance criterion a person sees; the screenshot per
-    touched screen joins later in M2
+  - `web`: a Playwright test for each acceptance criterion a person sees and, in a project with a
+    design, one screenshot per screen a story touches, read beside its design render
   - Maestro or a Flutter integration test in the mobile lanes
   - contract tests for `service`
 - how staging works: a host's git-deploy URL, an EAS preview, TestFlight or the Play internal
@@ -476,9 +476,9 @@ then the tags, so placing a tag is the script's call, not the model's.
 - `check.sh` prints failures and a one-line summary, never full logs.
 - A product's `CLAUDE.md` stays under 200 lines, with project rules only; the protocol arrives by
   hook.
-- Each story takes one screenshot per touched screen, and the full visual compare runs once per
-  epic. Both come later in M2. Until then a web story's UI evidence is a Playwright test, and only
-  the specs it touched run per story.
+- In a project with a design, each web story reads one screenshot per screen it touches, its
+  default state at the narrow width. The retro's full visual compare reads every designed state at
+  both widths, once per epic. A story runs only the Playwright specs it touched.
 - The design gallery is written by a script from the manifest, so the model never writes or
   rewrites it.
 - Cost rows per story are the tuning instrument: model, effort, wall time and, when available,

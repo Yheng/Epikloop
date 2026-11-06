@@ -52,7 +52,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   reader prints into the plan, the worker's brief and the retro's brief; the guard allows the
   lane's test runner, and `doctor` reports the lanes this machine can build
   - a web story's UI evidence is a Playwright test; the screenshot per touched screen and retro's
-    full visual compare join `design` later in M2
+    full visual compare joined in M2's second slice
 - the team-mode workflow and the `CLAUDE.md` template (done): `init.mjs` lays both down, and
   `plan` lays the workflow down when it records team mode
   - the check runs the pre-push gates over every commit a pull request adds
@@ -164,8 +164,13 @@ The Bridge's review pages need design, so they stay in M4.
   - the gallery, which a script writes from the manifest
   - stage 3, for a project with nothing planned or a design it has started
     ([issue #6](https://github.com/Yheng/Epikloop/issues/6))
-- with the screens as the truth: a screenshot per touched screen at story time, and retro's full
-  visual compare, the web lane's
+- **Slice 2, the screens as the truth (done):**
+  - the web lane's screens spec renders each designed state at both widths, from its design file
+    and from the app
+  - a story's brief names the screens that show its requirements, and the story reads one
+    screenshot per screen it touches beside its design
+  - each retro's full visual compare reads every designed state at both widths
+  - the web lane's first story with a UI loads `design/tokens.css`
 - `adopt`'s design-token extraction, which also settles design for an adopted product. Until it
   lands, an adopted web product goes on to `design` as a new one does.
 

@@ -814,9 +814,20 @@ export function storyBrief(state, project, facts, id, now) {
   const decisions = state.decisions.filter((d) => named.has(d.id) || own.test(d.text))
   if (decisions.length > 0) out.push('The decisions that name it, from docs/decisions.md:', '')
   for (const d of decisions) out.push(d.text, '')
+  out.push(...screensSection(state, story))
   out.push(...laneSection(state, 'Story'))
   const commit = `one commit whose subject starts "feat(${id}): ", holding the code, its tests and the spec delta`
   return [...out, landing(project, facts, commit, `story/${id}`), '', ...nextIds(state, now)]
+}
+
+// The screens in the manifest that show a story's requirements, with their states and files, as
+// brief lines; none without a design, or when no screen shows them.
+function screensSection(state, story) {
+  const screens = (state.design?.screens ?? []).filter((screen) => screen.requirements.some((req) => story.requirements.includes(req)))
+  if (screens.length === 0) return []
+  const [narrow, wide] = state.design.widths
+  const line = (screen) => `- ${screen.id} (${screen.title}): ${prose(screen.states)}, in ${prose(screen.states.map((each) => stateFile(screen.id, each)))}`
+  return [`The screens that show its requirements, from design/manifest.md, each drawn at ${narrow} and ${wide} pixels:`, '', ...screens.map(line), '']
 }
 
 // The project's lane's section `name`, as brief lines, or none when the lane has no such section.
@@ -881,6 +892,15 @@ function stagingLine(project, what) {
 // A ceremony that can't run now, and why.
 const refuse = (text) => ({ text, fails: true })
 
+// How far a retro's visual compare reaches, once the design is complete: every screen in the
+// manifest, in each of its states, at both widths.
+function compareLine(state) {
+  const d = state.design
+  if (!d?.complete) return []
+  const states = d.screens.reduce((sum, screen) => sum + screen.states.length, 0)
+  return [`The visual compare covers ${plural(d.screens.length, 'screen')} in design/manifest.md, ${plural(states, 'state')} in all, each at ${d.widths[0]} and ${d.widths[1]} pixels.`]
+}
+
 // The retro's brief at stage 7, where a phase closes, or at stage 8, the MVP sign-off: what it
 // covers, the evidence it gathers, the queue, the cost rows, the record and how it lands. Once a
 // record is on the default branch, only the tags it leaves.
@@ -918,6 +938,7 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
       ...stories.map((story) => `- ${story.id} ${story.title}`),
       `The evidence: the deep gates, \`scripts/check.sh --deep\` from Bash or \`node .githooks/check.mjs --deep\` from PowerShell; the gates' self-test, the same with \`--self-test\`; ${stagingLine(project, 'the staging smoke')}; and the human's click-through of these stories on staging.`,
       ...(state.lane?.sections.Retro ? [`The ${state.lane.name} lane: ${state.lane.sections.Retro.replace(/\s*\n\s*/g, ' ')}`] : []),
+      ...compareLine(state),
       queueLine(state),
       ...costLines(project, home),
     )
@@ -1823,6 +1844,27 @@ const CASES = [
     },
   ],
   [
+    "the brief names the screens that show the story's requirements, and only those",
+    (k) => {
+      const dir = k.repo({
+        'spec/checkout.md': k.template('spec/capability.md'),
+        'docs/stories/3-checkout.md': k.template('docs/stories/epic.md'),
+        'design/manifest.md': k.template('design/manifest.md'),
+      })
+      const head = 'The screens that show its requirements, from design/manifest.md, each drawn at 390 and 1280 pixels:'
+      const block = (line) => `\n${head}\n\n${line}\n\nThe web lane:\n`
+      const cart = k.run(dir, '--story', '3.1')
+      const signIn = k.run(dir, '--story', '3.2')
+      const none = k.run(dir, '--story', '3.3')
+      return [
+        ...k.has(cart, block('- cart (Cart): default, empty, loading and error, in design/screens/cart.html, design/screens/cart.empty.html, design/screens/cart.loading.html and design/screens/cart.error.html')),
+        ...k.has(signIn, block('- sign-in (Sign in): default and error, in design/screens/sign-in.html and design/screens/sign-in.error.html')),
+        ...(none.includes(head) ? ['3.3, which cites no requirement, was given screens'] : []),
+        ...(cart.includes('sign-in') ? ["3.1's brief names sign-in, which shows none of its requirements"] : []),
+      ]
+    },
+  ],
+  [
     'the retro brief: the phase, its evidence, the queue, the cost rows, the record and the landing',
     (k) => {
       const files = planned({ 1: [[1, 'T1', true], [2, 'T2', true], [3, 'T1', false]], 2: [[1, 'T1', true]] }, { questions: [['Q-001', 'nothing']], backlog: 2 })
@@ -1839,6 +1881,7 @@ const CASES = [
         '- 1.2 Story 1.2',
         "The evidence: the deep gates, `scripts/check.sh --deep` from Bash or `node .githooks/check.mjs --deep` from PowerShell; the gates' self-test, the same with `--self-test`; the staging smoke against https://staging.example.com/; and the human's click-through of these stories on staging.",
         `The web lane: ${readLane('web').sections.Retro.replace(/\s*\n\s*/g, ' ')}`,
+        'The visual compare covers 1 screen in design/manifest.md, 1 state in all, each at 390 and 1280 pixels.',
         'The queue: 1 question and 2 backlog lines; queue Δ 0 since the MVP set was frozen.',
         'The cost rows on this machine:',
         '- T1 at low: 1 run, 10.0 min and $0.10 each on average',
@@ -1850,6 +1893,17 @@ const CASES = [
         '',
       ]
       return k.expect([[k.run(dir, '--retro'), brief.join('\n')]])
+    },
+  ],
+  [
+    'the retro brief has no visual compare for a project planned without a design',
+    (k) => {
+      const files = planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', true]] })
+      for (const file of Object.keys(DESIGNED)) delete files[file]
+      const dir = k.repo(files, { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 0)
+      const brief = k.run(dir, '--retro')
+      return [...k.has(brief, '0 Retro for phase 1'), ...(brief.includes('The visual compare covers') ? [`gave ${JSON.stringify(brief)}`] : [])]
     },
   ],
   [

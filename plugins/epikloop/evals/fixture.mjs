@@ -174,6 +174,32 @@ const SCREENS = `# Screens
 The one page: a name field, the greeting below it, and a request for a name when none is given.
 `
 
+// The greeter page's architecture. It leaves the tokens unmentioned, so a plan that names them
+// took them from the lane.
+const WEB_ARCHITECTURE = `# Architecture
+
+A single web page, served from \`public/\` by a dependency-free Node 22 server, \`server.mjs\`. The
+page's script greets in place, with no request to the server. Unit tests run on \`node --test\`, and
+the page's tests on Playwright.
+
+## Staging
+
+A static host's deploy from main. The host's commit variable gives the \`x-commit\` header.
+
+## Pre-mortem
+
+- The greeting drifts from the brief's wording: its tests quote the exact text.
+`
+
+const WEB_DECISIONS = `${PICKED}
+## DECISION-002 One static page (2026-11-06)
+- Context: the greeter is one page with nothing to store.
+- Decision: a static page, served by a dependency-free Node server.
+- Rejected: a framework, because one page needs none.
+- Trade-offs: no client-side routing, which one page doesn't need.
+- Implementation note: 1.1 lays down the server and the page.
+`
+
 // Each commit: its subject after `fixture: `, its date, and what it writes. `init` runs the plugin's
 // own setup first in that lane, as discover does; `marker` adds fields to the project marker.
 const SPECIFY = { subject: 'spec the greeter', date: '2026-10-29', init: 'service', files: { 'spec/greet.md': SPEC } }
@@ -213,6 +239,19 @@ const DRAW = {
     'design/screens/greet.html': '<!doctype html>\n<html lang="en">\n<link rel="stylesheet" href="../tokens.css">\n<title>Greet</title>\n<h1>Hello, Ada!</h1>\n</html>\n',
   },
 }
+const DRAW_ERROR = {
+  subject: 'draw the request for a name',
+  date: '2026-11-06',
+  files: {
+    'design/screens/greet.error.html': '<!doctype html>\n<html lang="en">\n<link rel="stylesheet" href="../tokens.css">\n<title>Greet</title>\n<h1>Who should I greet?</h1>\n</html>\n',
+  },
+}
+const WEB_ARCHITECT = {
+  subject: 'architect the greeter page',
+  date: '2026-11-06',
+  files: { 'spec/architecture.md': WEB_ARCHITECTURE, 'docs/decisions.md': WEB_DECISIONS, 'package.json': PACKAGE },
+  marker: ARCHITECT.marker,
+}
 
 export const FIXTURES = {
   // A new folder after git init, as discover expects. The run's home is itself a repository that
@@ -228,13 +267,15 @@ export const FIXTURES = {
   'web-specified': [WEB_SPECIFY],
   'web-picked': [WEB_SPECIFY, PICK],
   'web-incomplete': [WEB_SPECIFY, PICK, DRAW],
+  // The greeter page at stage 5, its design complete and its architecture written.
+  'web-architected': [WEB_SPECIFY, PICK, DRAW, DRAW_ERROR, WEB_ARCHITECT],
 }
 
 // The fixtures before a batch carry the remote a new repository on GitHub gives a project: a
 // network URL that nothing has been pushed to yet, from which init.mjs reads the project id. A push
 // goes to a bare repository inside .git, where git never looks, so nothing leaves the machine. The
 // other fixtures have no remote, so the skills that run `git fetch` never reach the network.
-const REMOTE = new Set(['empty', 'specified', 'architected', 'web-specified', 'web-picked'])
+const REMOTE = new Set(['empty', 'specified', 'architected', 'web-specified', 'web-picked', 'web-architected'])
 
 // ---- Building one
 
@@ -404,6 +445,7 @@ async function selfTest() {
         return state.stage.why === why ? problems : [...problems, `web-picked waits because ${state.stage.why}`]
       },
     ],
+    ['web-architected is at stage 5, its design complete', () => stage('web-architected', 5, '/epikloop:plan')],
     [
       'web-incomplete is at stage 3, with one state left to draw',
       () => {

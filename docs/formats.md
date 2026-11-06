@@ -149,7 +149,8 @@ in plan order. That line is the worker's spawn description.
   it when there is one.
 - **The brief.** `state.mjs --story N.M` prints the story, the requirements it cites and the
   decisions that name it, each verbatim; how its commit lands; and the next question and decision
-  numbers.
+  numbers. In a project with a design, it also names the screens in `design/manifest.md` that show
+  the story's requirements, with their states and files.
 - **Landing.** In solo mode the story's commit is pushed to the default branch, when there is a
   remote. In team mode it goes on `story/N.M`, with a pull request titled like the commit, which
   the human merges.
@@ -160,9 +161,9 @@ in plan order. That line is the worker's spawn description.
 only at its stages, 7 and 8 for a retro and 9 for a release, and only where a batch would.
 
 - **The retro's brief.** At stage 7: the phase's MVP stories, for the click-through; the evidence,
-  which is the deep gates, the gates' self-test, the staging smoke and the click-through; the
-  queue and its Δ; this machine's cost rows per tier and effort; the record; and how it lands, as
-  `chore(phase-N): retro`. When the phase is the last MVP epic, the retro is also the MVP
+  which is the deep gates, the gates' self-test, the staging smoke and the click-through; with a
+  complete design, how far the visual compare reaches; the queue and its Δ; this machine's cost
+  rows per tier and effort; the record; and how it lands, as `chore(phase-N): retro`. When the phase is the last MVP epic, the retro is also the MVP
   sign-off, and the brief says what sign-off needs. At stage 8, the brief is the sign-off's alone,
   landing as `chore(mvp): sign-off`.
 - **The release's brief.** Staging, where the hosting is described, the production smoke, the
