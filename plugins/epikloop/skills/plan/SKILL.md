@@ -21,10 +21,12 @@ gauge, so its headings and fields stay exactly as shown:
 
 Every current requirement in `spec/` is cited by at least one story. Most stories are T1; auth,
 money, migrations on live data and untrusted input are T3; T2 is for a story whose quoted business
-rules need tests of their own. Epic 1 opens with 1.1 and 1.2. 1.1 adds
-`node .githooks/check.mjs --arm` to the stack's install step, sets `gates.commands` in
-`.epikloop/project.json` where auto-detection won't find them and, in team mode, writes the stack's
-setup and install into `.github/workflows/check.yml` where it marks them. 1.2 brings up staging.
+rules need tests of their own. Epics are numbered from
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --ids`, after every number already in the history.
+The first epic opens with two stories. The first adds `node .githooks/check.mjs --arm` to the
+stack's install step, sets `gates.commands` in `.epikloop/project.json` where auto-detection won't
+find them and, in team mode, writes the stack's setup and install into `.github/workflows/check.yml`
+where it marks them. The second brings up staging. An adopted project leaves out what it has.
 `After` names only the stories a story builds on. The project's lane adds this:
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --lane plan`
@@ -37,4 +39,4 @@ runs, `.github/workflows/check.yml`, for the same commit; tell the human to make
 required in the default branch's protection. The plan's commit is the queue's baseline: in solo
 mode push it when the repository has a remote, and in team mode it lands through a pull request.
 The MVP set moves afterwards only through a recorded decision. With `--extend`, new epics follow
-the last one with their stories marked `MVP: no`, and frozen epics stay as they are.
+on, their stories marked `MVP: no`, and frozen epics stay as they are.

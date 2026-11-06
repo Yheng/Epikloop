@@ -201,7 +201,8 @@ const WEB_DECISIONS = `${PICKED}
 `
 
 // Each commit: its subject after `fixture: `, its date, and what it writes. `init` runs the plugin's
-// own setup first in that lane, as discover does; `marker` adds fields to the project marker.
+// own setup first in that lane, as discover does; `marker` adds fields to the project marker;
+// `executable` names the files staged as programs; `armed` points git's hooks at .githooks/.
 const SPECIFY = { subject: 'spec the greeter', date: '2026-10-29', init: 'service', files: { 'spec/greet.md': SPEC } }
 const ARCHITECT = {
   subject: 'architect the greeter',
@@ -253,6 +254,126 @@ const WEB_ARCHITECT = {
   marker: ARCHITECT.marker,
 }
 
+// The greeter page on an earlier template layout, for adopting one: the template's version file,
+// session command, hook and gate, a test that holds the hook, its rules and protocol in CLAUDE.md,
+// its PRD, architecture, decisions, story and todo, and its design notes, tokens and one mockup.
+const EARLIER_HOOK = '#!/bin/sh\n# The gate, on every commit.\nexec node scripts/gate.mjs\n'
+const EARLIER_LAYOUT = {
+  subject: 'set up from the earlier template',
+  date: '2026-07-08',
+  executable: ['.githooks/pre-commit'],
+  armed: true,
+  files: {
+    'package.json': '{ "name": "greeter", "private": true, "type": "module", "scripts": { "prepare": "git config core.hooksPath .githooks", "test": "node --test" } }\n',
+    'README.md': '# Greeter\n\nA web page that greets a person by name.\n',
+    'src/greet.mjs': CODE['src/greet.mjs'],
+    'test/greet.test.mjs': CODE['test/greet.test.mjs'],
+    'public/index.html': [
+      '<!doctype html>',
+      '<html lang="en">',
+      '<meta charset="utf-8">',
+      '<title>Greeter</title>',
+      '<link rel="stylesheet" href="../design/tokens.css">',
+      '<style>body { margin: 0; padding: var(--space); background: var(--paper); color: var(--ink); font-family: var(--font); }</style>',
+      '<h1 id="greeting">Who should I greet?</h1>',
+      '<label>Your name <input id="name"></label>',
+      '<script type="module">',
+      "import { greet } from '../src/greet.mjs'",
+      "const name = document.getElementById('name')",
+      "name.addEventListener('input', () => { document.getElementById('greeting').textContent = name.value ? greet(name.value) : 'Who should I greet?' })",
+      '</script>',
+      '</html>',
+      '',
+    ].join('\n'),
+    PIPELINE_VERSION: 'v1.0.1\n',
+    '.claude/commands/build.md': '# /build\n\nBuild one story: claim its issue, branch, write the code, open a pull request, then run /verify.\n',
+    '.githooks/pre-commit': EARLIER_HOOK,
+    'scripts/gate.mjs': "// The gate the pre-commit hook runs: the tests.\nimport { spawnSync } from 'node:child_process'\n\nprocess.exitCode = spawnSync(process.execPath, ['--test'], { stdio: 'inherit' }).status ?? 1\n",
+    'test/gate-hook.test.mjs': [
+      "import assert from 'node:assert/strict'",
+      "import fs from 'node:fs'",
+      "import { test } from 'node:test'",
+      '',
+      "test('the pre-commit hook runs the gate', () => {",
+      "  assert.match(fs.readFileSync('.githooks/pre-commit', 'utf8'), /scripts\\/gate\\.mjs/)",
+      '})',
+      '',
+    ].join('\n'),
+    'CLAUDE.md': [
+      '# Greeter',
+      '',
+      '## Operating Mode',
+      '',
+      '**Mode:** team · **Tracker:** GitHub Issues · **Merge flow:** branch-per-story + PR',
+      '',
+      '## Source of Truth Rules',
+      '',
+      '1. `design/screens/` and `design/tokens.css` are the visual truth.',
+      '2. `docs/context/decisions.md` is the decision record.',
+      '3. Story files are the spec.',
+      '',
+      '## Conventions',
+      '',
+      '- A greeting always ends with an exclamation mark.',
+      '',
+      '## Session Protocol',
+      '',
+      'Start every session with /status. One story per /build, then /verify. Commit and push at story boundaries.',
+      '',
+    ].join('\n'),
+    'docs/PRD.md': [
+      '# Greeter: product requirements',
+      '',
+      '## 1. Identity and vision',
+      '',
+      'A web page that greets a person by name.',
+      '',
+      '## 2. Features',
+      '',
+      '- A person types their name and sees a greeting.',
+      '- With no name typed, the page asks for one.',
+      '',
+      '> IMPLEMENTATION RULE: The greeting uses the name exactly as typed, capitals included.',
+      '',
+    ].join('\n'),
+    'docs/ARCH.md': '# Architecture\n\n## 1. Tech stack\n\nOne static page in `public/`, its logic in `src/greet.mjs`, tested by `node --test`. Nothing is hosted yet.\n',
+    'docs/context/decisions.md': [
+      '# Decisions and business rules',
+      '',
+      '## Architecture decisions',
+      '',
+      '### [DECISION-001] No dependencies',
+      '**Context:** the greeter is one page. **Decision:** Node built-ins only. **Rejected alternatives:** a framework. **Trade-offs:** none yet. **Implementation note:** `src/greet.mjs` keeps to built-ins.',
+      '',
+      '### [DECISION-002] Greet on the page, without a server',
+      '**Context:** nothing is stored. **Decision:** the page greets in place. **Rejected alternatives:** a round trip to a server. **Trade-offs:** none. **Implementation note:** `public/index.html` loads `src/greet.mjs`.',
+      '',
+      '## Business rules (verbatim from the PRD)',
+      '',
+      '### [RULE-001] The name is used exactly as typed',
+      '**Source:** PRD §2. **Rule (verbatim):** "The greeting uses the name exactly as typed, capitals included." **Affected stories:** 1.1.',
+      '',
+    ].join('\n'),
+    'docs/stories/epic-1-greet.md': '# Epic 1 — Greet\n\n**Phase:** 1 · **Depends on:** none\n\n## Story 1.1: Greet by name\n**Effort:** Small **Depends on:** none\n\n### Acceptance criteria\n- [x] `greet("Ada")` returns "Hello, Ada!"\n',
+    'docs/todo.md': '# Todo\n\n- [x] 1.1 Greet by name\n',
+    'design/DESIGN-SYSTEM.md': '# Design system\n\n## 1. Character\n\nCalm and friendly: quiet ink on white, one teal accent and plenty of room. It reads well on a phone.\n\n## 2. Tokens\n\nEvery value is in `tokens.css`.\n',
+    'design/tokens.css': `:root { ${QUIET} }\n`,
+    'design/screens/greet.html': [
+      '<!doctype html>',
+      '<html lang="en">',
+      '<meta charset="utf-8">',
+      '<title>Greeter · Greet</title>',
+      '<style>',
+      'body { margin: 0; padding: 16px; background: #ffffff; color: #1f2328; font-family: system-ui, sans-serif; }',
+      '</style>',
+      '<h1>Hello, Ada!</h1>',
+      '<label>Your name <input value="Ada"></label>',
+      '</html>',
+      '',
+    ].join('\n'),
+  },
+}
+
 export const FIXTURES = {
   // A new folder after git init, as discover expects. The run's home is itself a repository that
   // holds the workspace, so a case that starts with no repository of its own would set up there.
@@ -269,6 +390,8 @@ export const FIXTURES = {
   'web-incomplete': [WEB_SPECIFY, PICK, DRAW],
   // The greeter page at stage 5, its design complete and its architecture written.
   'web-architected': [WEB_SPECIFY, PICK, DRAW, DRAW_ERROR, WEB_ARCHITECT],
+  // The greeter page on an earlier template layout, outside a project, for adopt to convert.
+  earlier: [EARLIER_LAYOUT],
 }
 
 // The fixtures before a batch carry the remote a new repository on GitHub gives a project: a
@@ -322,9 +445,16 @@ export function build(name, dir) {
     for (const [file, text] of Object.entries(commit.files)) write(dir, file, text)
     if (commit.marker) addToMarker(dir, commit.marker)
     git(dir, ['add', '-A'])
+    // A hook git must run as a program, on every system.
+    for (const file of commit.executable ?? []) {
+      fs.chmodSync(path.join(dir, ...file.split('/')), 0o755)
+      git(dir, ['update-index', '--chmod=+x', '--', file])
+    }
     const when = `${commit.date}T10:00:00Z`
     // The fixture's history is set, not gated; the run's own commits are the ones that matter.
     git(dir, ['commit', '-q', '--no-verify', '-m', `fixture: ${commit.subject}`], { GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when })
+    // Armed as the earlier template's install step armed it.
+    if (commit.armed) git(dir, ['config', 'core.hooksPath', '.githooks'])
   }
 }
 
@@ -422,6 +552,27 @@ async function selfTest() {
       () => {
         const dir = built('existing')
         return [...(openProject(dir) === null ? [] : ['existing is an Epikloop project']), ...passes(dir, ['--test'], "existing's node --test")]
+      },
+    ],
+    [
+      'earlier is outside a project, on an earlier layout whose armed hook runs its gate, and its tests pass',
+      () => {
+        const dir = built('earlier')
+        const run = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8', windowsHide: true })
+        const problems = [
+          ...(openProject(dir) === null ? [] : ['earlier is an Epikloop project']),
+          ...(fs.existsSync(path.join(dir, 'PIPELINE_VERSION')) ? [] : ['earlier has no PIPELINE_VERSION']),
+          ...(run(['config', '--get', 'core.hooksPath']).stdout.trim() === '.githooks' ? [] : ["earlier's hooks aren't armed"]),
+          ...(/^100755 /.test(run(['ls-files', '-s', '--', '.githooks/pre-commit']).stdout) ? [] : ["earlier's pre-commit isn't executable"]),
+          ...(fs.readFileSync(path.join(dir, 'docs', 'context', 'decisions.md'), 'utf8').includes('[DECISION-002]') ? [] : ["earlier's decisions are missing"]),
+          ...passes(dir, ['--test'], "earlier's node --test"),
+        ]
+        // A commit goes through the earlier hook, which runs the tests.
+        write(dir, 'notes.md', 'A note.\n')
+        run(['add', 'notes.md'])
+        const committed = run(['commit', '-q', '-m', 'a note'])
+        if (committed.status !== 0) problems.push(`a commit through the earlier hook failed: ${`${committed.stderr}${committed.stdout}`.trim().split('\n').at(-1)}`)
+        return problems
       },
     ],
     ['specified is at stage 4', () => stage('specified', 4, '/epikloop:architect')],

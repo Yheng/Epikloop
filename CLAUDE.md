@@ -25,8 +25,9 @@ gallery, the project file formats, the `web` and `service` lanes, the team-mode 
 product `CLAUDE.md` template and Harbor's plugin are in place. CI checks this repository's laws,
 lint among them, and the self-tests' mutations, and the eval suite runs on a contributor's machine.
 M1 is done when Harbor's own web app has been built with Epikloop and an existing production repo
-adopted, each end to end (`docs/roadmap.md`). M2's first two slices, the design skill and the
-screens as the truth at story and retro time, are in; `adopt`'s design tokens come next.
+adopted, each end to end (`docs/roadmap.md`). M2's three slices are in: the design skill, the
+screens as the truth at story and retro time, and adopting a production repository, which converts
+an earlier template layout and brings in the design the product has.
 
 ## Map
 
@@ -201,7 +202,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   repos. It prints failures plus one summary line with the largest context and spawn times.
 - **The init self-test** runs setup in throwaway repos: remote forms, kept files, staged modes,
   arming, an unknown lane, `CLAUDE.md`, the team workflow, the protocol after a new marker and
-  `--refresh`.
+  `--refresh`. On an earlier template layout it tags `before-adoption` at HEAD and keeps a tag
+  already there; without that layout, without a commit or with a kept marker, it tags nothing.
   - It holds the workflow template to its settled parts and its pinned gates step, and runs that
     step over a pull request whose secret a later commit removed.
   - Its last case commits through the real pre-commit hook.
@@ -218,6 +220,10 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - With a design, a worker's brief names the screens that show its story's requirements and no
     others, and the retro's brief says how far the visual compare reaches; without one, neither
     does.
+  - For an adopted product, it reports an earlier template's `PIPELINE_VERSION` first, numbers the
+    next epic after the story files and every `feat(N.M):` commit, and reads a design that came
+    with the product. A product adopted while live goes to stage 10 and runs its planned work,
+    after its confirmation and a design it started.
   - It holds every lane file to its format, and checks `--lanes`, `--lane` and an unknown lane.
 - **The smoke's self-test** smokes a server on 127.0.0.1: answers, redirects, a timeout, a closed
   port, the marker's URL, and credentials sent but never printed. In throwaway repos, it checks the
@@ -231,9 +237,10 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   for Harbor's `harbor.mjs`. It covers a first `on`, kept keys, `off` and `open`, a missing or stale
   record of Harbor's plugin, a config that doesn't parse, Harbor's own failure and the usage line.
 - **The gallery's self-test** writes the gallery in throwaway projects: directions alone, a full
-  design framed at both widths, a missing state's placeholder, escaped text and encoded file names,
-  the picked direction marked, nothing loaded from outside `design/`, and a second run that changes
-  nothing. Outside a project, and in the service lane, it writes nothing.
+  design framed at both widths, a design that came with the product, a missing state's placeholder,
+  escaped text and encoded file names, the picked direction marked, nothing loaded from outside
+  `design/`, and a second run that changes nothing. Outside a project, and in the service lane, it
+  writes nothing.
 - **The plugin test** runs the emitter's suite against simulated events, with no login. Among
   them are a project set up mid-session, a `/clear`, and notifications while none, one and two
   workers are at work.
@@ -253,8 +260,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - CI runs it again on Node 22.0.0, the floor.
 - **The fixture's self-test** builds every eval fixture in a temporary folder with a home of its
   own. It reads each fixture's stage as the briefing does, the web page's from stage 3 to 5, runs
-  `existing`'s tests and the gates on `planned`, pushes to `architected`'s remote, and checks that
-  each case's scaffold names a fixture.
+  `existing`'s tests and the gates on `planned`, commits through `earlier`'s armed hook, pushes to
+  `architected`'s remote, and checks that each case's scaffold names a fixture.
 - **The eval runner's self-test** loads every case, holds its YAML reader and graders to samples,
   and runs whole cases against a stand-in for `claude`. Those runs cover the fixture, the prompt,
   the tools granted, a timeout, the cost cap and the cleaned events. It makes no model call.
@@ -305,7 +312,7 @@ node tools/evals.mjs story plan   # the named cases
 
 - **Login and cost.** Runs use whatever Claude Code is logged in with, so a Claude plan is
   enough; neither Epikloop nor its evals need an API key. Every run is a real model call, and a
-  pass comes to about $2.50 at list price, which a plan counts against its usage limits.
+  pass comes to about $3.20 at list price, which a plan counts against its usage limits.
 - **When.** Run the suite in each slice whose change touches model-facing text, before reporting:
   - the skills, the worker or the lanes
   - the briefing or the state reader

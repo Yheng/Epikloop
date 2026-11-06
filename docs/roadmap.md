@@ -46,7 +46,8 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
     files differ from the plugin's
   - stage 3, design, was held until M2 brought design's body; until then a UI lane went on to
     `architect`
-  - `adopt`'s token extraction joins `design` later in M2; `doctor`'s Harbor check came with
+  - `adopt` brings in the design a product already has since M2's third slice, and extracting
+    tokens from code waits for an adopted product with none; `doctor`'s Harbor check came with
     Harbor's plugin
 - the `web` and `service` lanes (done): each a profile and a fragment, whose sections the state
   reader prints into the plan, the worker's brief and the retro's brief; the guard allows the
@@ -67,7 +68,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   with deterministic graders, on fixtures that `fixture.mjs` builds
   - `tools/evals.mjs` runs them on any system, under the contributor's own Claude Code login, a
     plan included. They run in each slice that changes model-facing text, one run each on Sonnet
-    5.5, under a $5 cap, at about $2.50 a pass at list price since M2's design cases joined.
+    5.5, under a $5 cap, at about $3.20 a pass at list price since M2's adoption case joined.
   - `claude plugin eval` reads the same files. Its Linux sandbox (Claude Code 2.1.316) makes the
     run's temporary folder and `.git` read-only, so the cases that load a format or commit fail
     there for now.
@@ -90,8 +91,10 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 
 - **The ratchet:** brownfield baselines, held for an adoption whose old errors would fail every
   commit. Until then `adopt` stops on a gate that fails on today's code.
-- **Converting repositories on an earlier template layout,** behind a rollback tag, held for the
-  adoption of one.
+- **Converting repositories on an earlier template layout** joined `adopt` in M2's third slice,
+  once one was to be adopted.
+- **Extracting design tokens from code,** held for an adopted product that has no design of its
+  own. Until then such a product goes on to `design` as a new one does.
 - **Literal spacing in the token gate,** and Tailwind's spacing utilities.
 - **Perf budgets in a lane,** held for a project whose performance regresses unnoticed. Harbor's
   own page loads about 5 MB of art, so no generic web budget fits the first dogfood project.
@@ -138,6 +141,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - Started on 2026-11-01, in a private repository of its own, from a brief drawn from the
     architecture's Harbor section. Its build joined `epikloop-harbor` on 2026-11-06, as below.
 - An existing production repo has been adopted, end to end.
+  - The first to be adopted is on an earlier template layout, which M2's third slice converts.
 
 ## Harbor, between M1 and M2 (done)
 
@@ -171,8 +175,15 @@ The Bridge's review pages need design, so they stay in M4.
     screenshot per screen it touches beside its design
   - each retro's full visual compare reads every designed state at both widths
   - the web lane's first story with a UI loads `design/tokens.css`
-- `adopt`'s design-token extraction, which also settles design for an adopted product. Until it
-  lands, an adopted web product goes on to `design` as a new one does.
+- **Slice 3, adopting a production repository (done):**
+  - a repository on an earlier template layout is converted, behind a `before-adoption` rollback
+    tag: the template's own files go, its hooks become Epikloop's, its docs fold into `spec/`, and
+    its decisions stay as the record before the adoption, which Epikloop's number on from
+  - the design the product already has comes into `design/` as it is, with no directions
+  - a product already in production is tagged `live` once its adoption lands, and goes on in
+    post-MVP mode ([issue #7](https://github.com/Yheng/Epikloop/issues/7))
+  - epics are numbered after every number the history already used
+  - extracting tokens from code is held for an adopted product with no design
 
 ## M3 — Speed
 

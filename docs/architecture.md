@@ -68,6 +68,9 @@ Nothing else, ever.
     the repository has none. Both are the project's from then on, so nothing compares them with
     their templates again.
   - It never overwrites a file and never commits.
+  - In a repository on an earlier template layout, marked by a root `PIPELINE_VERSION`, a new
+    marker's setup tags the last commit `before-adoption`: the rollback point for the conversion
+    `adopt` makes. A tag already there stays where it is.
   - `--refresh` brings the gate files up to the plugin's, and in team mode lays down a missing
     workflow.
 - **`CLAUDE.md`** holds project rules only and stays under 200 lines. The pipeline protocol is never
@@ -329,6 +332,8 @@ only layers 2 and 3 gate them.
   default branch has a subject that starts `feat(N.M):`.
   - In solo mode, that is the story's own commit.
   - In team mode, squash merges collapse commits, so a pull request's title carries the prefix.
+  - Epics are numbered after every epic a story file or a `feat(N.M):` commit names, so in a
+    repository whose history already used those numbers no story is done before it starts.
 - **Phases.** One epic is one phase. `retro` tags a closed phase `phase-N`, MVP sign-off tags
   `mvp`, and `release` tags `live`. The current phase is the lowest epic that has MVP stories and
   no `phase-N` tag.
@@ -371,7 +376,7 @@ Native iOS and Android are community lanes. Contributors add lanes without touch
 | `/epikloop` | The front door: sync, detect the stage, fuel gauge, what needs you, recommend, launch on "go". The only command to remember. | low | user, Claude |
 | `/epikloop:doctor` | Verify the install and the machine; `--check` runs the gates. | low | user, Claude |
 | `/epikloop:discover` | Greenfield: an interview, or a pasted brief with only the gaps asked. Writes `spec/`. | xhigh | user, Claude |
-| `/epikloop:adopt` | Brownfield: observed spec and architecture, gate config, confirmation batch; extracted tokens later in M2. | xhigh | user, Claude |
+| `/epikloop:adopt` | Brownfield: observed spec and architecture, gate config, confirmation batch; converts an earlier template layout, brings in the design it has, and tags a product in production `live`. | xhigh | user, Claude |
 | `/epikloop:design` | Three directions → pick → every screen as HTML, tokens, manifest, gallery; `amend`, `add`, `audit`, `ingest`. | high | user, Claude |
 | `/epikloop:architect` | Stack, schema as code, API contract, pre-mortem, `spec/architecture.md`, lane confirmation. | max | user, Claude |
 | `/epikloop:plan` | Epics, tiered stories with requirement IDs and spec deltas, the frozen MVP set; `--extend` for later work. | high | user, Claude |
@@ -443,7 +448,7 @@ next step is the first one that fails, so the answer is the same after lunch or 
    - A project planned without a design stays where it is. Requirements that no screen cites are
      for `audit` to judge, and never send a project back.
 4. `spec/architecture.md` missing → `architect`
-5. No stories, or the MVP set isn't frozen → `plan`
+5. No stories, or the MVP set isn't frozen, before anything is live → `plan`
 6. The current phase has unticked MVP stories → `epic N`, or `decide` first when a question
    blocks one of them or five or more wait
 7. The current phase is complete but not tagged → `retro`
@@ -455,6 +460,9 @@ next step is the first one that fails, so the answer is the same after lunch or 
    ([issue #3](https://github.com/Yheng/Epikloop/issues/3))
 10. `live` tag → post-MVP mode: the backlog becomes visible, the planned work runs epic by epic,
     and `plan --extend` takes new work
+    - A product already in production when it's adopted is tagged `live` once its adoption lands,
+      and goes on from here with no MVP set
+      ([issue #7](https://github.com/Yheng/Epikloop/issues/7)). Stages 2–4 still come first.
 
 Each closing ceremony writes a record, a decision with a fixed title, and tags the default branch
 once the record has landed there: in team mode, after the human merges it. A `Go live later`

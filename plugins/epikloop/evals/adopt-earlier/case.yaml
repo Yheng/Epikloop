@@ -1,0 +1,99 @@
+schema_version: "1.1"
+name: adopt-earlier
+description: /epikloop:adopt converts a repository on an earlier template layout, behind its rollback tag, into an Epikloop project with its decisions numbered on and its design brought in.
+tags: [adopt]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: "/epikloop:adopt The lane is web and the mode is solo. Both are confirmed, so go ahead without asking about them. The product isn't in production yet."
+  model: claude-sonnet-5-5
+  max_turns: 90
+  timeout_seconds: 1200
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: tags-the-rollback-point
+    type: regex
+    target: { source: file, path: .git/refs/tags/before-adoption }
+    pattern: '^[0-9a-f]{40}'
+  - name: replaces-the-hooks
+    type: regex
+    target: { source: file, path: .githooks/pre-commit }
+    pattern: 'check\.mjs'
+  - name: arms-them-from-the-install-step
+    type: regex
+    target: { source: file, path: package.json }
+    pattern: 'check\.mjs --arm'
+  - name: removes-the-version-file
+    type: regex
+    target: { source: file, path: PIPELINE_VERSION }
+    pattern: '\S'
+    match: not_contains
+  - name: removes-the-session-command
+    type: regex
+    target: { source: file, path: .claude/commands/build.md }
+    pattern: '\S'
+    match: not_contains
+  - name: retires-the-prd
+    type: regex
+    target: { source: file, path: docs/PRD.md }
+    pattern: '\S'
+    match: not_contains
+  - name: retires-the-old-story
+    type: regex
+    target: { source: file, path: docs/stories/epic-1-greet.md }
+    pattern: '\S'
+    match: not_contains
+  - name: keeps-the-earlier-decisions
+    type: regex
+    target: { source: file, path: docs/context/decisions.md }
+    pattern: 'DECISION-002'
+  - name: numbers-on
+    type: regex
+    target: { source: file, path: docs/decisions.md }
+    pattern: '^## DECISION-003 '
+    flags: m
+  - name: reuses-no-number
+    type: regex
+    target: { source: file, path: docs/decisions.md }
+    pattern: '^## DECISION-00[12] '
+    flags: m
+    match: not_contains
+  - name: quotes-the-rule
+    type: regex
+    target: { source: file, path: 'spec/*.md' }
+    pattern: 'exactly as typed, capitals included'
+  - name: observes-the-requirements
+    type: regex
+    target: { source: file, path: 'spec/*.md' }
+    pattern: '^Status: observed'
+    flags: m
+  - name: rebuilds-claude-md-on-the-template
+    type: regex
+    target: { source: file, path: CLAUDE.md }
+    pattern: '^## Rules'
+    flags: m
+  - name: keeps-the-project-rule
+    type: regex
+    target: { source: file, path: CLAUDE.md }
+    pattern: 'exclamation mark'
+  - name: drops-the-earlier-protocol
+    type: regex
+    target: { source: file, path: CLAUDE.md }
+    pattern: 'Session Protocol|branch-per-story'
+    match: not_contains
+  - name: brings-in-the-design
+    type: regex
+    target: { source: file, path: design/manifest.md }
+    pattern: '^## greet '
+    flags: m
+  - name: writes-the-design-brief
+    type: file_exists
+    path: design/brief.md
+  - name: writes-the-gallery
+    type: file_exists
+    path: design/index.html
+  - name: commits
+    type: regex
+    target: { source: file, path: .git/logs/HEAD }
+    pattern: '\tcommit: (?!fixture: )'

@@ -112,10 +112,11 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The `web` and `service` lanes: Playwright tests as a web story's UI evidence, the guard allowing the lane's test runner, `doctor`'s lane checks, and the [lane authoring guide](docs/lanes.md) | **Available** |
 | The team-mode workflow, `.github/workflows/check.yml`, which runs the pre-push gates over every commit a pull request adds, and the `CLAUDE.md` template | **Available** |
 | This repository's own law checks in CI (the prompt ceiling, a shell only as a thin shim, no network calls in hook or Harbor code, skill frontmatter, hooks and plugin paths, JSON formats, the plugin layout, a sign-off on every commit, no AI credits), and a mutation check for every self-test | **Available** |
-| The plugin eval suite: fourteen cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
+| The plugin eval suite: fifteen cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
 | `design`: the brief, three directions and your pick, every screen with its tokens, manifest and gallery, and `amend`, `add`, `audit` and `ingest`, with stage 3 | **Available** |
 | The screens as the truth: a screenshot per screen a story touches, read beside its design, and the retro's full visual compare | **Available** |
-| `adopt`'s design tokens, extracted from an existing UI | M2 |
+| Adopting a production repository: converting an earlier template layout behind a rollback tag, the design it has, and post-MVP mode for a product already live | **Available** |
+| Design tokens extracted from the code of an adopted product with no design | Held until one is adopted |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor: its server, its office view, the `harbor` command and its start-of-session hook | **Available** |
 | The Bridge: review pages on Harbor's server for the design pick, the T3 diff and decide | M4 |
@@ -235,12 +236,12 @@ after six weeks.
 | 2 | `spec/` is missing, or `observed` requirements are unconfirmed | Finish `discover` or `adopt` |
 | 3 | The lane has screens, and the design has started but isn't complete, or nothing is planned and it hasn't started | `design`; a project planned without a design stays where it is |
 | 4 | `spec/architecture.md` is missing | `architect` |
-| 5 | There are no stories, or the MVP set isn't frozen | `plan` |
+| 5 | There are no stories, or the MVP set isn't frozen, and nothing is live yet | `plan` |
 | 6 | The current phase has unticked MVP stories | `epic N`, or `decide` first when a question blocks one of them or five or more wait |
 | 7 | The current phase is complete but not tagged | `retro` |
 | 8 | Every MVP epic is tagged, and there is no `mvp` tag | `retro` for the MVP sign-off, which waits until queue Δ ≤ 0 and the staging smoke is green |
 | 9 | There is an `mvp` tag but no `live` tag | `release` |
-| 10 | There is a `live` tag | Post-MVP mode: the backlog becomes visible, `epic N` runs planned work, and `plan --extend` takes new work |
+| 10 | There is a `live` tag, from `release` or from adopting a product already in production | Post-MVP mode: the backlog becomes visible, `epic N` runs planned work, and `plan --extend` takes new work |
 
 ### The session briefing
 
@@ -415,8 +416,26 @@ step is also a command you can run directly.
   command.
 - It ends with one confirmation batch, in which you confirm, correct or retire the observed
   requirements.
-- Design tokens will be extracted from the existing UI later in M2. Until then, an adopted web
-  product goes on to `design` as a new one does.
+- A design the product already has, its tokens and screen mockups, comes into `design/` as it is,
+  with no directions to pick. A web product with no design goes on to `design` as a new one does.
+- A product already in production is tagged `live` once its adoption lands, so it goes on in
+  post-MVP mode: no MVP to freeze or sign off, and `plan --extend` plans its next work.
+- Epics are numbered after every number the repository's history already used.
+
+A repository set up from an earlier delivery template, marked by a `PIPELINE_VERSION` file at its
+root, is converted:
+
+- Its last commit is tagged `before-adoption` first. To roll back, reset the default branch to that
+  tag yourself; the guard keeps Claude from resetting it.
+- The template's own files go: its version files, its session commands in `.claude/`, its gate
+  scripts and its git hooks, which become Epikloop's, armed from the install step. Tests that check
+  them change with them.
+- `CLAUDE.md` is rebuilt on Epikloop's template, keeping the project rules that still hold.
+- Its PRD, architecture and other planning docs are read into `spec/` and then removed. They stay
+  readable at the tag, and reference docs stay.
+- Its decisions file stays where it is, as the record from before the adoption. Epikloop's decisions
+  number on from its last one, and its quoted business rules move into `spec/`.
+- Open issues on its tracker become backlog lines that cite their numbers.
 
 From there, `/epikloop` walks the same stages as for a new product.
 
@@ -455,7 +474,7 @@ The front door is `/epikloop`. Every other command is namespaced as `/epikloop:<
 | `/epikloop` | The front door: syncs, detects the stage, shows the fuel gauge and what needs you, recommends one step and starts it on "go" | low | you or Claude |
 | `/epikloop:doctor [--check]` | Checks that this machine can run Epikloop and says how to fix what is missing; `--check` also runs the gates | low | you or Claude |
 | `/epikloop:discover [brief]` | Greenfield: turns an interview, or a pasted brief with only the gaps asked, into `spec/` | xhigh | you or Claude |
-| `/epikloop:adopt` | Brownfield: an observed spec and architecture, gate config and a confirmation batch; extracted tokens later in M2 | xhigh | you or Claude |
+| `/epikloop:adopt` | Brownfield: an observed spec and architecture, gate config and a confirmation batch; it converts an earlier template layout, brings in the design the product has, and tags a product in production `live` | xhigh | you or Claude |
 | `/epikloop:design [amend <screen> "<change>" \| add <screen> \| audit \| ingest]` | Three directions, your pick, then every screen as HTML, with tokens, a manifest and a gallery | high | you or Claude |
 | `/epikloop:architect` | The stack, the schema as code, the API contract, a pre-mortem, `spec/architecture.md` and the lane | max | you or Claude |
 | `/epikloop:plan [--extend]` | Epics and tiered stories with requirement IDs and spec deltas, and the frozen MVP set; `--extend` plans later work | high | you or Claude |
@@ -1021,11 +1040,12 @@ reads, and `node tools/evals.mjs` runs it.
   - planned with a question parked
   - a greeter web page before its design, after the pick, drawn but for one state, and designed and
     architected
+  - the greeter page on an earlier template layout
 
   The first three, and the web page before its design, after the pick and once architected, carry
   a remote nothing has been pushed to, as a new project's GitHub repository is; a push there goes
   to a bare repository inside `.git`. The fixture's self-test runs in CI on every push, at no cost.
-- **What the fourteen cases cover:**
+- **What the fifteen cases cover:**
   - the front door, inside and outside a project
   - a plain question answered from the briefing
   - a story landed by its worker, with its open product call parked
@@ -1034,6 +1054,8 @@ reads, and `node tools/evals.mjs` runs it.
   - `plan`, `discover` and `adopt`
   - `design`: three directions that wait for the pick, the screens after it, and an audit
   - `plan` on a designed web page, whose stories load the tokens and build to the design
+  - `adopt` on an earlier template layout: the rollback tag, Epikloop's hooks, the template's files
+    and folded docs gone, the decisions numbered on, `CLAUDE.md` rebuilt and the design brought in
 
   `discover`, both `plan` cases and the first two `design` cases must also push their commit to the
   fixture's remote.
@@ -1049,7 +1071,7 @@ node tools/evals.mjs story plan   # the named cases
   is logged in with, so a Claude plan is enough; neither Epikloop nor its evals need an API key.
 - **Any system.** It runs on Linux, macOS and Windows alike, with nothing to install beyond what
   Epikloop already needs.
-- **Cost.** Every run is a real model call. A pass of the whole suite comes to about $2.50 at list
+- **Cost.** Every run is a real model call. A pass of the whole suite comes to about $3.20 at list
   price, which on a plan counts against your usage limits rather than adding a charge. `--cap`
   stops starting runs at $5 of that estimate.
 - **When to run it.** Run it when a change touches model-facing text:
@@ -1076,7 +1098,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 |---|---|
 | **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), this repository's own law checks and the CI mutation check (done), the eval suite with its fixture project, run on a contributor's machine (done), and lint as laws (done) |
 | **Harbor, between M1 and M2** | Harbor's build in `epikloop-harbor`, its start-of-session hook, `/epikloop:harbor` and `doctor`'s Harbor check (done) |
-| **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references (done); the screens as the truth at story and retro time (done); then `adopt`'s design tokens |
+| **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references (done); the screens as the truth at story and retro time (done); adopting a production repository, with an earlier template layout converted and the design it has brought in (done) |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: The Bridge** | Review pages on Harbor's server: the design pick, the T3 diff and decide |
 

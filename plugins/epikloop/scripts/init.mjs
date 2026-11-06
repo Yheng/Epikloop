@@ -1,8 +1,10 @@
 // Epikloop's project setup. `node init.mjs --lane <lane> --mode solo|team` makes the git repository
 // it runs in an Epikloop project: it writes .epikloop/project.json with the project id, copies the
 // gate runner and its shims from the plugin's templates, lays down CLAUDE.md and, in team mode, the
-// required check's workflow, stages what it wrote, and arms the hooks. It never overwrites a file
-// and never commits. It prints one summary line, and exits 1 only when it couldn't do its job.
+// required check's workflow, stages what it wrote, and arms the hooks. In a repository on an earlier
+// template layout it tags the last commit before-adoption, the rollback point for converting it. It
+// never overwrites a file and never commits. It prints one summary line, and exits 1 only when it
+// couldn't do its job.
 // When it wrote the marker, the pipeline protocol follows the line: the session that sets a
 // project up began outside it, so that session's briefing had none.
 //
@@ -16,7 +18,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { PROTOCOL } from './brief.mjs'
-import { laneNames } from './state.mjs'
+import { EARLIER, laneNames } from './state.mjs'
 
 const USAGE = 'usage: node init.mjs --lane <lane> --mode solo|team | --refresh'
 export const TEMPLATES = path.join(import.meta.dirname, '..', 'templates')
@@ -107,6 +109,16 @@ function projectId(top) {
   return { id, from: remote ?? 'the repository path' }
 }
 
+// The rollback point for adopting a repository on an earlier template layout: its last commit,
+// tagged before anything is converted. A tag already there stays where it is. Null when there is no
+// earlier layout, or no commit to tag.
+export const ROLLBACK = 'before-adoption'
+function tagRollback(top) {
+  if (!fs.existsSync(path.join(top, EARLIER)) || git(top, ['rev-parse', '--verify', '-q', 'HEAD']).status !== 0) return null
+  if (git(top, ['rev-parse', '--verify', '-q', `refs/tags/${ROLLBACK}`]).status === 0) return `${ROLLBACK} kept where it is`
+  return git(top, ['tag', ROLLBACK, 'HEAD']).status === 0 ? `HEAD tagged ${ROLLBACK}, the rollback point before an earlier template's layout is converted` : `${ROLLBACK} couldn't be tagged`
+}
+
 // What arming did, in the runner's own words. The plugin's copy of the runner arms, as at session
 // start.
 function arm(top) {
@@ -153,6 +165,8 @@ function init(argv) {
     fs.writeFileSync(marker, `${JSON.stringify({ format: 1, id, lane: options.lane, mode: options.mode }, null, 2)}\n`)
     wrote.push('.epikloop/project.json')
     parts.push(`.epikloop/project.json written (id ${id} from ${from}; ${options.lane}, ${options.mode})`)
+    const tagged = tagRollback(top)
+    if (tagged !== null) parts.push(tagged)
   }
 
   const differ = []
@@ -325,6 +339,52 @@ const CASES = [
       const problems = k.says(run, "kept .githooks/check.mjs, which differs from the plugin's template; --refresh replaces it")
       if (k.read(dir, '.githooks/check.mjs') !== 'old\n') problems.push('overwrote the runner')
       problems.push(...k.says(run, '.githooks/pre-commit, .githooks/pre-push, scripts/check.sh written'))
+      return problems
+    },
+  ],
+  [
+    "an earlier template's layout: its last commit tagged before-adoption, and a tag already there kept",
+    (k) => {
+      const dir = k.repo()
+      k.write(dir, 'PIPELINE_VERSION', 'v1.0.1\n')
+      k.commit(dir, 'an earlier layout', ['--no-verify'])
+      const head = k.head(dir)
+      const problems = k.says(k.init(dir), `HEAD tagged ${ROLLBACK}, the rollback point before an earlier template's layout is converted`)
+      const tagged = k.git(dir, 'rev-parse', '-q', '--verify', `refs/tags/${ROLLBACK}`).stdout.trim()
+      if (tagged !== head) problems.push(`${ROLLBACK} is at ${JSON.stringify(tagged)}, not HEAD ${head}`)
+      // Adopted again after a rollback: the tag stays on the commit it names.
+      const again = k.repo()
+      k.write(again, 'PIPELINE_VERSION', '3.4.0\n')
+      k.commit(again, 'first', ['--no-verify'])
+      const first = k.head(again)
+      k.git(again, 'tag', ROLLBACK)
+      k.write(again, 'README.md', 'later\n')
+      k.commit(again, 'second', ['--no-verify'])
+      problems.push(...k.says(k.init(again), `${ROLLBACK} kept where it is`))
+      const kept = k.git(again, 'rev-parse', `refs/tags/${ROLLBACK}`).stdout.trim()
+      if (kept !== first) problems.push(`moved ${ROLLBACK} to ${kept}`)
+      return problems
+    },
+  ],
+  [
+    'no rollback tag without an earlier layout, with nothing committed, or with a kept marker',
+    (k) => {
+      const problems = []
+      const plain = k.repo()
+      k.write(plain, 'README.md', 'mine\n')
+      k.commit(plain, 'mine', ['--no-verify'])
+      const empty = k.repo()
+      k.write(empty, 'PIPELINE_VERSION', 'v1.0.1\n')
+      const kept = k.repo()
+      k.write(kept, 'PIPELINE_VERSION', 'v1.0.1\n')
+      k.write(kept, '.epikloop/project.json', JSON.stringify({ format: 1, id: 'abcdefabcdef', lane: 'web', mode: 'solo' }))
+      k.commit(kept, 'adopted', ['--no-verify'])
+      for (const [dir, what] of [[plain, 'without an earlier layout'], [empty, 'with nothing committed'], [kept, 'with a kept marker']]) {
+        const run = k.init(dir)
+        if (run.status !== 0) problems.push(`${what}: exit ${run.status}`)
+        if (run.stdout.includes(ROLLBACK)) problems.push(`${what}: said ${JSON.stringify(run.stdout.split('\n')[0])}`)
+        if (k.git(dir, 'tag', '-l').stdout.trim() !== '') problems.push(`${what}: tagged`)
+      }
       return problems
     },
   ],

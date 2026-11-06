@@ -88,6 +88,17 @@ export const MUTATIONS = [
   m(INIT, ['init'], 'refresh reads a marker with a byte-order mark as no mode', `mode = JSON.parse(fs.readFileSync(marker, 'utf8').replace(/^${BOM}/, '')).mode`, "mode = JSON.parse(fs.readFileSync(marker, 'utf8')).mode"),
   m(INIT, ['init'], "leave the protocol out of a new project's setup", "  if (wrote.includes('.epikloop/project.json')) console.log(`\\n${PROTOCOL}`)\n", ''),
   m(INIT, ['init'], 'print the protocol for a kept marker', "if (wrote.includes('.epikloop/project.json')) console.log(", 'if (true) console.log('),
+  m(INIT, ['init'], 'tag no rollback point', '    const tagged = tagRollback(top)\n    if (tagged !== null) parts.push(tagged)\n', ''),
+  m(INIT, ['init'], 'tag the rollback point whatever the layout', "if (!fs.existsSync(path.join(top, EARLIER)) || git(top, ['rev-parse', '--verify', '-q', 'HEAD'])", "if (git(top, ['rev-parse', '--verify', '-q', 'HEAD'])"),
+  m(INIT, ['init'], 'tag the rollback point with nothing committed', " || git(top, ['rev-parse', '--verify', '-q', 'HEAD']).status !== 0) return null", ') return null'),
+  m(
+    INIT,
+    ['init'],
+    'move a rollback tag already there',
+    "if (git(top, ['rev-parse', '--verify', '-q', `refs/tags/${ROLLBACK}`]).status === 0) return `${ROLLBACK} kept where it is`\n  return git(top, ['tag', ROLLBACK, 'HEAD'])",
+    "return git(top, ['tag', '-f', ROLLBACK, 'HEAD'])",
+  ),
+  m(INIT, ['init'], "tag the rollback point under a kept marker", '    const tagged = tagRollback(top)\n    if (tagged !== null) parts.push(tagged)\n  }\n', '  }\n  {\n    const tagged = tagRollback(top)\n    if (tagged !== null) parts.push(tagged)\n  }\n'),
 
   // The team-mode workflow, through init's checks of its settled parts and its gates step.
   m(WORKFLOW, ['init'], 'fetch only the tip', '          fetch-depth: 0\n', ''),
@@ -185,6 +196,14 @@ export const MUTATIONS = [
   m(STATE, ['state'], 'give a story every screen, whatever its requirements', '.filter((screen) => screen.requirements.some((req) => story.requirements.includes(req)))', '.filter(() => true)'),
   m(STATE, ['state'], "leave the visual compare out of the retro's brief", '      ...compareLine(state),\n', ''),
   m(STATE, ['state'], 'give a retro the visual compare without a design', 'if (!d?.complete) return []', 'if (d === null) return []'),
+  // An adopted repository: its earlier layout, its numbers, its life in production and its design.
+  m(STATE, ['state'], "say nothing of an earlier template's layout", '  if (fs.existsSync(path.join(root, EARLIER))) problems.push(', '  if (false) problems.push('),
+  m(STATE, ['state'], 'number the next epic past the story files alone', ", ...[...state.done.keys()].map((id) => Number(id.split('.')[0]))) + 1", ') + 1'),
+  m(STATE, ['state'], 'number the next epic past the commits alone', '...[...state.stories.values()].map((story) => story.epic), ', ''),
+  m(STATE, ['state'], 'send a product adopted while live back to plan', "  if (s.tags.has('live') && mvp.length === 0) return liveStage(s)\n", ''),
+  m(STATE, ['state'], "run only MVP stories in a product adopted while live", "const signedOff = state.tags.has('mvp') || state.tags.has('live')", "const signedOff = state.tags.has('mvp')"),
+  m(STATE, ['state'], 'take a design with directions for one that came with the product', 'export const cameWith = (d) => d.tokens && d.directions.length === 0 && d.pick === undefined', 'export const cameWith = (d) => d.tokens && d.pick === undefined'),
+  m(STATE, ['state'], 'wait for a direction on tokens that came with the product', "    if (d.tokens) return 'design/tokens.css came with the product, and design/manifest.md is missing'\n", ''),
 
   // The gallery.
   m(GALLERY, ['gallery'], "leave the project's text unescaped", 'const escape = (text) => String(text).replace(', 'const escape = (text) => String(text) || String(text).replace('),
@@ -196,6 +215,8 @@ export const MUTATIONS = [
   m(GALLERY, ['gallery'], "leave a direction's file name unencoded", 'const src = `directions/${encodeURIComponent(name)}`', 'const src = `directions/${name}`'),
   m(GALLERY, ['gallery'], 'scale a frame by its width', 'const scale = SHOWN / height', 'const scale = SHOWN / width'),
   m(GALLERY, ['gallery'], 'write a gallery for a lane that skips design', 'if (state.design === null) return { code: 1,', 'if (false) return { code: 1,'),
+  m(GALLERY, ['gallery'], 'wait for a direction in a design that came with the product', "out.push(cameWith(d) ? '<p>No directions: this design came with the product.</p>' : '<p>No direction is drawn yet.</p>')", "out.push('<p>No direction is drawn yet.</p>')"),
+  m(GALLERY, ['gallery'], 'say every design came with the product', "out.push(cameWith(d) ? '<p>No directions: this design came with the product.</p>' : '<p>No direction is drawn yet.</p>')", "out.push('<p>No directions: this design came with the product.</p>')"),
 
   // The staging smoke.
   m(SMOKE, ['smoke'], 'accept any answer', '  if (status < 200 || status >= 300) return console.log(answered)\n', ''),
@@ -295,6 +316,16 @@ export const MUTATIONS = [
   m(FIXTURE, ['fixture'], 'leave the pick out of web-picked', "    'docs/decisions.md': PICKED,\n", ''),
   m(FIXTURE, ['fixture'], 'leave the architecture out of web-architected', "  'web-architected': [WEB_SPECIFY, PICK, DRAW, DRAW_ERROR, WEB_ARCHITECT],", "  'web-architected': [WEB_SPECIFY, PICK, DRAW, DRAW_ERROR],"),
   m(FIXTURE, ['fixture'], 'leave the error state out of web-architected', "  'web-architected': [WEB_SPECIFY, PICK, DRAW, DRAW_ERROR, WEB_ARCHITECT],", "  'web-architected': [WEB_SPECIFY, PICK, DRAW, WEB_ARCHITECT],"),
+  m(FIXTURE, ['fixture'], 'leave the version file out of earlier', "    PIPELINE_VERSION: 'v1.0.1\\n',\n", ''),
+  m(FIXTURE, ['fixture'], "leave earlier's hook out", "    '.githooks/pre-commit': EARLIER_HOOK,\n", ''),
+  m(FIXTURE, ['fixture'], "leave earlier's hooks unarmed", "    if (commit.armed) git(dir, ['config', 'core.hooksPath', '.githooks'])\n", ''),
+  m(
+    FIXTURE,
+    ['fixture'],
+    "stage earlier's hook as a plain file",
+    "    for (const file of commit.executable ?? []) {\n      fs.chmodSync(path.join(dir, ...file.split('/')), 0o755)\n      git(dir, ['update-index', '--chmod=+x', '--', file])\n    }\n",
+    '',
+  ),
   m(FIXTURE, ['fixture'], 'draw every state of web-incomplete', "  'web-incomplete': [WEB_SPECIFY, PICK, DRAW],", "  'web-incomplete': [WEB_SPECIFY, PICK, DRAW, { subject: 'draw the error', date: '2026-11-06', files: { 'design/screens/greet.error.html': '' } }],"),
 
   // The eval suite's runner.

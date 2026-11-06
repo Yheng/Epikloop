@@ -6,6 +6,8 @@ allowed-tools:
   - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" *)'
   - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" *)'
   - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" *)'
+  - 'Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/gallery.mjs")'
+  - 'PowerShell(node "${CLAUDE_PLUGIN_ROOT}/scripts/gallery.mjs")'
 ---
 
 Outcome: an existing codebase becomes an Epikloop project without any change to what it does.
@@ -23,6 +25,29 @@ Propose the mode too, `team` when the repository merges through pull requests an
 otherwise, and write nothing until the human confirms both. Then run
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" --lane <lane> --mode <mode>`, which writes the
 project marker and the gate files and stages them.
+
+A repository with `PIPELINE_VERSION` at its root was set up from an earlier delivery template, and
+adopting it converts it, from the default branch with a clean tree. `init.mjs` tags its last commit
+`before-adoption`, the rollback point, which is pushed with the adoption. The template's own files
+go: its version files, its session commands, hooks and status line in `.claude/`, its gate scripts,
+config and stamps, and its git hooks, which `init.mjs --refresh` replaces with Epikloop's, armed
+from the stack's install step by `node .githooks/check.mjs --arm`. Product tests and scripts that
+run or test what goes change with it, and the product's own checks stay, run by its commands. `CLAUDE.md` is rebuilt on Epikloop's template, keeping the project rules that
+still hold and none of the earlier protocol. Its requirements, architecture and API documents are
+read into `spec/` with the code, and then what `spec/` holds is removed: the old PRD, architecture,
+roadmap, todo, stories and verification screenshots; reference documents stay. Its decisions file
+stays where it is, as the record from before the adoption, which `CLAUDE.md` names, and its quoted
+business rules move into `spec/`. The adoption's commit records the conversion as a decision in
+`docs/decisions.md`, numbered after the earlier record's last: what went, what stayed and where the
+history is. Open issues on its tracker become backlog lines that cite their numbers.
+
+Where the product has design tokens and screen mockups, they come into `design/` as they are:
+`design/brief.md` from its design notes, its `tokens.css` kept, and each mockup the default state of
+the screen it names, listed in `design/manifest.md` with the requirements it shows, in the format
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example manifest` prints; then
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/gallery.mjs"` writes the gallery. A product already in
+production stays there: `spec/architecture.md` records how it runs, deploys and rolls back, and once
+the adoption has landed, `live` is tagged on it and pushed, so the project goes on after the MVP.
 
 Each capability file follows this format, which a script reads, so its headings and markers stay
 exactly as shown. Every requirement adopt writes carries `Status: observed`, and each business

@@ -217,13 +217,27 @@ All notable changes to Epikloop are recorded here.
     of git.
   - An eval case runs `plan` on a designed and architected greeter page, and expects its stories to
     load the tokens and build to the design.
+- Adopting a production repository, M2's third slice.
+  - `adopt` converts a repository on an earlier template layout, which a root `PIPELINE_VERSION`
+    marks. `init.mjs` first tags its last commit `before-adoption`, the rollback point.
+  - The template's own files go, and its hooks become Epikloop's. `CLAUDE.md` is rebuilt, and its
+    planning docs fold into `spec/`. Its decisions stay as the record from before the adoption, and
+    Epikloop's number on from them.
+  - The design a product already has, its tokens and mockups, comes into `design/` with no
+    directions. `--design` and the gallery say it came with the product.
+  - A product already in production is tagged `live` once its adoption lands, and goes on in
+    post-MVP mode.
+  - `state.mjs --ids` prints the next epic, after every number the history used. A root
+    `PIPELINE_VERSION` is the first problem in a project's briefing.
+  - An eval case adopts the greeter page on an earlier layout, from a new fixture, `earlier`.
 
 ### Changed
 
 - Stage 3, design, was held until M2 brought design's body. Until then a UI lane went from its spec
   on to `architect`.
-- `adopt`'s design-token extraction is held for a later slice of M2. Converting repositories on an
-  earlier template layout is held until one is adopted.
+- Converting repositories on an earlier template layout was held until one was to be adopted, and
+  joined `adopt` in M2's third slice, with the design an adopted product has. Extracting design
+  tokens from code is held for an adopted product with no design.
 - `init.mjs` compares gate files without regard to line endings, so a CRLF checkout counts as the
   plugin's own.
 - `fold.mjs` runs its self-test only when run itself, not when `doctor.mjs` imports it.
@@ -820,3 +834,63 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   - `audit`'s gaps are files, which a script finds. The current requirements that no screen cites
     are listed for an audit to judge and never send a project back, so a story whose spec delta
     adds a requirement doesn't stop a batch.
+- **A product adopted while already in production goes on in post-MVP mode**
+  ([issue #7](https://github.com/Yheng/Epikloop/issues/7)).
+  - On 2026-11-06 a production repository was read ahead of its adoption, the first. It has been
+    live for months, with 723 commits. Adopted as Epikloop stood, after its confirmation it would
+    have gone to stage 5: an MVP set frozen for a product shipped long ago, a sign-off of it, and a
+    `Go live` recorded for a product already in production.
+  - Now `adopt` tags `live` on such a product once its adoption lands. A project with a `live` tag
+    and no MVP stories is at stage 10, where `plan --extend` takes new work. Stages 2–4 still come
+    first.
+  - `--ready` ran only MVP stories until the `mvp` tag, so the planned work of such a project would
+    never have been ready. A `live` tag now counts as a sign-off there too.
+- **Epics are numbered after every number the history already used.**
+  - The same repository's history holds 54 commits whose subjects start `feat(N.M):`, for epics 1
+    to 11, under an earlier template that used Epikloop's own convention. A new story 1.1 would
+    have counted as done before it started.
+  - `state.mjs --ids` prints the next epic, after every epic a story file or a `feat(N.M):` commit
+    on the default branch names, and `plan` numbers its epics from it.
+- **An earlier template layout is never silent.** In a project, a root `PIPELINE_VERSION` is the
+  first problem the briefing names until `adopt`'s conversion removes it. Every version of that
+  layout carries the file, and the same repository showed that setup alone keeps the rest of it in
+  place, its git hooks included.
+
+### Setup rules (adopted 2026-11-06)
+
+- **Converting an earlier template layout starts from a rollback tag.** `init.mjs` tags the last
+  commit `before-adoption` when it writes a new marker in a repository with a root
+  `PIPELINE_VERSION`, and never moves a tag already there.
+  - On 2026-11-06 the repository above showed what the conversion removes and rewrites: its git
+    hooks, its session commands, its `CLAUDE.md`, its planning docs and its stories. The tag keeps
+    every one of them readable, and gives the human one point to reset to.
+
+### Skill rules (adopted 2026-11-06)
+
+- **`adopt` converts a repository on an earlier template layout.**
+  - On 2026-11-06 the repository above was read before its adoption, which showed that `adopt`, as
+    it stood, would have left it half converted:
+    - Setup keeps any file that differs from its template, so the earlier hooks, which
+      `core.hooksPath` already named, would have gone on gating every commit in place of
+      Epikloop's.
+    - Its 320-line `CLAUDE.md` and nine session commands would have kept the earlier protocol in
+      every session: team mode, an issue tracker, branch-per-story and the earlier commands.
+    - Its 20 story files would each have been a problem in every briefing.
+    - Its tests held the earlier hooks' shape, so replacing them alone would have failed its own
+      suite.
+  - Now the template's own files go, and its hooks become Epikloop's, armed from the install step.
+    The tests and scripts that check them change with them. `CLAUDE.md` is rebuilt on Epikloop's
+    template, keeping the project rules that still hold. The planning docs fold into `spec/` and
+    are then removed, while reference docs stay. Open issues become backlog lines.
+  - Its code and tests cite its 74 decisions by number, so the decisions file stays where it is, as
+    the record from before the adoption. The adoption's own decision, which records the
+    conversion, takes the next number, and its quoted business rules move into `spec/`.
+  - In an eval run on 2026-11-06, the conversion dropped the install step that armed the earlier
+    hooks. That step is the one entry the footprint gives Epikloop there, so the text now says the
+    install step arms Epikloop's hooks.
+- **`adopt` brings in the design a product already has.** The same repository has a `tokens.css`
+  its app loads and 44 approved mockups. Its design hadn't started in Epikloop's terms, so stage 3
+  would have sent it to `design` for three new directions. Now its tokens and mockups come into
+  `design/` as they are, with a brief from its design notes and a manifest, and with no directions
+  the design reads as complete. `--design` and the gallery say it came with the product instead of
+  waiting for a pick. Extracting tokens from code waits for an adopted product with no design.

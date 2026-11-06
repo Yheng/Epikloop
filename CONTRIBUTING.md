@@ -98,7 +98,7 @@ The core plugin's eval suite is in `plugins/epikloop/evals/`: one folder per cas
 
 Each case runs as a headless Claude Code session under whatever Claude Code is logged in with, so
 a Claude plan is enough; you don't need an API key. It works on Linux, macOS and Windows alike.
-Every run is a real model call. A pass comes to about $2.50 at list price, which a plan counts
+Every run is a real model call. A pass comes to about $3.20 at list price, which a plan counts
 against its usage limits. The sessions run as you, in throwaway folders, with no OS sandbox.
 
 - **When.** Run the suite when your change touches model-facing text:

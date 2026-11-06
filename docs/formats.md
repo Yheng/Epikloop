@@ -5,7 +5,8 @@ a script reads has an example in the core plugin's `templates/`. `scripts/state.
 files, and its self-test parses the templates, so an example can't drift from the reader.
 
 A line the reader can't place is reported as `file:line what`. The SessionStart briefing names the
-first three problems under "Needs the human".
+first three problems under "Needs the human". A root `PIPELINE_VERSION`, which every version of an
+earlier template layout carries, is reported first, until `adopt`'s conversion removes it.
 
 ## `spec/<capability>.md`
 
@@ -102,6 +103,10 @@ screen is drawn at; the `service` lane skips design.
   - A screen whose heading or fields don't read is a problem, and isn't counted.
 - **`index.html`** is the gallery, which `scripts/gallery.mjs` writes from the manifest and the
   directions: each direction, then each state of each screen, framed at both widths.
+- **A design that came with the product.** `adopt` brings in the tokens and screen mockups an
+  existing product has as they are: a brief from its design notes, its `tokens.css`, and each
+  mockup as the default state of the screen it names, listed in the manifest. It has no directions
+  and no pick, and `amend` and `add` follow its tokens.
 
 ## What design reads
 
@@ -110,7 +115,8 @@ screens.
 
 - **Where it stands.** The lane's widths, the brief and the images in `refs/`, the directions,
   the pick or the number its decision will take, the tokens, and the manifest's screens with the
-  state files they still lack.
+  state files they still lack. With tokens and no directions or pick, it says the design came with
+  the product instead of naming a pick.
 - **What an audit reads.** The current requirements no screen cites; citations of requirements
   that are retired or not in `spec/`; files in `screens/` the manifest doesn't list; and the
   manifest's unreadable lines.
@@ -128,8 +134,15 @@ screens.
   starts `feat(N.M):`.
   - The default branch is `origin/HEAD`, else `main`, else `master`, else `HEAD`.
   - In team mode, a squash-merged pull request's title carries the same prefix.
+- **The next epic** follows every epic a story file or a `feat(N.M):` commit on the default branch
+  names, and `state.mjs --ids` prints it. A repository whose history already used those numbers
+  never has a story done before it starts.
 - **Tags.** `retro` tags a closed phase `phase-N`, MVP sign-off tags `mvp`, and `release` tags
   `live`. Each tag goes on the default branch once the ceremony's record has landed there.
+  - `adopt` tags `live` on a product already in production once its adoption lands, and with no
+    MVP stories it is in post-MVP mode, where the planned work runs as after a sign-off.
+  - `init` tags `before-adoption` on a repository on an earlier template layout: the rollback
+    point, never moved once it's there.
 - **The current phase** is the lowest epic that has MVP stories and no `phase-N` tag.
 - **In review.** A story whose `feat(N.M):` commit is on another branch, local or remote, and not
   yet on the default branch is in review.

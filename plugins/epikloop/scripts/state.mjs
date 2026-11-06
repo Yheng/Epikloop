@@ -6,7 +6,7 @@
 //   node state.mjs                                          the state of the project here
 //   node state.mjs --ready [N | N.M]                        the stories a batch may start, or why none
 //   node state.mjs --story N.M                              a story-worker's brief
-//   node state.mjs --ids                                    the next question and decision numbers
+//   node state.mjs --ids                                    the next question, decision and epic numbers
 //   node state.mjs --retro                                  the retro's brief, or the tags it leaves
 //   node state.mjs --release                                the release's brief, or the tag it leaves
 //   node state.mjs --design                                 where the design stands, and what an audit reads
@@ -28,6 +28,8 @@ const DATE = '\\d{4}-\\d{2}-\\d{2}'
 const WINDOW = 14
 // This many waiting questions send the batch to decide first.
 const MANY_QUESTIONS = 5
+// The file at the root of a repository on an earlier template layout, in every version of it.
+export const EARLIER = 'PIPELINE_VERSION'
 
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 const list = (text) => text.split(',').map((item) => item.trim()).filter(Boolean)
@@ -396,6 +398,9 @@ function readDesign(root, lane, requirements, decisions, problems) {
   return design
 }
 
+// A design adopt brought in with the product: its tokens, and no directions or pick.
+export const cameWith = (d) => d.tokens && d.directions.length === 0 && d.pick === undefined
+
 // What a design that isn't complete waits for; before it has started, the manifest it lacks.
 function designWhy(d) {
   if (!d.started) return 'design/manifest.md is missing'
@@ -403,6 +408,7 @@ function designWhy(d) {
     if (d.pick !== undefined) return `the direction is picked, and design/${d.tokens ? 'manifest.md' : 'tokens.css'} is missing`
     const drawn = d.directions.length
     if (drawn > 0) return `${plural(drawn, 'direction')} in design/directions/ ${drawn === 1 ? 'waits' : 'wait'} for the human's pick`
+    if (d.tokens) return 'design/tokens.css came with the product, and design/manifest.md is missing'
     return 'design/brief.md is written, and no direction is drawn yet'
   }
   if (d.screens.length === 0) return 'design/manifest.md lists no screens'
@@ -506,6 +512,13 @@ const signed = (delta) => (delta > 0 ? `+${delta}` : String(delta))
 // Why sign-off can't happen yet by the queue, or null when queue Δ allows it.
 const queueWait = (delta) => (delta === null ? 'queue Δ is unknown' : delta > 0 ? `queue Δ is ${signed(delta)}` : null)
 
+// Post-MVP mode: the backlog is visible, and planned work runs epic by epic.
+function liveStage(s) {
+  const work = planOrder(s.stories).find((story) => !s.done.has(story.id))
+  const why = `the product is live${s.backlog > 0 ? `, and docs/queue.md holds ${plural(s.backlog, 'backlog line')}` : ''}`
+  return { n: 10, epic: work?.epic, why, next: work === undefined ? '/epikloop:plan --extend' : `/epikloop:epic ${work.epic}` }
+}
+
 // The first stage whose test fails: { n, epic, why, next }. `delta` is queue Δ, or null.
 function stageOf(root, project, s, delta) {
   const has = (...parts) => fs.existsSync(path.join(root, ...parts))
@@ -520,9 +533,11 @@ function stageOf(root, project, s, delta) {
   const { design } = s
   if (design !== null && (design.started ? !design.complete : s.stories.size === 0)) return { n: 3, why: designWhy(design), next: '/epikloop:design' }
   if (!has('spec', 'architecture.md')) return { n: 4, why: 'spec/architecture.md is missing', next: '/epikloop:architect' }
+  const mvp = [...s.stories.values()].filter((story) => story.mvp)
+  // A product adopted while already in production is tagged live, and goes on without an MVP set.
+  if (s.tags.has('live') && mvp.length === 0) return liveStage(s)
   if (s.stories.size === 0) return { n: 5, why: 'docs/stories/ holds no stories yet', next: '/epikloop:plan' }
   if (!project.mvp_frozen) return { n: 5, why: "the MVP set isn't frozen", next: '/epikloop:plan' }
-  const mvp = [...s.stories.values()].filter((story) => story.mvp)
   if (mvp.length === 0) return { n: 5, why: 'no story is in the MVP set', next: '/epikloop:plan' }
   const epics = [...new Set(mvp.map((story) => story.epic))].sort((a, b) => a - b)
   const epic = epics.find((n) => !s.tags.has(`phase-${n}`))
@@ -543,12 +558,7 @@ function stageOf(root, project, s, delta) {
     if (work === undefined) return { n: 9, why: `the MVP is signed off, going live waits, as ${later.id} records, and nothing planned is left`, next: '/epikloop:release' }
     return { n: 9, epic: work.epic, why: `the MVP is signed off, and going live waits, as ${later.id} records`, next: `/epikloop:epic ${work.epic}` }
   }
-  if (epic === undefined) {
-    // Post-MVP: the backlog is visible, and planned work runs epic by epic.
-    const work = planOrder(s.stories).find((story) => !s.done.has(story.id))
-    const why = `the product is live${s.backlog > 0 ? `, and docs/queue.md holds ${plural(s.backlog, 'backlog line')}` : ''}`
-    return { n: 10, epic: work?.epic, why, next: work === undefined ? '/epikloop:plan --extend' : `/epikloop:epic ${work.epic}` }
-  }
+  if (epic === undefined) return liveStage(s)
   const left = mvp.filter((story) => story.epic === epic && !s.done.has(story.id))
   if (left.length === 0) {
     const why = recorded(s, `Phase ${epic} retro`) ? `epic ${epic}'s retro is recorded, and phase-${epic} isn't tagged yet` : `epic ${epic}'s MVP stories are done, and it has no phase-${epic} tag`
@@ -627,6 +637,8 @@ export function summary(opened, state) {
 // The project's state, derived from its files and git. `project` is its parsed marker.
 export function readState(root, project, { now = Date.now(), home = os.homedir() } = {}) {
   const problems = []
+  // Every version of an earlier template layout carries this file; adopt's conversion removes it.
+  if (fs.existsSync(path.join(root, EARLIER))) problems.push(`${EARLIER}:1: an earlier template's version file; /epikloop:adopt's conversion removes it with that template's other files`)
   const requirements = readSpec(root, problems)
   const stories = readStories(root, problems)
   const queueText = readLines(root, 'docs/queue.md')?.join('\n') ?? null
@@ -734,8 +746,8 @@ function startProblem(project, facts, what) {
 // The stories a batch may start, as `N.M Tn Title` lines in plan order, the line a worker's spawn
 // description starts with. `select` is an epic's number, or one story's ID, which may be outside
 // the MVP set; without it, the current phase's epic, or every epic once all are tagged. Before the
-// `mvp` tag only MVP stories run. When none can start, `text` says why, and `fails` is set when the
-// checkout has to change first.
+// `mvp` or `live` tag only MVP stories run. When none can start, `text` says why, and `fails` is set
+// when the checkout has to change first.
 export function readyList(state, project, facts, select) {
   const say = (text, fails = false) => ({ lines: [], text, fails })
   const { stage } = state
@@ -753,7 +765,8 @@ export function readyList(state, project, facts, select) {
   }
   if (select === undefined && stage.n === 7) return say(`Nothing is ready: ${stage.why}. Next: ${stage.next}.`)
   const epic = select !== undefined ? Number(select) : stage.n === 6 ? stage.epic : null
-  const signedOff = state.tags.has('mvp')
+  // A product adopted live has no mvp tag, and its planned work runs as after a sign-off.
+  const signedOff = state.tags.has('mvp') || state.tags.has('live')
   const lines = []
   const reasons = []
   for (const story of planOrder(state.stories)) {
@@ -786,6 +799,10 @@ function landing(project, facts, commit, branch) {
 // that use them.
 const following = (ids) => String(Math.max(0, ...ids.map((id) => Number(id.split('-')[1]))) + 1).padStart(3, '0')
 const nextDecision = (state) => `DECISION-${following(state.decisions.map((d) => d.id))}`
+
+// The next epic follows every epic a story file or a feat(N.M) commit on the default branch names,
+// so a repository whose history already used those numbers never has a story done before it starts.
+const nextEpic = (state) => Math.max(0, ...[...state.stories.values()].map((story) => story.epic), ...[...state.done.keys()].map((id) => Number(id.split('.')[0]))) + 1
 
 export function nextIds(state, now) {
   const question = following([...state.questions.map((q) => q.id), ...state.decisions.map((d) => d.answers).filter(Boolean)])
@@ -1022,8 +1039,12 @@ export function designBrief(state, project) {
     `Design for this ${state.lane.name} project: each screen is drawn at ${narrow} and ${wide} pixels wide, in its default state and any of empty, loading and error.`,
     `Where it stands: ${d.complete ? 'the design is complete' : designWhy(d)}.`,
     `The brief: design/brief.md is ${d.brief ? 'written' : 'missing'}; design/refs/ ${d.refs.length === 0 ? 'is empty' : `holds ${prose(d.refs)}`}.`,
-    `The directions: ${d.directions.length === 0 ? 'none in design/directions/ yet' : `${prose(d.directions)} in design/directions/`}.`,
-    d.pick === undefined ? `The pick: not recorded; it will be ${nextDecision(state)}, titled "Design direction".` : `The pick, in ${d.pick.id}: ${decided(d.pick)}.`,
+    ...(cameWith(d)
+      ? ['No directions: design/tokens.css came with the product, and amend and add follow it.']
+      : [
+          `The directions: ${d.directions.length === 0 ? 'none in design/directions/ yet' : `${prose(d.directions)} in design/directions/`}.`,
+          d.pick === undefined ? `The pick: not recorded; it will be ${nextDecision(state)}, titled "Design direction".` : `The pick, in ${d.pick.id}: ${decided(d.pick)}.`,
+        ]),
     `The tokens: design/tokens.css is ${d.tokens ? 'written' : 'missing'}.`,
   ]
   if (d.screens === null) out.push('The screens: design/manifest.md is missing.')
@@ -1092,7 +1113,10 @@ function cli(argv) {
     }
     const state = readState(opened.root, opened.project)
     const now = Date.now()
-    if (flag === '--ids') return console.log(nextIds(state, now).join('\n'))
+    if (flag === '--ids') {
+      const epic = `The next epic is ${nextEpic(state)}: it follows the epics in docs/stories/ and every feat(N.M) commit on the default branch.`
+      return console.log([...nextIds(state, now), epic].join('\n'))
+    }
     if (flag === '--lane') {
       if (state.lane === null) {
         process.exitCode = 1
@@ -1460,8 +1484,7 @@ const CASES = [
           lines(
             'Where it stands: 12 states in design/manifest.md have no file yet.',
             'The brief: design/brief.md is missing; design/refs/ is empty.',
-            'The directions: none in design/directions/ yet.',
-            'The pick: not recorded; it will be DECISION-001, titled "Design direction".',
+            'No directions: design/tokens.css came with the product, and amend and add follow it.',
             'The tokens: design/tokens.css is written.',
             `The screens: design/manifest.md lists 3 screens in 12 states; 12 states have no file yet: ${missing.slice(0, 10).join(', ')} and 2 more.`,
             'Current requirements no screen cites: REQ-APP-001 It works; REQ-APP-002 It helps.',
@@ -1581,6 +1604,71 @@ const CASES = [
       k.commit(dir, 'chore(release): go live', 0)
       got.push(k.stage(dir, "9 the go-live is recorded, and live isn't tagged yet → /epikloop:release"))
       return got.flat()
+    },
+  ],
+  [
+    'a product adopted while live goes on in post-MVP mode, and its planned work runs',
+    (k) => {
+      // Adopted: a confirmed spec, the architecture, the design it came with, no stories, and live.
+      const dir = k.repo({ 'spec/app.md': APP_SPEC, 'spec/architecture.md': '# Architecture\n', ...DESIGNED })
+      k.git(dir, 'tag', 'live')
+      const got = [k.stage(dir, '10 the product is live → /epikloop:plan --extend')]
+      k.write(dir, 'docs/stories/12-next.md', epicFile(12, [[1, 'T1', false], [2, 'T1', false, '12.1']]))
+      k.commit(dir, 'plan: epic 12', 0)
+      got.push(k.stage(dir, '10 the product is live → /epikloop:epic 12'), k.expect([[k.ready(dir), '0 12.1 T1 Story 12.1\n']]))
+      return got.flat()
+    },
+  ],
+  [
+    'a product adopted while live still finishes its confirmation and its design first',
+    (k) => {
+      const observed = APP_SPEC.replace('## REQ-APP-001 It works\n', '## REQ-APP-001 It works\nStatus: observed\n')
+      const dir = k.repo({ 'spec/app.md': observed, 'spec/architecture.md': '# Architecture\n', 'design/brief.md': '# App\n', 'design/tokens.css': ':root { --ink: #222; }\n' })
+      k.git(dir, 'tag', 'live')
+      const got = [k.stage(dir, '2 1 requirement in spec/ is still observed → /epikloop:adopt')]
+      k.write(dir, 'spec/app.md', APP_SPEC)
+      k.commit(dir, 'docs(spec): confirmed', 0)
+      got.push(k.stage(dir, '3 design/tokens.css came with the product, and design/manifest.md is missing → /epikloop:design'))
+      return got.flat()
+    },
+  ],
+  [
+    'a repository on an earlier template layout says so first',
+    (k) => {
+      const earlier = k.read(k.folder({ PIPELINE_VERSION: 'v1.0.1\n', 'docs/stories/epic-1-old.md': '# Epic 1 — Old\n' }))
+      const clean = k.read(k.folder({}))
+      return k.expect([
+        [earlier.problems[0], "PIPELINE_VERSION:1: an earlier template's version file; /epikloop:adopt's conversion removes it with that template's other files"],
+        [clean.problems.join(' | '), ''],
+      ])
+    },
+  ],
+  [
+    'the next epic follows the story files and every feat commit on the default branch',
+    (k) => {
+      const next = (n) => `The next epic is ${n}: it follows the epics in docs/stories/ and every feat(N.M) commit on the default branch.\n`
+      const got = [k.has(k.run(k.repo({ 'spec/app.md': APP_SPEC }), '--ids'), next(1))]
+      const dir = k.repo({ 'spec/app.md': APP_SPEC })
+      k.commit(dir, "feat(11.3): an earlier layout's story", 2)
+      k.commit(dir, 'feat(2.1): an earlier one', 1)
+      got.push(k.has(k.run(dir, '--ids'), next(12)))
+      k.write(dir, 'docs/stories/14-later.md', epicFile(14, [[1, 'T1', false]]))
+      k.commit(dir, 'plan: epic 14', 0)
+      got.push(k.has(k.run(dir, '--ids'), next(15)))
+      return got.flat()
+    },
+  ],
+  [
+    'the design brief of a design that came with the product, and of one with directions',
+    (k) => {
+      const adopted = k.run(k.repo({ 'spec/app.md': APP_SPEC, 'design/brief.md': '# App\n', ...DESIGNED }), '--design')
+      const drawn = k.run(k.repo({ 'spec/app.md': APP_SPEC, 'design/brief.md': '# App\n', 'design/tokens.css': ':root { --ink: #222; }\n', ...DIRECTIONS }), '--design')
+      return [
+        ...k.has(adopted, '\nNo directions: design/tokens.css came with the product, and amend and add follow it.\nThe tokens: design/tokens.css is written.\n'),
+        ...(adopted.includes('The pick') ? [`a pick line in ${JSON.stringify(adopted)}`] : []),
+        ...k.has(drawn, '\nThe directions: a.html, b.html and c.html in design/directions/.\nThe pick: not recorded; it will be DECISION-001, titled "Design direction".\n'),
+        ...(drawn.includes('No directions') ? [`no directions in ${JSON.stringify(drawn)}`] : []),
+      ]
     },
   ],
   [
@@ -1837,7 +1925,7 @@ const CASES = [
             `Landing: \`git switch -c story/3.1 origin/main\`; ${commit}; \`git push -u origin story/3.1\`; a pull request with that subject as its title, through \`gh pr create\`; then \`git switch main\`. The human merges it.`,
           ),
         ],
-        [k.run(dir, '--ids'), `0 ${ids.join('\n')}\n`],
+        [k.run(dir, '--ids'), `0 ${[...ids, 'The next epic is 4: it follows the epics in docs/stories/ and every feat(N.M) commit on the default branch.'].join('\n')}\n`],
         [k.run(dir, '--story', '9.9'), '1 9.9 is not a story.\n'],
         [k.run(dir, '--story', '3'), `1 ${USAGE}\n`],
       ])

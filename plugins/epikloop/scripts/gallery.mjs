@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { laneNames, openProject, readState, stateFile } from './state.mjs'
+import { cameWith, laneNames, openProject, readState, stateFile } from './state.mjs'
 
 const GALLERY = 'design/index.html'
 // The viewport height of each frame, for the narrow width and the wide one, and the height each
@@ -86,7 +86,7 @@ export function galleryPage(root, state) {
     `<p>${plural(d.directions.length, 'direction')}, and ${plural(screens.length, 'screen')} in ${plural(states, 'state')}, each at ${narrow} and ${wide} pixels wide. Epikloop writes this page from design/manifest.md.</p>`,
     '<h2>Directions</h2>',
   ]
-  if (d.directions.length === 0) out.push('<p>No direction is drawn yet.</p>')
+  if (d.directions.length === 0) out.push(cameWith(d) ? '<p>No directions: this design came with the product.</p>' : '<p>No direction is drawn yet.</p>')
   for (const name of d.directions) {
     const src = `directions/${encodeURIComponent(name)}`
     const mark = name === picked ? `<span class="picked">picked in ${escape(d.pick.id)}</span>` : ''
@@ -212,6 +212,22 @@ const CASES = [
       if (run.status !== 0 || !run.stdout.startsWith('gallery: wrote design/index.html: 3 directions, 2 screens in 4 states, at 390 and 1280 pixels. Open it at file:')) problems.push(`said ${run.status} ${JSON.stringify(run.stdout)}`)
       return problems
     },
+  ],
+  [
+    'a design that came with the product frames its screens, and has no directions to show',
+    Object.fromEntries(Object.entries(DESIGNED).filter(([file]) => !file.startsWith('design/directions/') && file !== 'docs/decisions.md')),
+    (run, dir, html) => {
+      const problems = []
+      if (!html?.includes('<p>No directions: this design came with the product.</p>') || html.includes('No direction is drawn yet')) problems.push('lacks the note on directions')
+      if (frames(html ?? '').length !== 8) problems.push(`framed ${frames(html ?? '').join(' ')}`)
+      if (!run.stdout.startsWith('gallery: wrote design/index.html: 0 directions, 2 screens in 4 states, at 390 and 1280 pixels.')) problems.push(`said ${JSON.stringify(run.stdout)}`)
+      return problems
+    },
+  ],
+  [
+    'a brief alone has no direction drawn yet',
+    { '.epikloop/project.json': MARKER(), 'spec/greet.md': SPEC, 'design/brief.md': '# Greeter\n' },
+    (run, dir, html) => (html?.includes('<p>No direction is drawn yet.</p>') && !html.includes('came with the product') ? [] : ['lacks "No direction is drawn yet."']),
   ],
   [
     'a missing state shows as a placeholder, and the line counts it',
