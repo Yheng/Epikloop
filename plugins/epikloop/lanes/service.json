@@ -4,5 +4,6 @@
   "name": "service",
   "description": "an API, a command-line tool or a job",
   "requires": [],
-  "ui_test": null
+  "ui_test": null,
+  "design": null
 }

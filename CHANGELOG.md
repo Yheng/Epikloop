@@ -181,20 +181,40 @@ All notable changes to Epikloop are recorded here.
     `doctor` checks that Harbor answers while it's on.
   - CI runs the switch's self-test, and `tools/harbor.mjs`, which serves the copied build through
     the hook from a throwaway home, on Linux, macOS and Windows.
+- The `design` skill's body, M2's first slice.
+  - `/epikloop:design` writes a brief from the spec and the images in `design/refs/`. It draws
+    three direction variants of the system sheet as HTML, and stops for the human's pick, which a
+    decision titled `Design direction` records.
+  - Every screen then follows in the picked direction. Each state is its own HTML file on
+    `design/tokens.css`, and `design/manifest.md` lists every screen. `amend`, `add`, `audit` and
+    `ingest` change one thing at a time.
+  - The `design/` formats are in `docs/formats.md`, with the manifest's example in
+    `templates/design/manifest.md`, which `state.mjs --example manifest` prints.
+  - `state.mjs --design` prints where the design stands, and what an audit reads: the requirements
+    no screen cites, citations that aren't current, unlisted files and the manifest's unreadable
+    lines.
+  - `scripts/gallery.mjs` writes the gallery, `design/index.html`, from the manifest and the
+    directions, framing each state at both widths. CI runs its self-test on Linux, macOS and
+    Windows.
+  - Each lane's profile gives `design`: the two widths its screens are drawn at, 390 and 1280
+    pixels in `web`, or `null` in `service`, which skips design.
+  - `architect` reads `design/` where it exists, since the design now comes first.
+  - Three eval cases, on a greeter web page at three points of its design: the directions waiting
+    for the pick, the screens after it, and an audit.
 
 ### Changed
 
-- Stage 3, design, is held until M2 brings design's body. Until then a UI lane goes from its spec
+- Stage 3, design, was held until M2 brought design's body. Until then a UI lane went from its spec
   on to `architect`.
-- `adopt`'s design-token extraction is held until M2 brings `design`'s body. Converting
-  repositories on an earlier template layout is held until one is adopted.
+- `adopt`'s design-token extraction is held for a later slice of M2. Converting repositories on an
+  earlier template layout is held until one is adopted.
 - `init.mjs` compares gate files without regard to line endings, so a CRLF checkout counts as the
   plugin's own.
 - `fold.mjs` runs its self-test only when run itself, not when `doctor.mjs` imports it.
 - Lane fragments reach the model through the state reader's briefs, not as internal skills
   ([issue #2](https://github.com/Yheng/Epikloop/issues/2)). `spec-delta` is the one internal skill.
 - In M1 a web story's UI evidence is a Playwright test. The screenshot per touched screen and
-  retro's full visual compare join with `design` in M2. Perf budgets are held until a project
+  retro's full visual compare join `design` later in M2. Perf budgets are held until a project
   needs them.
 - When a stack command fails and its output names `.githooks/` or `scripts/check.sh`, the gate
   runner adds a line: those ship as they are, so leave them out of what the command checks.
@@ -766,3 +786,21 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   - Each exception is the exact text the build writes, taken out of its own line before the line is
     checked. Any other network call on that line or in those files fails, and so does either call
     in any other file.
+
+### Format rules (adopted 2026-11-06)
+
+- **Stage 3 sends a project to design before its plan, or once its design has started**
+  ([issue #6](https://github.com/Yheng/Epikloop/issues/6)).
+  - In a lane with screens, a project is at stage 3 in either case:
+    - while nothing is planned and its design hasn't started
+    - while a design it has started isn't complete
+  - The design has started once it has `design/brief.md`, a direction or `design/manifest.md`. It
+    is complete once `design/tokens.css` exists, the manifest lists a screen, and every state it
+    lists has its file.
+  - On 2026-11-06, with design's body written, the settled test read "the lane has a UI and
+    `design/manifest.md` is missing". Read that way, it would have sent the first dogfood project
+    back to stage 3, a web project that is live and was planned without a design. A project planned
+    without a design now stays where it is.
+  - `audit`'s gaps are files, which a script finds. The current requirements that no screen cites
+    are listed for an audit to judge and never send a project back, so a story whose spec delta
+    adds a requirement doesn't stop a batch.

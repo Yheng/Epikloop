@@ -114,9 +114,69 @@ What should the greeting say when the name is empty? 1.1 waits on the answer.
 ## Backlog
 `
 
+// The greeter as a web page, in the web lane, for the design cases.
+const WEB_SPEC = `# Greet
+
+A web page that greets a person by name.
+
+## REQ-GREET-001 Greet by name
+
+A person types their name and sees a greeting.
+
+> "Say hello, then the name." (the brief)
+
+## REQ-GREET-002 Ask for a missing name
+
+Asked to greet without a name, the page asks for one.
+`
+
+const BRIEF = `# Greeter
+
+A one-page site for anyone who wants a friendly hello. A person types a name and sees the greeting
+at once. It should feel calm and friendly, and read well on a phone. The screens: the greeting
+page, which also asks for a name when none is given.
+`
+
+// A direction's system sheet: its custom properties, then the greeting on them.
+const direction = (title, properties) => `<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>${title}</title>
+<style>
+:root { ${properties} }
+body { margin: 0; padding: var(--space); background: var(--paper); color: var(--ink); font-family: var(--font); }
+button { background: var(--accent); color: var(--paper); border: 0; padding: var(--space); font: inherit; }
+</style>
+<h1>Hello, Ada!</h1>
+<label>Your name <input value="Ada"></label>
+<button>Greet</button>
+</html>
+`
+
+const PICKED = `# Decisions
+
+## DECISION-001 Design direction (2026-11-05)
+- Context: three directions were drawn for the greeter page.
+- Decision: design/directions/b.html, quiet ink.
+- Rejected: a.html, warm paper, and c.html, bright pop, because the page should stay calm.
+- Trade-offs: the quiet direction leans on type more than on colour.
+- Implementation note: design/tokens.css takes b.html's custom properties.
+`
+
+const QUIET = '--paper: #ffffff; --ink: #1f2328; --accent: #0f766e; --font: system-ui, sans-serif; --space: 16px;'
+
+const SCREENS = `# Screens
+
+## greet Greet
+- States: default, error
+- Requirements: REQ-GREET-001, REQ-GREET-002
+
+The one page: a name field, the greeting below it, and a request for a name when none is given.
+`
+
 // Each commit: its subject after `fixture: `, its date, and what it writes. `init` runs the plugin's
-// own setup first, as discover does; `marker` adds fields to the project marker.
-const SPECIFY = { subject: 'spec the greeter', date: '2026-10-29', init: true, files: { 'spec/greet.md': SPEC } }
+// own setup first in that lane, as discover does; `marker` adds fields to the project marker.
+const SPECIFY = { subject: 'spec the greeter', date: '2026-10-29', init: 'service', files: { 'spec/greet.md': SPEC } }
 const ARCHITECT = {
   subject: 'architect the greeter',
   date: '2026-10-30',
@@ -131,6 +191,28 @@ const PLAN = {
   marker: { mvp_frozen: '2026-10-31', hours_per_day: 2, deadline: null },
 }
 const PARK = { subject: 'park a question', date: '2026-10-31', files: { 'docs/queue.md': PARKED } }
+const WEB_SPECIFY = { subject: 'spec the greeter page', date: '2026-11-04', init: 'web', files: { 'spec/greet.md': WEB_SPEC } }
+const PICK = {
+  subject: 'pick a direction',
+  date: '2026-11-05',
+  files: {
+    'design/brief.md': BRIEF,
+    'design/directions/a.html': direction('Warm paper', '--paper: #fbf7f0; --ink: #2b2118; --accent: #b4532a; --font: Georgia, serif; --space: 18px;'),
+    'design/directions/b.html': direction('Quiet ink', QUIET),
+    'design/directions/c.html': direction('Bright pop', '--paper: #fff8d6; --ink: #24124a; --accent: #7c3aed; --font: "Trebuchet MS", sans-serif; --space: 20px;'),
+    'docs/decisions.md': PICKED,
+  },
+}
+// The design drawn but for the greeting's error state.
+const DRAW = {
+  subject: 'draw the greeting',
+  date: '2026-11-06',
+  files: {
+    'design/tokens.css': `:root { ${QUIET} }\n`,
+    'design/manifest.md': SCREENS,
+    'design/screens/greet.html': '<!doctype html>\n<html lang="en">\n<link rel="stylesheet" href="../tokens.css">\n<title>Greet</title>\n<h1>Hello, Ada!</h1>\n</html>\n',
+  },
+}
 
 export const FIXTURES = {
   // A new folder after git init, as discover expects. The run's home is itself a repository that
@@ -142,13 +224,17 @@ export const FIXTURES = {
   architected: [SPECIFY, ARCHITECT],
   planned: [SPECIFY, ARCHITECT, PLAN],
   parked: [SPECIFY, ARCHITECT, PLAN, PARK],
+  // The greeter page at stage 3: before its design, after the pick, and drawn but for one state.
+  'web-specified': [WEB_SPECIFY],
+  'web-picked': [WEB_SPECIFY, PICK],
+  'web-incomplete': [WEB_SPECIFY, PICK, DRAW],
 }
 
 // The fixtures before a batch carry the remote a new repository on GitHub gives a project: a
 // network URL that nothing has been pushed to yet, from which init.mjs reads the project id. A push
 // goes to a bare repository inside .git, where git never looks, so nothing leaves the machine. The
 // other fixtures have no remote, so the skills that run `git fetch` never reach the network.
-const REMOTE = new Set(['empty', 'specified', 'architected'])
+const REMOTE = new Set(['empty', 'specified', 'architected', 'web-specified', 'web-picked'])
 
 // ---- Building one
 
@@ -191,7 +277,7 @@ export function build(name, dir) {
     git(dir, ['config', `url.${bare}.pushInsteadOf`, url])
   }
   for (const commit of commits) {
-    if (commit.init) run(dir, process.execPath, [INIT, '--lane', 'service', '--mode', 'solo'])
+    if (commit.init) run(dir, process.execPath, [INIT, '--lane', commit.init, '--mode', 'solo'])
     for (const [file, text] of Object.entries(commit.files)) write(dir, file, text)
     if (commit.marker) addToMarker(dir, commit.marker)
     git(dir, ['add', '-A'])
@@ -307,6 +393,26 @@ async function selfTest() {
       },
     ],
     ['parked is at stage 6, with its question first', () => stage('parked', 6, '/epikloop:decide, then /epikloop:epic 1')],
+    ['web-specified is at stage 3, before its design', () => stage('web-specified', 3, '/epikloop:design')],
+    [
+      'web-picked is at stage 3, with its direction picked',
+      () => {
+        const problems = stage('web-picked', 3, '/epikloop:design')
+        const dir = path.join(temp, 'web-picked')
+        const state = readState(dir, openProject(dir).project, { home })
+        const why = 'the direction is picked, and design/tokens.css is missing'
+        return state.stage.why === why ? problems : [...problems, `web-picked waits because ${state.stage.why}`]
+      },
+    ],
+    [
+      'web-incomplete is at stage 3, with one state left to draw',
+      () => {
+        const problems = stage('web-incomplete', 3, '/epikloop:design')
+        const dir = path.join(temp, 'web-incomplete')
+        const { design } = readState(dir, openProject(dir).project, { home })
+        return design.missing.join(' ') === 'design/screens/greet.error.html' ? problems : [...problems, `web-incomplete lacks ${design.missing.join(', ')}`]
+      },
+    ],
     [
       'the fixtures before a batch carry a network remote nothing has been pushed to, and a push lands inside .git',
       () => {

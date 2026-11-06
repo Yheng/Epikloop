@@ -1,0 +1,36 @@
+schema_version: "1.1"
+name: design-audit
+description: /epikloop:design audit reports the screen state the manifest lists without its file, and changes nothing the human hasn't agreed to.
+tags: [design]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: /epikloop:design audit
+  model: claude-sonnet-5-5
+  max_turns: 15
+  timeout_seconds: 300
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: runs-the-design-script
+    type: tool_used
+    tool: Bash
+    input_match: 'state\.mjs.*--design'
+  - name: names-the-missing-state
+    type: regex
+    pattern: 'greet\.error'
+  - name: writes-nothing
+    type: tool_used
+    tool: Write
+    min: 0
+    max: 0
+  - name: edits-nothing
+    type: tool_used
+    tool: Edit
+    min: 0
+    max: 0
+  - name: commits-nothing
+    type: regex
+    target: { source: file, path: .git/logs/HEAD }
+    pattern: '\tcommit: (?!fixture: )'
+    match: not_contains

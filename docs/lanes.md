@@ -28,6 +28,8 @@ unknown lane as a problem.
 | `ui_test.tool` | `doctor` | The tool's name, as `doctor` reports it |
 | `ui_test.package` | `doctor` | The npm package a product installs it as. `doctor` reads `node_modules/<package>/package.json` for its version, without running anything |
 | `ui_test.allow` | the guard | Command prefixes the guard allows in the lane's projects |
+| `design` | the state reader and the design gallery | How the lane's screens are drawn in `design/`, or `null` for a lane without screens, which skips design |
+| `design.widths` | the state reader and the design gallery | The two widths, in pixels, each screen is drawn at, the narrow one first; `web` draws at 390 and 1280 |
 
 A field that nothing reads doesn't belong in the profile yet. Perf budgets, for example, wait for a
 project that shows the failure they would catch.

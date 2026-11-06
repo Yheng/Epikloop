@@ -44,15 +44,15 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - slice 3, closing the loop, is done: `retro`, `release`, `adopt` and `doctor`, with the
     staging smoke, stages 8–10 and `init.mjs --refresh`, which `doctor` names when a product's gate
     files differ from the plugin's
-  - stage 3, design, is held until M2 brings design's body; until then a UI lane goes on to
+  - stage 3, design, was held until M2 brought design's body; until then a UI lane went on to
     `architect`
-  - `adopt`'s token extraction joins with `design` in M2; `doctor`'s Harbor check came with
+  - `adopt`'s token extraction joins `design` later in M2; `doctor`'s Harbor check came with
     Harbor's plugin
 - the `web` and `service` lanes (done): each a profile and a fragment, whose sections the state
   reader prints into the plan, the worker's brief and the retro's brief; the guard allows the
   lane's test runner, and `doctor` reports the lanes this machine can build
   - a web story's UI evidence is a Playwright test; the screenshot per touched screen and retro's
-    full visual compare join with `design` in M2
+    full visual compare join `design` later in M2
 - the team-mode workflow and the `CLAUDE.md` template (done): `init.mjs` lays both down, and
   `plan` lays the workflow down when it records team mode
   - the check runs the pre-push gates over every commit a pull request adds
@@ -67,9 +67,10 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   with deterministic graders, on fixtures that `fixture.mjs` builds
   - `tools/evals.mjs` runs them on any system, under the contributor's own Claude Code login, a
     plan included. They run in each slice that changes model-facing text, one run each on Sonnet
-    5.5, under a $5 cap, at about $1.50 a pass at list price.
+    5.5, under a $5 cap, at about $2.50 a pass at list price since M2's design cases joined.
   - `claude plugin eval` reads the same files. Its Linux sandbox (Claude Code 2.1.316) makes the
-    run's temporary folder and `.git` read-only, so seven cases fail there for now.
+    run's temporary folder and `.git` read-only, so the cases that load a format or commit fail
+    there for now.
   - CI runs the fixture's and the runner's self-tests, which make no model call
   - chained shell commands, a watch item, aren't graded yet
 - the lane authoring guide (done: [docs/lanes.md](lanes.md))
@@ -155,14 +156,18 @@ The Bridge's review pages need design, so they stay in M4.
 
 ## M2 — Design phase
 
-- direction variants and the pick
-- all screens
-- `amend`, `add`, `audit` and `ingest`
-- the gallery
-- design references
+- **Slice 1, the design skill (done):**
+  - the brief, drawn from the spec and the design references in `design/refs/`
+  - direction variants and the pick, which a decision records
+  - all screens, each state a file, with the tokens and the manifest
+  - `amend`, `add`, `audit` and `ingest`
+  - the gallery, which a script writes from the manifest
+  - stage 3, for a project with nothing planned or a design it has started
+    ([issue #6](https://github.com/Yheng/Epikloop/issues/6))
 - with the screens as the truth: a screenshot per touched screen at story time, and retro's full
   visual compare, the web lane's
-- `adopt`'s design-token extraction
+- `adopt`'s design-token extraction, which also settles design for an adopted product. Until it
+  lands, an adopted web product goes on to `design` as a new one does.
 
 ## M3 — Speed
 

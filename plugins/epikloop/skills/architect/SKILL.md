@@ -12,8 +12,8 @@ confirmed in `.epikloop/project.json`, and each choice that closes off an altern
 to `docs/decisions.md` as a `DECISION-XXX` entry. Scope: architecture only; epics, stories and the
 MVP set belong to `plan`.
 
-Read `spec/` and `docs/decisions.md` first. Propose the stack and the lane, and write nothing until
-the human confirms both. The lanes:
+Read `spec/`, `design/` where it exists, and `docs/decisions.md` first. Propose the stack and the
+lane, and write nothing until the human confirms both. The lanes:
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --lanes`
 

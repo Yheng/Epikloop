@@ -1,8 +1,8 @@
 # Project file formats
 
-The four project files Epikloop keeps in a product repository, and how their state is read. Each
-format has an example in the core plugin's `templates/`. `scripts/state.mjs` reads these files, and
-its self-test parses the templates, so an example can't drift from the reader.
+The project files Epikloop keeps in a product repository, and how their state is read. Each format
+a script reads has an example in the core plugin's `templates/`. `scripts/state.mjs` reads these
+files, and its self-test parses the templates, so an example can't drift from the reader.
 
 A line the reader can't place is reported as `file:line what`. The SessionStart briefing names the
 first three problems under "Needs the human".
@@ -71,6 +71,56 @@ Example: [`templates/docs/decisions.md`](../plugins/epikloop/templates/docs/deci
   writes `Phase N retro`, the MVP sign-off `MVP sign-off`, and `release` `Go live`, or
   `Go live later` when production comes later. The reader finds them by title.
 - **Append-only.** The file is never edited above its last entry.
+
+## `design/`
+
+Example: [`templates/design/manifest.md`](../plugins/epikloop/templates/design/manifest.md).
+
+The product's visual truth, in a lane with screens. The lane's profile gives the two widths each
+screen is drawn at; the `service` lane skips design.
+
+- **`brief.md`** is free-form under a `#` title naming the product, which the gallery takes as its
+  own: who the product is for, the feel it aims at, its constraints and the screens it needs, drawn
+  from `spec/` and from the images in `refs/`.
+- **`refs/`** holds the images the human adds for the brief.
+- **`directions/`** holds three direction variants of the system sheet, each one self-contained HTML
+  file with its own custom properties.
+- **The pick** is a decision titled `Design direction`, whose Decision names the picked file and
+  whose Rejected names the others. A later one replaces an earlier one.
+- **`tokens.css`** holds the picked direction's custom properties on `:root`. Its arrival turns the
+  token gate on.
+- **`screens/`** holds one HTML file per state of each screen, each linking `../tokens.css`:
+  `<screen>.html` for the default state, and `<screen>.<state>.html` for `empty`, `loading` and
+  `error`.
+- **`manifest.md`** lists the screens:
+  - Each screen is a `## <screen> Title` heading. The name is lower-case letters, digits and
+    hyphens, unique in the manifest, and the name of the screen's files.
+  - The heading is followed at once by its fields:
+    - `- States:` `default`, then any of `empty`, `loading` and `error`, comma-separated
+    - `- Requirements:` the REQ IDs the screen shows, comma-separated, or `none`
+  - Free text follows: what the screen is for and how a person reaches it.
+  - A screen whose heading or fields don't read is a problem, and isn't counted.
+- **`index.html`** is the gallery, which `scripts/gallery.mjs` writes from the manifest and the
+  directions: each direction, then each state of each screen, framed at both widths.
+
+## What design reads
+
+`state.mjs --design` prints where the design stands, at any stage, and refuses a lane without
+screens.
+
+- **Where it stands.** The lane's widths, the brief and the images in `refs/`, the directions,
+  the pick or the number its decision will take, the tokens, and the manifest's screens with the
+  state files they still lack.
+- **What an audit reads.** The current requirements no screen cites; citations of requirements
+  that are retired or not in `spec/`; files in `screens/` the manifest doesn't list; and the
+  manifest's unreadable lines.
+- **Started and complete.** The design has started once it has `brief.md`, a direction or
+  `manifest.md`. It is complete once `tokens.css` exists, the manifest lists a screen, and every
+  state it lists has its file.
+- **Stage 3.** In a lane with screens, a project is at stage 3 while its design has started and
+  isn't complete, or while nothing is planned and its design hasn't started. A project planned
+  without a design stays where it is. Requirements that no screen cites never send a project
+  back.
 
 ## What is read from git
 

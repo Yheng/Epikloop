@@ -9,9 +9,10 @@
 //   node state.mjs --ids                                    the next question and decision numbers
 //   node state.mjs --retro                                  the retro's brief, or the tags it leaves
 //   node state.mjs --release                                the release's brief, or the tag it leaves
+//   node state.mjs --design                                 where the design stands, and what an audit reads
 //   node state.mjs --lane plan|story|retro                  that section of the project's lane
 //   node state.mjs --lanes                                  the lanes, with what each is for
-//   node state.mjs --example spec|stories|queue|decisions   a project file's example, its format
+//   node state.mjs --example spec|stories|queue|decisions|manifest   a project file's example, its format
 //   node state.mjs --self-test                              every case below, in throwaway repos
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -289,7 +290,7 @@ export function readLane(name) {
 // What is wrong with a lane, by its schema, or null. The self-test holds every lane to it.
 function laneProblem(lane, file) {
   if (lane === null || typeof lane !== 'object' || Array.isArray(lane)) return "doesn't read as a JSON object"
-  const fields = ['$schema', 'format', 'name', 'description', 'requires', 'ui_test', 'sections']
+  const fields = ['$schema', 'format', 'name', 'description', 'requires', 'ui_test', 'design', 'sections']
   const unknown = Object.keys(lane).filter((key) => !fields.includes(key))
   if (unknown.length > 0) return `has ${unknown.join(', ')}, which no lane field is`
   if (lane.format !== 1) return 'has an unknown format'
@@ -301,9 +302,112 @@ function laneProblem(lane, file) {
   if (ui !== null && (typeof ui?.tool !== 'string' || typeof ui.package !== 'string' || !Array.isArray(ui.allow) || !ui.allow.every(plain))) {
     return 'has a ui_test without its tool, its package and plain allow entries'
   }
+  // A lane with screens gives the two widths they are drawn at; one that skips design gives null.
+  const { design } = lane
+  const widths = design?.widths
+  const drawn =
+    typeof design === 'object' && design !== null && Object.keys(design).join() === 'widths' && Array.isArray(widths) && widths.length === 2 && widths.every((w) => Number.isInteger(w) && w > 0) && widths[0] < widths[1]
+  if (design !== null && !drawn) return 'has a design without its two widths, narrow first'
   const extra = Object.keys(lane.sections).filter((name) => !LANE_SECTIONS.includes(name))
   if (extra.length > 0) return `has ${extra.map((name) => `## ${name}`).join(', ')} in its fragment, which no brief prints`
   return null
+}
+
+// ---- The design: design/ in a lane with screens (docs/formats.md)
+
+// A screen's states: its default, and any of the other three.
+const STATES = ['default', 'empty', 'loading', 'error']
+// The file a screen's state is drawn in.
+export const stateFile = (screen, state) => `design/screens/${screen}${state === 'default' ? '' : `.${state}`}.html`
+const reqTitle = (r) => r.text.split('\n')[0].slice(`## ${r.id} `.length).trim()
+
+// design/manifest.md: each screen a `## <screen> Title`, followed at once by its States and
+// Requirements. Only the screens that read cleanly are listed; null without a manifest.
+function readManifest(root, problems) {
+  const rel = 'design/manifest.md'
+  const lines = readLines(root, rel)
+  if (lines === null) return null
+  const screens = []
+  const seen = new Map()
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!lines[i].startsWith('## ')) continue
+    const heading = /^## ([a-z0-9][a-z0-9-]*) (\S.*)$/.exec(lines[i].trim())
+    if (heading === null) {
+      problems.push(`${rel}:${i + 1}: "${lines[i]}" is not "## screen Title"`)
+      continue
+    }
+    const [, id, title] = heading
+    const line = i + 1
+    const before = problems.length
+    if (seen.has(id)) problems.push(`${rel}:${line}: ${id} is already at line ${seen.get(id)}`)
+    else seen.set(id, line)
+    const fields = {}
+    readFields(lines, i + 1, ['States', 'Requirements'], fields, (at, what) => problems.push(`${rel}:${at}: ${id} ${what}`))
+    for (const field of ['States', 'Requirements']) if (fields[field] === undefined) problems.push(`${rel}:${line}: ${id} has no ${field}`)
+    const states = fields.States === undefined ? [] : list(fields.States)
+    if (fields.States !== undefined && (!states.includes('default') || states.some((state) => !STATES.includes(state)) || new Set(states).size !== states.length)) {
+      problems.push(`${rel}:${line}: ${id}'s States are not default and any of empty, loading and error`)
+    }
+    const requirements = fields.Requirements === undefined || fields.Requirements === 'none' ? [] : list(fields.Requirements)
+    if (requirements.some((req) => !REQ.test(req))) problems.push(`${rel}:${line}: ${id}'s Requirements are not REQ IDs or none`)
+    if (problems.length === before) screens.push({ id, title, line, states: STATES.filter((state) => states.includes(state)), requirements, text: sectionAt(lines, i) })
+  }
+  return screens
+}
+
+// The design of a project whose lane has screens, or null for a lane that skips design: what
+// design/ holds and what an audit reads. It has started once it has a brief, a direction or a
+// manifest, and it is complete once it has its tokens, a screen, and a file for every state the
+// manifest lists.
+function readDesign(root, lane, requirements, decisions, problems) {
+  if (!Array.isArray(lane?.design?.widths)) return null
+  const at = (rel) => path.join(root, ...rel.split('/'))
+  const names = (rel, keep) => {
+    try {
+      return fs
+        .readdirSync(at(rel), { withFileTypes: true })
+        .filter((entry) => entry.isFile() && !entry.name.startsWith('.') && keep(entry.name))
+        .map((entry) => entry.name)
+        .sort()
+    } catch {
+      return []
+    }
+  }
+  const html = (name) => name.toLowerCase().endsWith('.html')
+  const screens = readManifest(root, problems)
+  const listed = (screens ?? []).flatMap((screen) => screen.states.map((state) => stateFile(screen.id, state)))
+  const cited = [...new Set((screens ?? []).flatMap((screen) => screen.requirements))]
+  const design = {
+    widths: lane.design.widths,
+    brief: fs.existsSync(at('design/brief.md')),
+    refs: names('design/refs', () => true),
+    directions: names('design/directions', html),
+    // A later pick replaces an earlier one.
+    pick: decisions.filter((d) => d.title === 'Design direction').at(-1),
+    tokens: fs.existsSync(at('design/tokens.css')),
+    screens,
+    missing: listed.filter((file) => !fs.existsSync(at(file))),
+    unlisted: names('design/screens', html).filter((name) => !listed.includes(`design/screens/${name}`)),
+    uncited: [...requirements.values()].filter((r) => r.status !== 'retired' && !cited.includes(r.id)),
+    strays: cited.filter((id) => (requirements.get(id)?.status ?? 'retired') === 'retired'),
+  }
+  design.started = design.brief || design.directions.length > 0 || screens !== null
+  design.complete = design.tokens && screens !== null && screens.length > 0 && design.missing.length === 0
+  return design
+}
+
+// What a design that isn't complete waits for; before it has started, the manifest it lacks.
+function designWhy(d) {
+  if (!d.started) return 'design/manifest.md is missing'
+  if (d.screens === null) {
+    if (d.pick !== undefined) return `the direction is picked, and design/${d.tokens ? 'manifest.md' : 'tokens.css'} is missing`
+    const drawn = d.directions.length
+    if (drawn > 0) return `${plural(drawn, 'direction')} in design/directions/ ${drawn === 1 ? 'waits' : 'wait'} for the human's pick`
+    return 'design/brief.md is written, and no direction is drawn yet'
+  }
+  if (d.screens.length === 0) return 'design/manifest.md lists no screens'
+  if (d.missing.length > 0) return `${plural(d.missing.length, 'state')} in design/manifest.md ${d.missing.length === 1 ? 'has' : 'have'} no file yet`
+  return 'design/tokens.css is missing'
 }
 
 // Runs one git command at the root without a shell: its output, or null when git fails. The staging
@@ -411,8 +515,10 @@ function stageOf(root, project, s, delta) {
   }
   const observed = current.filter((r) => r.status === 'observed').length
   if (observed > 0) return { n: 2, why: `${plural(observed, 'requirement')} in spec/ ${observed === 1 ? 'is' : 'are'} still observed`, next: '/epikloop:adopt' }
-  // Stage 3, design for a lane with a UI, returns with design's body in M2. Until then a UI lane
-  // goes on to architect.
+  // Stage 3: in a lane with screens, the design comes before the plan, and a design once started is
+  // finished before anything else. A project planned without one stays where it is.
+  const { design } = s
+  if (design !== null && (design.started ? !design.complete : s.stories.size === 0)) return { n: 3, why: designWhy(design), next: '/epikloop:design' }
   if (!has('spec', 'architecture.md')) return { n: 4, why: 'spec/architecture.md is missing', next: '/epikloop:architect' }
   if (s.stories.size === 0) return { n: 5, why: 'docs/stories/ holds no stories yet', next: '/epikloop:plan' }
   if (!project.mvp_frozen) return { n: 5, why: "the MVP set isn't frozen", next: '/epikloop:plan' }
@@ -531,6 +637,7 @@ export function readState(root, project, { now = Date.now(), home = os.homedir()
     const at = (readLines(root, '.epikloop/project.json') ?? []).findIndex((line) => /"lane"\s*:/.test(line)) + 1 || 1
     problems.push(`.epikloop/project.json:${at}: lane "${project.lane}" is not one of ${laneNames().join(', ')}`)
   }
+  const design = readDesign(root, lane, requirements, decisions, problems)
   for (const q of questions) {
     const answer = decisions.find((d) => d.answers === q.id)
     if (answer !== undefined) problems.push(`docs/queue.md:${q.line}: ${q.id} is already answered by ${answer.id}`)
@@ -538,7 +645,7 @@ export function readState(root, project, { now = Date.now(), home = os.homedir()
   const git = gitReader(root)
   const { branch, tags } = refsOf(git)
   const done = doneTimes(git, branch)
-  const s = { requirements, stories, questions, backlog, decisions, problems, done, tags }
+  const s = { requirements, stories, questions, backlog, decisions, problems, done, tags, design }
 
   // Queue Δ: the open entries now minus those at the start of the current phase. Until the `mvp`
   // tag, the current phase is the lowest untagged MVP epic, else the last one, so sign-off weighs
@@ -874,17 +981,67 @@ export function releaseBrief(state, project, facts) {
   }
 }
 
+// ---- What the design reads
+
+// `items` as prose: "a", "a and b", or "a, b and c".
+const prose = (items) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`)
+// The missing files the design's brief names before it counts the rest.
+const SHOWN_FILES = 10
+const decided = (d) => (/^- Decision: (.*)$/m.exec(d.text)?.[1] ?? '').trim().replace(/\.$/, '')
+
+// The design skill's brief, at any stage: the lane's widths, where the design stands, and what an
+// audit reads, which is the current requirements no screen cites, the manifest's citations that
+// aren't current, the screen files it doesn't list and its unreadable lines. A lane that skips
+// design is refused.
+export function designBrief(state, project) {
+  const d = state.design
+  if (d === null) return refuse(state.lane === null ? `Lane "${project.lane}" is not one of ${laneNames().join(', ')}.` : `The ${state.lane.name} lane skips design.`)
+  const [narrow, wide] = d.widths
+  const out = [
+    `Design for this ${state.lane.name} project: each screen is drawn at ${narrow} and ${wide} pixels wide, in its default state and any of empty, loading and error.`,
+    `Where it stands: ${d.complete ? 'the design is complete' : designWhy(d)}.`,
+    `The brief: design/brief.md is ${d.brief ? 'written' : 'missing'}; design/refs/ ${d.refs.length === 0 ? 'is empty' : `holds ${prose(d.refs)}`}.`,
+    `The directions: ${d.directions.length === 0 ? 'none in design/directions/ yet' : `${prose(d.directions)} in design/directions/`}.`,
+    d.pick === undefined ? `The pick: not recorded; it will be ${nextDecision(state)}, titled "Design direction".` : `The pick, in ${d.pick.id}: ${decided(d.pick)}.`,
+    `The tokens: design/tokens.css is ${d.tokens ? 'written' : 'missing'}.`,
+  ]
+  if (d.screens === null) out.push('The screens: design/manifest.md is missing.')
+  else {
+    const states = d.screens.reduce((sum, screen) => sum + screen.states.length, 0)
+    const shown = d.missing.slice(0, SHOWN_FILES)
+    const named = d.missing.length > shown.length ? `${shown.join(', ')} and ${d.missing.length - shown.length} more` : prose(shown)
+    const files = d.missing.length === 0 ? 'every state has its file' : `${plural(d.missing.length, 'state')} ${d.missing.length === 1 ? 'has' : 'have'} no file yet: ${named}`
+    out.push(`The screens: design/manifest.md lists ${plural(d.screens.length, 'screen')} in ${plural(states, 'state')}; ${files}.`)
+    out.push(
+      d.uncited.length === 0 ? 'Every current requirement is cited by a screen.' : `Current requirements no screen cites: ${d.uncited.map((r) => `${r.id} ${reqTitle(r)}`).join('; ')}.`,
+    )
+    if (d.strays.length > 0) out.push(`The manifest cites ${prose(d.strays)}, which ${d.strays.length === 1 ? "isn't a current requirement" : "aren't current requirements"}.`)
+  }
+  if (d.unlisted.length > 0) out.push(`design/screens/ holds ${prose(d.unlisted)}, which the manifest doesn't list.`)
+  const unread = state.problems.filter((problem) => problem.startsWith('design/manifest.md:'))
+  if (unread.length > 0) out.push('Unreadable lines:', ...unread.map((problem) => `- ${problem}`))
+  return { text: out.join('\n') }
+}
+
 const TEMPLATES = path.join(import.meta.dirname, '..', 'templates')
-const EXAMPLES = { spec: 'spec/capability.md', stories: 'docs/stories/epic.md', queue: 'docs/queue.md', decisions: 'docs/decisions.md' }
+const EXAMPLES = {
+  spec: 'spec/capability.md',
+  stories: 'docs/stories/epic.md',
+  queue: 'docs/queue.md',
+  decisions: 'docs/decisions.md',
+  manifest: 'design/manifest.md',
+}
 const USAGE =
-  'usage: node state.mjs [--ready [N | N.M] | --story N.M | --ids | --retro | --release | --lane plan|story|retro | --lanes | --example spec|stories|queue|decisions]'
-// The flags that read a project for a batch, a ceremony or a lane, each with a test of its argument.
+  'usage: node state.mjs [--ready [N | N.M] | --story N.M | --ids | --retro | --release | --design | --lane plan|story|retro | --lanes | --example spec|stories|queue|decisions|manifest]'
+// The flags that read a project for a batch, a ceremony, the design or a lane, each with a test of
+// its argument.
 const FLAGS = {
   '--ready': (arg) => arg === undefined || /^\d+(?:\.\d+)?$/.test(arg),
   '--story': (arg) => STORY.test(arg ?? ''),
   '--ids': (arg) => arg === undefined,
   '--retro': (arg) => arg === undefined,
   '--release': (arg) => arg === undefined,
+  '--design': (arg) => arg === undefined,
   '--lane': (arg) => LANE_SECTIONS.some((section) => section.toLowerCase() === arg),
 }
 
@@ -922,6 +1079,11 @@ function cli(argv) {
       }
       const section = LANE_SECTIONS.find((each) => each.toLowerCase() === name)
       return console.log(state.lane.sections[section] ?? `The ${state.lane.name} lane adds nothing here.`)
+    }
+    if (flag === '--design') {
+      const brief = designBrief(state, opened.project)
+      if (brief.fails) process.exitCode = 1
+      return console.log(brief.text)
     }
     const facts = batchFacts(opened.root)
     if (flag === '--retro' || flag === '--release') {
@@ -978,12 +1140,21 @@ function decisionsFile(titles) {
   return `# Decisions\n\n${titles.map(entry).join('\n')}`
 }
 
+const APP_SPEC = '# App\n\nWhat it is.\n\n## REQ-APP-001 It works\n\nIt works.\n'
+// A complete design for the app: its tokens, and one screen in its one state.
+const DESIGNED = {
+  'design/tokens.css': ':root { --ink: #222; }\n',
+  'design/manifest.md': '# Screens\n\n## home Home\n- States: default\n- Requirements: REQ-APP-001\n\nThe first screen.\n',
+  'design/screens/home.html': '<!doctype html>\n<link rel="stylesheet" href="../tokens.css">\n',
+}
+const DIRECTIONS = { 'design/directions/a.html': '<!doctype html>\n', 'design/directions/b.html': '<!doctype html>\n', 'design/directions/c.html': '<!doctype html>\n' }
+
 // A project past stage 5, with `epics` as { n: stories } for epicFile.
 function planned(epics, queue) {
   const files = {
-    'spec/app.md': '# App\n\nWhat it is.\n\n## REQ-APP-001 It works\n\nIt works.\n',
+    'spec/app.md': APP_SPEC,
     'spec/architecture.md': '# Architecture\n',
-    'design/manifest.md': '# Screens\n',
+    ...DESIGNED,
     'docs/queue.md': queueFile(queue),
   }
   for (const [n, stories] of Object.entries(epics)) files[`docs/stories/${n}-epic.md`] = epicFile(Number(n), stories)
@@ -999,11 +1170,14 @@ const CASES = [
         'docs/stories/3-checkout.md': k.template('docs/stories/epic.md'),
         'docs/queue.md': k.template('docs/queue.md'),
         'docs/decisions.md': k.template('docs/decisions.md'),
+        'design/manifest.md': k.template('design/manifest.md'),
       })
       const s = k.read(dir)
       const story = (id) => s.stories.get(id)
+      const screens = s.design?.screens?.map((screen) => `${screen.id}:${screen.states.join('/')}:${screen.requirements.join('/')}`).join(' ')
       return k.expect([
         [s.problems.join(' | '), ''],
+        [screens, 'cart:default/empty/loading/error:REQ-CHECKOUT-002 sign-in:default/error:REQ-CHECKOUT-001'],
         [[...s.requirements.values()].map((r) => `${r.id} ${r.status}`).join(', '), 'REQ-CHECKOUT-001 current, REQ-CHECKOUT-002 observed, REQ-CHECKOUT-003 retired'],
         [[...s.stories.keys()].join(' '), '3.1 3.2 3.3'],
         [`${story('3.1').tier} ${story('3.2').tier} ${story('3.3').tier}`, 'T1 T3 T2'],
@@ -1114,12 +1288,168 @@ const CASES = [
     },
   ],
   [
-    'a UI lane goes on to architect until design arrives in M2',
+    'stage 3: a UI lane designs before its plan, and finishes a design once it has started',
     (k) => {
-      const files = planned({ 1: [[1, 'T1', true]] })
-      delete files['design/manifest.md']
-      delete files['spec/architecture.md']
-      return k.stage(k.repo(files), '4 spec/architecture.md is missing → /epikloop:architect')
+      const spec = { 'spec/app.md': APP_SPEC }
+      const brief = { ...spec, 'design/brief.md': '# App\n' }
+      const drawn = { ...brief, ...DIRECTIONS }
+      const picked = { ...drawn, 'docs/decisions.md': decisionsFile(['Design direction']) }
+      const tokens = { ...picked, 'design/tokens.css': DESIGNED['design/tokens.css'] }
+      const listed = { ...tokens, 'design/manifest.md': '# Screens\n' }
+      const half = { ...tokens, 'design/manifest.md': '# Screens\n\n## home Home\n- States: default, error\n- Requirements: REQ-APP-001\n', 'design/screens/home.html': '' }
+      const whole = { ...half, 'design/screens/home.error.html': '' }
+      const untokened = { ...whole }
+      delete untokened['design/tokens.css']
+      const at = (files, wanted) => k.stage(k.repo(files), wanted)
+      return [
+        ...at(spec, '3 design/manifest.md is missing → /epikloop:design'),
+        ...at(brief, '3 design/brief.md is written, and no direction is drawn yet → /epikloop:design'),
+        ...at(drawn, "3 3 directions in design/directions/ wait for the human's pick → /epikloop:design"),
+        ...at({ ...brief, 'design/directions/a.html': '' }, "3 1 direction in design/directions/ waits for the human's pick → /epikloop:design"),
+        ...at(picked, '3 the direction is picked, and design/tokens.css is missing → /epikloop:design'),
+        ...at(tokens, '3 the direction is picked, and design/manifest.md is missing → /epikloop:design'),
+        ...at(listed, '3 design/manifest.md lists no screens → /epikloop:design'),
+        ...at(half, '3 1 state in design/manifest.md has no file yet → /epikloop:design'),
+        ...at(untokened, '3 design/tokens.css is missing → /epikloop:design'),
+        ...at(whole, '4 spec/architecture.md is missing → /epikloop:architect'),
+      ]
+    },
+  ],
+  [
+    'stage 3 leaves a project planned without a design where it is, and the service lane skips design',
+    (k) => {
+      const bare = planned({ 1: [[1, 'T1', true]] })
+      for (const file of Object.keys(DESIGNED)) delete bare[file]
+      const spec = { 'spec/app.md': APP_SPEC }
+      return [
+        ...k.stage(k.repo(bare), '6 epic 1 has 1 MVP story left → /epikloop:epic 1'),
+        ...k.stage(k.repo({ ...bare, 'design/brief.md': '# App\n' }), '3 design/brief.md is written, and no direction is drawn yet → /epikloop:design'),
+        ...k.stage(k.repo({ ...bare, 'design/manifest.md': DESIGNED['design/manifest.md'] }), '3 1 state in design/manifest.md has no file yet → /epikloop:design'),
+        ...k.stage(k.repo(spec, { marker: { lane: 'service' } }), '4 spec/architecture.md is missing → /epikloop:architect'),
+        ...k.stage(k.repo({ ...spec, 'design/brief.md': '# App\n' }, { marker: { lane: 'service' } }), '4 spec/architecture.md is missing → /epikloop:architect'),
+      ]
+    },
+  ],
+  [
+    "the manifest's malformed lines are problems, with file and line",
+    (k) => {
+      const dir = k.folder({
+        'spec/app.md': APP_SPEC,
+        'design/manifest.md': [
+          '# Screens',
+          '',
+          '## Home page',
+          '## cart',
+          '## list List',
+          '- Requirements: none',
+          '## form Form',
+          '- States: empty, error',
+          '- Requirements: auth',
+          '## grid Grid',
+          '- States: default, hover',
+          '- Requirements: REQ-APP-001',
+          '## menu Menu',
+          '- States: default',
+          '- States: default, error',
+          '- Requirements: none',
+          '## list Again',
+          '- States: default',
+          '- Requirements: none',
+          '',
+        ].join('\n'),
+      })
+      return k.contains(k.read(dir).problems, [
+        'design/manifest.md:3: "## Home page" is not "## screen Title"',
+        'design/manifest.md:4: "## cart" is not "## screen Title"',
+        'design/manifest.md:5: list has no States',
+        "design/manifest.md:7: form's States are not default and any of empty, loading and error",
+        "design/manifest.md:7: form's Requirements are not REQ IDs or none",
+        "design/manifest.md:10: grid's States are not default and any of empty, loading and error",
+        'design/manifest.md:15: menu has a second States',
+        'design/manifest.md:17: list is already at line 5',
+      ])
+    },
+  ],
+  [
+    '--design prints where the design stands and what an audit reads, and a lane that skips design says so',
+    (k) => {
+      const spec = { 'spec/app.md': `${APP_SPEC}\n## REQ-APP-002 It helps\n\nIt helps.\n\n## REQ-APP-003 It went\nStatus: retired\n\nGone.\n` }
+      const fresh = k.repo({ ...spec, 'design/refs/mood.png': 'png' })
+      const waiting = k.repo({ ...spec, 'design/brief.md': '# App\n', ...DIRECTIONS, 'docs/decisions.md': decisionsFile(['No dependencies']) })
+      const audited = k.repo({
+        ...spec,
+        'design/brief.md': '# App\n',
+        ...DIRECTIONS,
+        // A later pick replaces an earlier one.
+        'docs/decisions.md': decisionsFile(['Design direction', 'Design direction']),
+        'design/tokens.css': ':root {}\n',
+        'design/manifest.md': '# Screens\n\n## home Home\n- States: default, error\n- Requirements: REQ-APP-001, REQ-APP-003, REQ-APP-009\n\n## list List\n- Requirements: none\n',
+        'design/screens/home.html': '',
+        'design/screens/home.error.html': '',
+        'design/screens/old.html': '',
+      })
+      const screens = ['a', 'b', 'c'].map((id) => `## ${id} ${id.toUpperCase()}\n- States: default, empty, loading, error\n- Requirements: none\n`)
+      const unbuilt = k.repo({ ...spec, 'design/tokens.css': DESIGNED['design/tokens.css'], 'design/manifest.md': `# Screens\n\n${screens.join('\n')}` })
+      const missing = ['a', 'b', 'c'].flatMap((id) => ['', '.empty', '.loading', '.error'].map((state) => `design/screens/${id}${state}.html`))
+      const service = k.repo(spec, { marker: { lane: 'service' } })
+      const unknown = k.repo(spec, { marker: { lane: 'desktop' } })
+      const head = 'Design for this web project: each screen is drawn at 390 and 1280 pixels wide, in its default state and any of empty, loading and error.'
+      const lines = (...all) => `0 ${[head, ...all].join('\n')}\n`
+      return k.expect([
+        [
+          k.run(fresh, '--design'),
+          lines(
+            'Where it stands: design/manifest.md is missing.',
+            'The brief: design/brief.md is missing; design/refs/ holds mood.png.',
+            'The directions: none in design/directions/ yet.',
+            'The pick: not recorded; it will be DECISION-001, titled "Design direction".',
+            'The tokens: design/tokens.css is missing.',
+            'The screens: design/manifest.md is missing.',
+          ),
+        ],
+        [
+          k.run(waiting, '--design'),
+          lines(
+            "Where it stands: 3 directions in design/directions/ wait for the human's pick.",
+            'The brief: design/brief.md is written; design/refs/ is empty.',
+            'The directions: a.html, b.html and c.html in design/directions/.',
+            'The pick: not recorded; it will be DECISION-002, titled "Design direction".',
+            'The tokens: design/tokens.css is missing.',
+            'The screens: design/manifest.md is missing.',
+          ),
+        ],
+        [
+          k.run(audited, '--design'),
+          lines(
+            'Where it stands: the design is complete.',
+            'The brief: design/brief.md is written; design/refs/ is empty.',
+            'The directions: a.html, b.html and c.html in design/directions/.',
+            'The pick, in DECISION-002: d.',
+            'The tokens: design/tokens.css is written.',
+            'The screens: design/manifest.md lists 1 screen in 2 states; every state has its file.',
+            'Current requirements no screen cites: REQ-APP-002 It helps.',
+            "The manifest cites REQ-APP-003 and REQ-APP-009, which aren't current requirements.",
+            "design/screens/ holds old.html, which the manifest doesn't list.",
+            'Unreadable lines:',
+            '- design/manifest.md:7: list has no States',
+          ),
+        ],
+        [
+          k.run(unbuilt, '--design'),
+          lines(
+            'Where it stands: 12 states in design/manifest.md have no file yet.',
+            'The brief: design/brief.md is missing; design/refs/ is empty.',
+            'The directions: none in design/directions/ yet.',
+            'The pick: not recorded; it will be DECISION-001, titled "Design direction".',
+            'The tokens: design/tokens.css is written.',
+            `The screens: design/manifest.md lists 3 screens in 12 states; 12 states have no file yet: ${missing.slice(0, 10).join(', ')} and 2 more.`,
+            'Current requirements no screen cites: REQ-APP-001 It works; REQ-APP-002 It helps.',
+          ),
+        ],
+        [k.run(service, '--design'), '1 The service lane skips design.\n'],
+        [k.run(unknown, '--design'), '1 Lane "desktop" is not one of service, web.\n'],
+        [k.run(fresh, '--design', 'audit'), `1 ${USAGE}\n`],
+      ])
     },
   ],
   [
@@ -1665,9 +1995,15 @@ const CASES = [
     (k) => {
       const names = laneNames()
       const problems = names.map((name) => [name, laneProblem(readLane(name), name)]).filter(([, problem]) => problem !== null)
-      const good = { format: 1, name: 'x', description: 'a kind of product', requires: ['npx'], ui_test: { tool: 'T', package: 'p', allow: ['npx t run'] }, sections: { Plan: 'p' } }
+      const good = { format: 1, name: 'x', description: 'a kind of product', requires: ['npx'], ui_test: { tool: 'T', package: 'p', allow: ['npx t run'] }, design: { widths: [390, 1280] }, sections: { Plan: 'p' } }
+      const widths = 'has a design without its two widths, narrow first'
       const bad = [
         [{ ...good, name: 'y' }, 'is named "y", not x'],
+        [{ ...good, design: undefined }, widths],
+        [{ ...good, design: { widths: [1280, 390] } }, widths],
+        [{ ...good, design: { widths: [390] } }, widths],
+        [{ ...good, design: { widths: [390.5, 1280] } }, widths],
+        [{ ...good, design: { widths: [390, 1280], heights: [844] } }, widths],
         [{ ...good, ui_test: { ...good.ui_test, allow: ['npx t run; curl x'] } }, 'has a ui_test without its tool, its package and plain allow entries'],
         [{ ...good, requires: ['NPX'] }, "has requires that aren't program names"],
         [{ ...good, sections: { Deploy: 'd' } }, 'has ## Deploy in its fragment, which no brief prints'],
@@ -1679,7 +2015,10 @@ const CASES = [
           [names.join(' '), 'service web'],
           [Object.keys(readLane('web').sections).join(' '), 'Plan Story Retro'],
           [Object.keys(readLane('service').sections).join(' '), 'Plan Story'],
+          [JSON.stringify(readLane('web').design), '{"widths":[390,1280]}'],
+          [readLane('service').design, null],
           [laneProblem(good, 'x'), null],
+          [laneProblem({ ...good, design: null }, 'x'), null],
           ...bad.map(([lane, wanted]) => [laneProblem(lane, 'x'), wanted]),
           // A name that climbs out of lanes/ to a JSON file that exists is still no lane.
           [readLane('../schemas/examples/project'), null],

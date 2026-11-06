@@ -4,7 +4,7 @@
   "title": "Epikloop lane",
   "description": "A lane profile, plugins/epikloop/lanes/<name>.json. Its fragment, lanes/<name>.md, holds Plan, Story and Retro sections, which the state reader prints into the plan, a story-worker's brief and the retro's brief. See docs/lanes.md.",
   "type": "object",
-  "required": ["format", "name", "description", "requires", "ui_test"],
+  "required": ["format", "name", "description", "requires", "ui_test", "design"],
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
@@ -45,6 +45,26 @@
               "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._/:=+,-]*$" },
               "uniqueItems": true,
               "description": "Command prefixes the guard allows in this lane's projects, each followed only by plain arguments. Never a command that fetches."
+            }
+          }
+        }
+      ]
+    },
+    "design": {
+      "description": "How the lane's screens are drawn in design/, or null for a lane that skips design. The state reader and the gallery read it.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["widths"],
+          "additionalProperties": false,
+          "properties": {
+            "widths": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 1 },
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "The two widths, in pixels, each screen is drawn at, the narrow one first."
             }
           }
         }

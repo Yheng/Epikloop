@@ -11,8 +11,8 @@ YOUR MACHINE                          PRODUCT REPO (what a teammate clones)     
 ───────────────────────────────       ──────────────────────────────────────      ────────────────────────
 epikloop plugin (user scope)          .epikloop/project.json                      origin/main
   skills/  agents/  hooks/            spec/<capability>.md, spec/architecture.md    (staging deploys from
-  scripts/  lanes/  templates/        design/ (brief, directions/, screens/,          main via the host's
-                                               tokens.css, manifest.md)             git deploy)
+  scripts/  lanes/  templates/        design/ (brief, refs/, directions/, screens/,   main via the host's
+                                               tokens.css, manifest.md, index.html) git deploy)
 ~/.epikloop/                          docs/stories/, docs/decisions.md,
   events/         append-only log            docs/queue.md                         team mode only:
   projects/<id>/  cost rows, state    scripts/check.sh + .githooks/                  .github/workflows/check.yml
@@ -340,17 +340,19 @@ A lane is a profile inside the core plugin: `lanes/<name>.json`, plus an optiona
 
 - how UI is verified
   - `web`: a Playwright test for each acceptance criterion a person sees; the screenshot per
-    touched screen joins with design in M2
+    touched screen joins later in M2
   - Maestro or a Flutter integration test in the mobile lanes
   - contract tests for `service`
 - how staging works: a host's git-deploy URL, an EAS preview, TestFlight or the Play internal
   track, or a service URL
-- how visual truth is stored and gated, and the perf budgets, once a lane needs them
+- the two widths each screen is drawn at in `design/`, or none for a lane that skips design
+- how visual truth is gated, and the perf budgets, once a lane needs them
 
 The pieces work like this:
 
-- **The profile** is data, and code reads each field. `doctor` reads `requires`, and the guard
-  reads the UI test tool's `allow` prefixes.
+- **The profile** is data, and code reads each field. `doctor` reads `requires`, the guard reads
+  the UI test tool's `allow` prefixes, and the state reader and the design gallery read `design`'s
+  widths.
 - **The fragment** holds `Plan`, `Story` and `Retro` sections. The state reader prints the active
   lane's sections into plan's injection, each story-worker's brief and the retro's brief.
   - Nothing loads until it is used, and skills never name a lane.
@@ -369,7 +371,7 @@ Native iOS and Android are community lanes. Contributors add lanes without touch
 | `/epikloop` | The front door: sync, detect the stage, fuel gauge, what needs you, recommend, launch on "go". The only command to remember. | low | user, Claude |
 | `/epikloop:doctor` | Verify the install and the machine; `--check` runs the gates. | low | user, Claude |
 | `/epikloop:discover` | Greenfield: an interview, or a pasted brief with only the gaps asked. Writes `spec/`. | xhigh | user, Claude |
-| `/epikloop:adopt` | Brownfield: observed spec and architecture, gate config, confirmation batch; extracted tokens with `design` in M2. | xhigh | user, Claude |
+| `/epikloop:adopt` | Brownfield: observed spec and architecture, gate config, confirmation batch; extracted tokens later in M2. | xhigh | user, Claude |
 | `/epikloop:design` | Three directions → pick → every screen as HTML, tokens, manifest, gallery; `amend`, `add`, `audit`, `ingest`. | high | user, Claude |
 | `/epikloop:architect` | Stack, schema as code, API contract, pre-mortem, `spec/architecture.md`, lane confirmation. | max | user, Claude |
 | `/epikloop:plan` | Epics, tiered stories with requirement IDs and spec deltas, the frozen MVP set; `--extend` for later work. | high | user, Claude |
@@ -433,8 +435,13 @@ next step is the first one that fails, so the answer is the same after lunch or 
 
 1. Not a project → new product or existing code? → `discover` or `adopt`
 2. `spec/` missing, or `observed` requirements unconfirmed → finish `discover` or `adopt`
-3. The lane has a UI and `design/manifest.md` is missing, or `audit` reports gaps → `design`
-   (from M2, with design's body; until then a UI lane goes on to `architect`)
+3. The lane has screens, and the design has started but isn't complete, or nothing is planned
+   and it hasn't started → `design` ([issue #6](https://github.com/Yheng/Epikloop/issues/6))
+   - It has started once it has `design/brief.md`, a direction or `design/manifest.md`. It is
+     complete once `design/tokens.css` exists, and every screen state the manifest lists has its
+     file.
+   - A project planned without a design stays where it is. Requirements that no screen cites are
+     for `audit` to judge, and never send a project back.
 4. `spec/architecture.md` missing → `architect`
 5. No stories, or the MVP set isn't frozen → `plan`
 6. The current phase has unticked MVP stories → `epic N`, or `decide` first when a question
@@ -470,8 +477,10 @@ then the tags, so placing a tag is the script's call, not the model's.
 - A product's `CLAUDE.md` stays under 200 lines, with project rules only; the protocol arrives by
   hook.
 - Each story takes one screenshot per touched screen, and the full visual compare runs once per
-  epic. Both come with design in M2. Until then a web story's UI evidence is a Playwright test, and
-  only the specs it touched run per story.
+  epic. Both come later in M2. Until then a web story's UI evidence is a Playwright test, and only
+  the specs it touched run per story.
+- The design gallery is written by a script from the manifest, so the model never writes or
+  rewrites it.
 - Cost rows per story are the tuning instrument: model, effort, wall time and, when available,
   dollars. The first retro of each dogfood project reviews them.
 
@@ -538,12 +547,12 @@ name and docs don't use it.
 |---|---|---|
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
-| `plugins/epikloop/skills/` | Sixteen skills, with bodies for all but `design` | now, M2 |
+| `plugins/epikloop/skills/` | Sixteen skills, each with its body | now |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke, doctor and Harbor's switch | now |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke, doctor, the design gallery and Harbor's switch | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
-| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, an example of each project file in `spec/` and `docs/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
+| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, an example of each project file in `spec/`, `docs/` and `design/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
 | `plugins/epikloop/evals/` | The eval suite, inside the plugin where `claude plugin eval` reads it: a folder per case, and `fixture.mjs`, which builds the fixture project each case starts in | now |
 | `plugins/epikloop-harbor/` | Harbor's build, copied from where Harbor is built: `harbor.mjs` and `client/`; and its start-of-session hook, in `hooks/` and `scripts/session.mjs` | now |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |

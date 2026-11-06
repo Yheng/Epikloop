@@ -10,6 +10,7 @@ const SMOKE = `${SCRIPTS}smoke.mjs`
 const DOCTOR = `${SCRIPTS}doctor.mjs`
 const FOLD = `${SCRIPTS}fold.mjs`
 const SWITCH = `${SCRIPTS}switch.mjs`
+const GALLERY = `${SCRIPTS}gallery.mjs`
 const SESSION = 'plugins/epikloop-harbor/scripts/session.mjs'
 const RUNNER = 'plugins/epikloop/templates/githooks/check.mjs'
 const WORKFLOW = 'plugins/epikloop/templates/github/workflows/check.yml'
@@ -159,6 +160,38 @@ export const MUTATIONS = [
   m(STATE, ['state'], 'accept any allow entry', "const plain = (entry) => typeof entry === 'string' && /^[A-Za-z0-9][A-Za-z0-9 ._/:=+,-]*$/.test(entry)", "const plain = (entry) => typeof entry === 'string'"),
   m(STATE, ['state'], 'read a lane by any name', "if (typeof name !== 'string' || !LANE_NAME.test(name)) return null", "if (typeof name !== 'string') return null"),
   m(STATE, ['state'], 'do nothing when run through a link', "if (fs.realpathSync.native(path.resolve(process.argv[1] ?? '.')) === fs.realpathSync.native(import.meta.filename)) {", "if (path.resolve(process.argv[1] ?? '') === import.meta.filename) {"),
+  m(STATE, ['state'], 'accept a lane without its design', 'if (design !== null && !drawn) return', 'if (design !== null && design !== undefined && !drawn) return'),
+  m(STATE, ['state'], 'accept the widths in either order', ' && widths[0] < widths[1]\n', '\n'),
+
+  // The state reader: the design.
+  m(STATE, ['state', 'brief'], 'skip stage 3', "if (design !== null && (design.started ? !design.complete : s.stories.size === 0)) return { n: 3,", 'if (false) return { n: 3,'),
+  m(STATE, ['state', 'brief'], 'send a project planned without a design to stage 3', '(design.started ? !design.complete : s.stories.size === 0)', '(design.started ? !design.complete : true)'),
+  m(STATE, ['state'], 'leave a started design for the plan', '(design.started ? !design.complete : s.stories.size === 0)', '(!design.started && s.stories.size === 0)'),
+  m(STATE, ['state'], 'count a design complete without its tokens', 'design.complete = design.tokens && screens !== null', 'design.complete = screens !== null'),
+  m(STATE, ['state'], 'count a design complete with a state missing', ' && screens.length > 0 && design.missing.length === 0\n', ' && screens.length > 0\n'),
+  m(STATE, ['state'], 'count a manifest without screens complete', ' && screens.length > 0 && design.missing', ' && design.missing'),
+  m(STATE, ['state'], 'look for the default state in a file of its own', "${state === 'default' ? '' : `.${state}`}.html", '.${state}.html'),
+  m(STATE, ['state'], 'list a screen that reads badly', 'if (problems.length === before) screens.push(', 'screens.push('),
+  m(STATE, ['state'], 'accept any states', ' || states.some((state) => !STATES.includes(state))', ''),
+  m(STATE, ['state'], 'accept States without default', "(!states.includes('default') || ", '('),
+  m(STATE, ['state'], 'drop the repeated-screen problem', 'if (seen.has(id)) problems.push(', 'if (false) problems.push('),
+  m(STATE, ['state'], 'let the first pick stand over a later one', "pick: decisions.filter((d) => d.title === 'Design direction').at(-1),", "pick: decisions.filter((d) => d.title === 'Design direction').at(0),"),
+  m(STATE, ['state'], 'take retired requirements as current citations', "(requirements.get(id)?.status ?? 'retired') === 'retired'", 'requirements.get(id) === undefined'),
+  m(STATE, ['state'], 'list retired requirements as uncited', "r.status !== 'retired' && !cited.includes(r.id)", '!cited.includes(r.id)'),
+  m(STATE, ['state'], 'name every missing file', 'const SHOWN_FILES = 10', 'const SHOWN_FILES = 100'),
+  m(STATE, ['state'], "leave the manifest's unreadable lines out of --design", "  if (unread.length > 0) out.push('Unreadable lines:',", "  if (false) out.push('Unreadable lines:',"),
+  m(STATE, ['state'], 'give a lane that skips design a design', 'if (!Array.isArray(lane?.design?.widths)) return null', 'if (lane === null) return null'),
+
+  // The gallery.
+  m(GALLERY, ['gallery'], "leave the project's text unescaped", 'const escape = (text) => String(text).replace(', 'const escape = (text) => String(text) || String(text).replace('),
+  m(GALLERY, ['gallery'], 'frame both widths at the narrow one', '${frame(src, wide, HEIGHTS[1], label, present)}', '${frame(src, narrow, HEIGHTS[0], label, present)}'),
+  m(GALLERY, ['gallery'], 'frame a file that is missing', 'if (!present) return', 'if (false) return'),
+  m(GALLERY, ['gallery'], "show only a screen's first state", 'for (const state of screen.states) {', 'for (const state of screen.states.slice(0, 1)) {'),
+  m(GALLERY, ['gallery'], 'stamp the page with the time', `'<meta charset="utf-8">',`, '`<meta charset="utf-8"><meta name="written" content="${process.hrtime.bigint()}">`,'),
+  m(GALLERY, ['gallery'], "find the pick anywhere in the decision's text", "const decision = d.pick === undefined ? '' : (/^- Decision: (.*)$/m.exec(d.pick.text)?.[1] ?? '')", "const decision = d.pick?.text ?? ''"),
+  m(GALLERY, ['gallery'], "leave a direction's file name unencoded", 'const src = `directions/${encodeURIComponent(name)}`', 'const src = `directions/${name}`'),
+  m(GALLERY, ['gallery'], 'scale a frame by its width', 'const scale = SHOWN / height', 'const scale = SHOWN / width'),
+  m(GALLERY, ['gallery'], 'write a gallery for a lane that skips design', 'if (state.design === null) return { code: 1,', 'if (false) return { code: 1,'),
 
   // The staging smoke.
   m(SMOKE, ['smoke'], 'accept any answer', '  if (status < 200 || status >= 300) return console.log(answered)\n', ''),
@@ -243,7 +276,7 @@ export const MUTATIONS = [
 
   // The eval suite's fixture project.
   m(FIXTURE, ['fixture'], 'plan without freezing the MVP', "marker: { mvp_frozen: '2026-10-31', hours_per_day: 2, deadline: null },", 'marker: { hours_per_day: 2, deadline: null },'),
-  m(FIXTURE, ['fixture'], 'spec the greeter without its requirement', '## REQ-GREET-001 Greet by name', '## Greet by name'),
+  m(FIXTURE, ['fixture'], 'spec the greeter without its requirement', '## REQ-GREET-001 Greet by name\n\nThe tool greets', '## Greet by name\n\nThe tool greets'),
   m(FIXTURE, ['fixture'], 'drop a fixture a case builds', '  parked: [SPECIFY, ARCHITECT, PLAN, PARK],\n', ''),
   m(FIXTURE, ['fixture'], 'give the empty fixture a commit', '  empty: [],', '  empty: [SPECIFY],'),
   m(FIXTURE, ['fixture'], 'build over a folder that has files in it', '  if (fs.readdirSync(dir).length > 0) throw new Error(', '  if (false) throw new Error('),
@@ -254,6 +287,9 @@ export const MUTATIONS = [
   m(FIXTURE, ['fixture'], 'build the fixtures before a batch without a remote', '  if (REMOTE.has(name)) {', '  if (false) {'),
   m(FIXTURE, ['fixture'], 'give every fixture a remote', '  if (REMOTE.has(name)) {', '  if (true) {'),
   m(FIXTURE, ['fixture'], 'push to the network URL', "    git(dir, ['config', `url.${bare}.pushInsteadOf`, url])\n", ''),
+  m(FIXTURE, ['fixture'], 'set every fixture up in the service lane', "[INIT, '--lane', commit.init, '--mode', 'solo']", "[INIT, '--lane', 'service', '--mode', 'solo']"),
+  m(FIXTURE, ['fixture'], 'leave the pick out of web-picked', "    'docs/decisions.md': PICKED,\n", ''),
+  m(FIXTURE, ['fixture'], 'draw every state of web-incomplete', "  'web-incomplete': [WEB_SPECIFY, PICK, DRAW],", "  'web-incomplete': [WEB_SPECIFY, PICK, DRAW, { subject: 'draw the error', date: '2026-11-06', files: { 'design/screens/greet.error.html': '' } }],"),
 
   // The eval suite's runner.
   m(EVALS, ['evals'], 'take not_contains for contains', 'return { ok: found === 0,', 'return { ok: found > 0,'),

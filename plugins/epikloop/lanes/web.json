@@ -8,5 +8,8 @@
     "tool": "Playwright",
     "package": "@playwright/test",
     "allow": ["npx playwright test"]
+  },
+  "design": {
+    "widths": [390, 1280]
   }
 }

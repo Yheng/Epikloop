@@ -19,14 +19,14 @@ This is the tool, not a product built with it.
   `scripts/check.sh`, `.githooks/`) appear here only as templates and eval fixtures.
 - This repository's own `docs/` is documentation about Epikloop.
 
-Every skill has its body except `design` (M2), which has frontmatter and a purpose paragraph only,
-and so does the worker. The git guard, the emitter, the gate runner, the SessionStart briefing,
-project setup, the state reader, the staging smoke, `doctor`, the project file formats, the `web`
-and `service` lanes, the team-mode workflow, the product `CLAUDE.md` template and Harbor's plugin
-are in place. CI checks this repository's laws, lint among them, and the self-tests'
-mutations, and the eval suite runs on a contributor's machine. M1 is done when Harbor's own web app
-has been built with Epikloop and an existing production repo adopted, each end to end
-(`docs/roadmap.md`).
+Every skill has its body, and so does the worker. The git guard, the emitter, the gate runner, the
+SessionStart briefing, project setup, the state reader, the staging smoke, `doctor`, the design
+gallery, the project file formats, the `web` and `service` lanes, the team-mode workflow, the
+product `CLAUDE.md` template and Harbor's plugin are in place. CI checks this repository's laws,
+lint among them, and the self-tests' mutations, and the eval suite runs on a contributor's machine.
+M1 is done when Harbor's own web app has been built with Epikloop and an existing production repo
+adopted, each end to end (`docs/roadmap.md`). M2's first slice, the design skill, is in; the
+screens as the truth at story and retro time, and `adopt`'s design tokens, come next.
 
 ## Map
 
@@ -46,16 +46,19 @@ has been built with Epikloop and an existing production repo adopted, each end t
     for the session that set the project up; `--refresh` brings a project's gate files up to the
     plugin's
   - `scripts/state.mjs` — reads the project files and git into the stage and the fuel gauge, and
-    prints the briefs a batch, a retro and a release read, with its self-test; the briefing imports
-    it
+    prints the briefs a batch, a retro, a release and the design read, with its self-test; the
+    briefing imports it
   - `scripts/smoke.mjs` — the staging smoke that `retro` and `release` run, with its self-test
   - `scripts/doctor.mjs` — the machine check behind `doctor`, which also folds the emitter's
     files, with its self-test
   - `scripts/switch.mjs` — Harbor's switch behind `/epikloop:harbor`, with its self-test: sets
     the flag in `~/.epikloop/config.json`, then starts or opens Harbor from the folder
     `~/.epikloop/harbor.json` names
-  - `templates/spec/` and `templates/docs/` — an example of each project file, in the formats
-    `docs/formats.md` defines; the state reader's self-test parses them
+  - `scripts/gallery.mjs` — writes a project's design gallery, `design/index.html`, from its
+    manifest and directions, with its self-test
+  - `templates/spec/`, `templates/docs/` and `templates/design/` — an example of each project file
+    a script reads, in the formats `docs/formats.md` defines; the state reader's self-test parses
+    them
   - `scripts/fold.mjs` — folds the emitter's files into `.jsonl` files, with its self-test
   - `templates/githooks/check.mjs` — the gate runner, which product repos carry as
     `.githooks/check.mjs`, with its self-test. Beside it are `templates/githooks/pre-commit` and
@@ -171,6 +174,7 @@ node plugins/epikloop/scripts/state.mjs --self-test
 node plugins/epikloop/scripts/smoke.mjs --self-test
 node plugins/epikloop/scripts/doctor.mjs --self-test
 node plugins/epikloop/scripts/switch.mjs --self-test
+node plugins/epikloop/scripts/gallery.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/scripts/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
@@ -208,6 +212,9 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - It also runs the batch's and the ceremonies' commands there: the ready list against branches,
     a bare remote and a team-mode review; a worker's exact brief; and the retro's and the release's
     briefs and tags, with the release's `Go live later` record and a release that still waits.
+  - It reads stage 3 at each point of a design, from no design to a complete one, for a project
+    planned without one and for the service lane. It holds the manifest to its format, and checks
+    `--design` before and after the pick, with an audit's findings and the missing files it names.
   - It holds every lane file to its format, and checks `--lanes`, `--lane` and an unknown lane.
 - **The smoke's self-test** smokes a server on 127.0.0.1: answers, redirects, a timeout, a closed
   port, the marker's URL, and credentials sent but never printed. In throwaway repos, it checks the
@@ -220,6 +227,10 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
 - **The switch's self-test** runs `/epikloop:harbor`'s script in throwaway homes, with a stand-in
   for Harbor's `harbor.mjs`. It covers a first `on`, kept keys, `off` and `open`, a missing or stale
   record of Harbor's plugin, a config that doesn't parse, Harbor's own failure and the usage line.
+- **The gallery's self-test** writes the gallery in throwaway projects: directions alone, a full
+  design framed at both widths, a missing state's placeholder, escaped text and encoded file names,
+  the picked direction marked, nothing loaded from outside `design/`, and a second run that changes
+  nothing. Outside a project, and in the service lane, it writes nothing.
 - **The plugin test** runs the emitter's suite against simulated events, with no login. Among
   them are a project set up mid-session, a `/clear`, and notifications while none, one and two
   workers are at work.
@@ -238,9 +249,9 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - Then it checks that each mutation of the secret scan is caught.
   - CI runs it again on Node 22.0.0, the floor.
 - **The fixture's self-test** builds every eval fixture in a temporary folder with a home of its
-  own. It reads each fixture's stage as the briefing does, runs `existing`'s tests and the gates on
-  `planned`, pushes to `architected`'s remote, and checks that each case's scaffold names a
-  fixture.
+  own. It reads each fixture's stage as the briefing does, the web page's three at stage 3, runs
+  `existing`'s tests and the gates on `planned`, pushes to `architected`'s remote, and checks that
+  each case's scaffold names a fixture.
 - **The eval runner's self-test** loads every case, holds its YAML reader and graders to samples,
   and runs whole cases against a stand-in for `claude`. Those runs cover the fixture, the prompt,
   the tools granted, a timeout, the cost cap and the cleaned events. It makes no model call.
@@ -291,7 +302,7 @@ node tools/evals.mjs story plan   # the named cases
 
 - **Login and cost.** Runs use whatever Claude Code is logged in with, so a Claude plan is
   enough; neither Epikloop nor its evals need an API key. Every run is a real model call, and a
-  pass comes to about $1.50 at list price, which a plan counts against its usage limits.
+  pass comes to about $2.50 at list price, which a plan counts against its usage limits.
 - **When.** Run the suite in each slice whose change touches model-facing text, before reporting:
   - the skills, the worker or the lanes
   - the briefing or the state reader
@@ -322,7 +333,7 @@ node tools/evals.mjs story plan   # the named cases
   `claude plugin eval . --ablation none --scaffold --allow-tools Bash Write Edit --max-cost-usd 5`,
   on Linux, macOS or WSL2 with `bubblewrap` and `socat`.
   - On Claude Code 2.1.316, its Linux sandbox makes the run's temporary folder and `.git`
-    read-only. So the seven cases whose skills load a format or commit fail there.
+    read-only. So the cases whose skills load a format or commit fail there.
   - The run's home there is itself a git repository holding the workspace. That's why a case that
     needs a repository starts in a fixture, `empty` at least.
 - **Not in CI.** CI would need a Claude credential stored on GitHub. A plan token there can't be

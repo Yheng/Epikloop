@@ -1,0 +1,50 @@
+schema_version: "1.1"
+name: design-directions
+description: /epikloop:design, on a web project with only its spec, writes the brief and three directions, frames them in the gallery, lands them, and stops for the human's pick.
+tags: [design]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: /epikloop:design
+  model: claude-sonnet-5-5
+  max_turns: 40
+  timeout_seconds: 900
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: runs-the-design-script
+    type: tool_used
+    tool: Bash
+    input_match: 'state\.mjs.*--design'
+  - name: writes-the-brief
+    type: file_exists
+    path: design/brief.md
+  - name: draws-three-directions
+    type: tool_used
+    tool: Write
+    input_match: 'design[/\\]+directions[/\\]+[^"]*\.html'
+    min: 3
+  - name: frames-them-in-the-gallery
+    type: tool_used
+    tool: Bash
+    input_match: 'gallery\.mjs'
+  - name: draws-no-screen
+    type: file_exists
+    path: 'design/screens/**'
+    exists: false
+  - name: records-no-pick
+    type: file_exists
+    path: docs/decisions.md
+    exists: false
+  - name: asks-for-the-pick
+    type: regex
+    pattern: '\b(?:pick|choose|which)\b'
+    flags: i
+  - name: commits
+    type: regex
+    target: { source: file, path: .git/logs/HEAD }
+    pattern: '\tcommit: (?!fixture: )'
+  - name: lands
+    type: regex
+    target: { source: file, path: .git/logs/refs/remotes/origin/main }
+    pattern: '\tupdate by push'

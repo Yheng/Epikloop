@@ -33,8 +33,8 @@
 > [!IMPORTANT]
 > **Epikloop is in pre-release.** This README describes the loop as it is designed. Today the
 > marketplace installs, the [git guard](#the-git-guard) and the gates protect Epikloop projects,
-> every command but `design` has its full instructions, the `web` and `service` lanes are in, and
-> so is [Harbor](#harbor). [Status](#status) shows what works now and when the rest lands.
+> every command has its full instructions, the `web` and `service` lanes are in, and so is
+> [Harbor](#harbor). [Status](#status) shows what works now and when the rest lands.
 
 ## Contents
 
@@ -112,8 +112,9 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The `web` and `service` lanes: Playwright tests as a web story's UI evidence, the guard allowing the lane's test runner, `doctor`'s lane checks, and the [lane authoring guide](docs/lanes.md) | **Available** |
 | The team-mode workflow, `.github/workflows/check.yml`, which runs the pre-push gates over every commit a pull request adds, and the `CLAUDE.md` template | **Available** |
 | This repository's own law checks in CI (the prompt ceiling, a shell only as a thin shim, no network calls in hook or Harbor code, skill frontmatter, hooks and plugin paths, JSON formats, the plugin layout, a sign-off on every commit, no AI credits), and a mutation check for every self-test | **Available** |
-| The plugin eval suite: ten cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
-| `design`: direction variants, every screen, the gallery, and with them a screenshot per touched screen and retro's visual compare | M2 |
+| The plugin eval suite: thirteen cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
+| `design`: the brief, three directions and your pick, every screen with its tokens, manifest and gallery, and `amend`, `add`, `audit` and `ingest`, with stage 3 | **Available** |
+| The screens as the truth: a screenshot per touched screen and retro's visual compare; `adopt`'s design tokens | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor: its server, its office view, the `harbor` command and its start-of-session hook | **Available** |
 | The Bridge: review pages on Harbor's server for the design pick, the T3 diff and decide | M4 |
@@ -231,7 +232,7 @@ after six weeks.
 |---|---|---|
 | 1 | The repository is not an Epikloop project yet | `discover` for a new product, or `adopt` for existing code |
 | 2 | `spec/` is missing, or `observed` requirements are unconfirmed | Finish `discover` or `adopt` |
-| 3 | The lane has a UI and `design/manifest.md` is missing, or `audit` reports gaps | `design`, from M2; until then a UI lane goes on to `architect` |
+| 3 | The lane has screens, and the design has started but isn't complete, or nothing is planned and it hasn't started | `design`; a project planned without a design stays where it is |
 | 4 | `spec/architecture.md` is missing | `architect` |
 | 5 | There are no stories, or the MVP set isn't frozen | `plan` |
 | 6 | The current phase has unticked MVP stories | `epic N`, or `decide` first when a question blocks one of them or five or more wait |
@@ -333,12 +334,13 @@ optional fragment, `lanes/<name>.md`. Together they declare:
 
 - **how UI is verified:**
   - in `web`, a Playwright test for each acceptance criterion a person sees, with a screenshot per
-    touched screen once `design` arrives in M2
+    touched screen later in M2
   - a Maestro or Flutter integration test in the mobile lanes
   - contract tests in `service`
 - **how staging works:** a host's git-deploy URL, an EAS preview, TestFlight or the Play internal
   track, or a service URL
-- **how visual truth is stored and gated, and the performance budgets,** once a lane needs them
+- **the two widths each screen is designed at**, in a lane with screens; `service` skips design
+- **how visual truth is gated, and the performance budgets,** once a lane needs them
 
 The fragment's Plan, Story and Retro sections reach Claude through the plan, each story-worker's
 brief and the retro's brief, so no skill names a lane. In a web project, the guard also allows
@@ -364,10 +366,11 @@ step is also a command you can run directly.
    gets a stable ID such as `REQ-AUTH-003`, business rules are quoted verbatim, and
    `.epikloop/project.json` marks the repository as an Epikloop project.
 3. **Design**, for lanes with a UI. Put reference images in `design/refs/`, then run
-   `/epikloop:design`. It drafts three directions of the system sheet as HTML; you pick one, and
-   every screen follows at both widths, in four states, with real copy, alongside `tokens.css`,
-   `manifest.md` and a gallery at `design/index.html`. Later, `amend`, `add`, `audit` and `ingest`
-   change one thing at a time.
+   `/epikloop:design`. It writes a brief and drafts three directions of the system sheet as HTML;
+   you pick one in the gallery at `design/index.html`. Every screen follows at both of the lane's
+   widths, in its default state and any of empty, loading and error, with real copy, alongside
+   `tokens.css` and `manifest.md`. Later, `amend`, `add`, `audit` and `ingest` change one thing at
+   a time.
 4. **Architect.** `/epikloop:architect` chooses the stack and writes `spec/architecture.md`: the
    schema as code, the API contract and a pre-mortem. It confirms the lane, and each choice that
    closes off an alternative becomes a `DECISION-XXX` entry in `docs/decisions.md`.
@@ -386,7 +389,7 @@ step is also a command you can run directly.
    - the gates' self-test
 
    In the web lane, the deep gates run the whole Playwright suite. The full visual compare joins
-   with `design` in M2, and perf budgets wait for a project that needs them. The retro then prunes
+   later in M2, and perf budgets wait for a project that needs them. The retro then prunes
    the queue with you, reviews the cost rows, and deletes something from the pipeline, or records
    why nothing qualified. It records all this in `docs/decisions.md` and tags the phase.
 
@@ -410,7 +413,8 @@ step is also a command you can run directly.
   command.
 - It ends with one confirmation batch, in which you confirm, correct or retire the observed
   requirements.
-- Design tokens will be extracted from the existing UI once `design` arrives in M2.
+- Design tokens will be extracted from the existing UI later in M2. Until then, an adopted web
+  product goes on to `design` as a new one does.
 
 From there, `/epikloop` walks the same stages as for a new product.
 
@@ -449,7 +453,7 @@ The front door is `/epikloop`. Every other command is namespaced as `/epikloop:<
 | `/epikloop` | The front door: syncs, detects the stage, shows the fuel gauge and what needs you, recommends one step and starts it on "go" | low | you or Claude |
 | `/epikloop:doctor [--check]` | Checks that this machine can run Epikloop and says how to fix what is missing; `--check` also runs the gates | low | you or Claude |
 | `/epikloop:discover [brief]` | Greenfield: turns an interview, or a pasted brief with only the gaps asked, into `spec/` | xhigh | you or Claude |
-| `/epikloop:adopt` | Brownfield: an observed spec and architecture, gate config and a confirmation batch; extracted tokens from M2 | xhigh | you or Claude |
+| `/epikloop:adopt` | Brownfield: an observed spec and architecture, gate config and a confirmation batch; extracted tokens later in M2 | xhigh | you or Claude |
 | `/epikloop:design [amend <screen> "<change>" \| add <screen> \| audit \| ingest]` | Three directions, your pick, then every screen as HTML, with tokens, a manifest and a gallery | high | you or Claude |
 | `/epikloop:architect` | The stack, the schema as code, the API contract, a pre-mortem, `spec/architecture.md` and the lane | max | you or Claude |
 | `/epikloop:plan [--extend]` | Epics and tiered stories with requirement IDs and spec deltas, and the frozen MVP set; `--extend` plans later work | high | you or Claude |
@@ -462,7 +466,7 @@ The front door is `/epikloop`. Every other command is namespaced as `/epikloop:<
 | `/epikloop:release` | The go-live story: production, promotion, a rollback note and a post-launch checklist | high | you only |
 | `/epikloop:harbor on\|off\|open` | Harbor's switch and its view | low | you only |
 
-Every command has its full instructions now, except `design` (M2).
+Every command has its full instructions now.
 
 - **Started by.** Claude may start a "you or Claude" command when it fits. A "you only" command is
   a ceremony Claude never starts on its own, and its description stays out of Claude's context.
@@ -852,8 +856,8 @@ you want to change a choice.
   `promptCacheTtl`, and `doctor` says so.
 - **Small outputs.** `check.sh` prints failures and a one-line summary, a product's `CLAUDE.md`
   stays under 200 lines, and a web story runs only the Playwright specs it touched, with the whole
-  suite once per epic. From M2, each story takes one screenshot per touched screen, with the full
-  visual compare once per epic.
+  suite once per epic. Later in M2, each story takes one screenshot per touched screen, with the
+  full visual compare once per epic. The design gallery is written by a script, not by the model.
 
 More in [Architecture → Token economy](docs/architecture.md#token-economy).
 
@@ -930,12 +934,12 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 |---|---|---|
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
-| `plugins/epikloop/skills/` | Sixteen skills, with full instructions for all but `design` (M2) | now, M2 |
+| `plugins/epikloop/skills/` | Sixteen skills, each with its full instructions | now |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke, `doctor` and Harbor's switch | now |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke, `doctor`, the design gallery and Harbor's switch | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
-| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, the examples of each project file in `spec/` and `docs/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
+| `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, the examples of each project file in `spec/`, `docs/` and `design/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
 | `plugins/epikloop/evals/` | The eval suite: one folder per case, and `fixture.mjs`, which builds the fixture project each case starts in | now |
 | `plugins/epikloop-harbor/` | Harbor's build, copied from where Harbor is built: `harbor.mjs` and `client/`; and its start-of-session hook, in `hooks/` and `scripts/session.mjs` | now |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
@@ -957,6 +961,7 @@ node plugins/epikloop/scripts/state.mjs --self-test
 node plugins/epikloop/scripts/smoke.mjs --self-test
 node plugins/epikloop/scripts/doctor.mjs --self-test
 node plugins/epikloop/scripts/switch.mjs --self-test
+node plugins/epikloop/scripts/gallery.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/scripts/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
@@ -1012,19 +1017,22 @@ reads, and `node tools/evals.mjs` runs it.
   - architected
   - planned
   - planned with a question parked
+  - a greeter web page before its design, after the pick, and drawn but for one state
 
-  The first three carry a remote nothing has been pushed to, as a new project's GitHub repository
-  is; a push there goes to a bare repository inside `.git`. The fixture's self-test runs in CI on
-  every push, at no cost.
-- **What the ten cases cover:**
+  The first three, and the web page before its design and after the pick, carry a remote nothing
+  has been pushed to, as a new project's GitHub repository is; a push there goes to a bare
+  repository inside `.git`. The fixture's self-test runs in CI on every push, at no cost.
+- **What the thirteen cases cover:**
   - the front door, inside and outside a project
   - a plain question answered from the briefing
   - a story landed by its worker, with its open product call parked
   - `decide` and `triage`
   - `architect` waiting for confirmation
   - `plan`, `discover` and `adopt`
+  - `design`: three directions that wait for the pick, the screens after it, and an audit
 
-  `discover` and `plan` must also push their commit to the fixture's remote.
+  `discover`, `plan` and the first two `design` cases must also push their commit to the fixture's
+  remote.
 
 From the repository's root:
 
@@ -1037,7 +1045,7 @@ node tools/evals.mjs story plan   # the named cases
   is logged in with, so a Claude plan is enough; neither Epikloop nor its evals need an API key.
 - **Any system.** It runs on Linux, macOS and Windows alike, with nothing to install beyond what
   Epikloop already needs.
-- **Cost.** Every run is a real model call. A pass of the whole suite comes to about $1.50 at list
+- **Cost.** Every run is a real model call. A pass of the whole suite comes to about $2.50 at list
   price, which on a plan counts against your usage limits rather than adding a charge. `--cap`
   stops starting runs at $5 of that estimate.
 - **When to run it.** Run it when a change touches model-facing text:
@@ -1049,8 +1057,8 @@ node tools/evals.mjs story plan   # the named cases
   plugin's git guard in front of each shell command but no OS sandbox. So run only a suite you
   trust.
 - **`claude plugin eval`** reads the same cases. On Linux its sandbox makes the run's temporary
-  folder and `.git` read-only (Claude Code 2.1.316), so the seven cases whose skills load a format
-  or commit can't pass there yet.
+  folder and `.git` read-only (Claude Code 2.1.316), so the cases whose skills load a format or
+  commit can't pass there yet.
 - **Not in CI.** Running the suite on GitHub would mean storing a Claude credential there, so CI
   runs only the fixture's and the runner's self-tests, which make no model call.
 
@@ -1064,7 +1072,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 |---|---|
 | **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), this repository's own law checks and the CI mutation check (done), the eval suite with its fixture project, run on a contributor's machine (done), and lint as laws (done) |
 | **Harbor, between M1 and M2** | Harbor's build in `epikloop-harbor`, its start-of-session hook, `/epikloop:harbor` and `doctor`'s Harbor check (done) |
-| **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
+| **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references (done); then the screens as the truth at story and retro time, and `adopt`'s design tokens |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: The Bridge** | Review pages on Harbor's server: the design pick, the T3 diff and decide |
 

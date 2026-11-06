@@ -101,12 +101,18 @@ async function hook() {
 
 const marker = (fields = {}) => JSON.stringify({ format: 1, id: '000000000000', lane: 'web', mode: 'solo', ...fields })
 const SPEC = '# Auth\n\n## REQ-AUTH-001 Sign in\n\nPeople sign in.\n'
+// A complete design: the tokens, and one screen in its one state.
+const DESIGNED = {
+  'design/tokens.css': ':root { --ink: #222; }\n',
+  'design/manifest.md': '# Screens\n\n## sign-in Sign in\n- States: default\n- Requirements: REQ-AUTH-001\n',
+  'design/screens/sign-in.html': '<!doctype html>\n',
+}
 // A web project that has passed stage 5.
 const PLANNED = {
   '.epikloop/project.json': marker({ mvp_frozen: '2026-11-02' }),
   'spec/auth.md': SPEC,
   'spec/architecture.md': '# Architecture\n',
-  'design/manifest.md': '# Screens\n',
+  ...DESIGNED,
   'docs/stories/1-auth.md': '# Epic 1: Auth\n\n## 1.1 Sign in\n- Tier: T1\n- MVP: yes\n- Requirements: REQ-AUTH-001\n\n### Spec delta\n- none\n',
 }
 const SILENT_HOOKS = ['git hooks', 'Git hooks']
@@ -131,9 +137,14 @@ const CASES = [
     { cwd: 'src', says: ['Epikloop project 000000000000 (web, solo). Stage 2 of 10'] },
   ],
   [
-    'a UI lane without screens, until design arrives in M2',
+    'a UI lane before its design',
     { '.epikloop/project.json': marker(), 'spec/auth.md': SPEC },
-    { says: ['Stage 4 of 10: spec/architecture.md is missing. Next: /epikloop:architect.'] },
+    { says: ['Stage 3 of 10: design/manifest.md is missing. Next: /epikloop:design.'] },
+  ],
+  [
+    'a UI lane planned without a design',
+    { ...PLANNED, 'design/tokens.css': null, 'design/manifest.md': null, 'design/screens/sign-in.html': null },
+    { says: ['Stage 6 of 10: epic 1 has 1 MVP story left. Next: /epikloop:epic 1.'] },
   ],
   [
     'the service lane skipping design',

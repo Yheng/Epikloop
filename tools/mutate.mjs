@@ -33,6 +33,7 @@ const TESTS = {
   doctor: [process.execPath, 'plugins/epikloop/scripts/doctor.mjs', '--self-test'],
   fold: [process.execPath, 'plugins/epikloop/scripts/fold.mjs', '--self-test'],
   switch: [process.execPath, 'plugins/epikloop/scripts/switch.mjs', '--self-test'],
+  gallery: [process.execPath, 'plugins/epikloop/scripts/gallery.mjs', '--self-test'],
   harbor: [process.execPath, 'tools/harbor.mjs'],
   check: [process.execPath, 'plugins/epikloop/templates/githooks/check.mjs', '--self-test'],
   emit: ['claude', 'plugin', 'test', 'plugins/epikloop'],

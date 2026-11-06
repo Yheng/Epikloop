@@ -41,6 +41,7 @@ jobs:
       - run: node plugins/epikloop/scripts/smoke.mjs --self-test
       - run: node plugins/epikloop/scripts/doctor.mjs --self-test
       - run: node plugins/epikloop/scripts/switch.mjs --self-test
+      - run: node plugins/epikloop/scripts/gallery.mjs --self-test
       - run: claude plugin test plugins/epikloop
       - run: node plugins/epikloop/scripts/fold.mjs --self-test
       - run: node plugins/epikloop/templates/githooks/check.mjs --self-test
