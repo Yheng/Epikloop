@@ -33,8 +33,8 @@
 > [!IMPORTANT]
 > **Epikloop is in pre-release.** This README describes the loop as it is designed. Today the
 > marketplace installs, the [git guard](#the-git-guard) and the gates protect Epikloop projects,
-> every command but `design` and `harbor` has its full instructions, and the `web` and `service`
-> lanes are in. [Status](#status) shows what works now and when the rest lands.
+> every command but `design` has its full instructions, the `web` and `service` lanes are in, and
+> so is [Harbor](#harbor). [Status](#status) shows what works now and when the rest lands.
 
 ## Contents
 
@@ -115,7 +115,8 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The plugin eval suite: ten cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
 | `design`: direction variants, every screen, the gallery, and with them a screenshot per touched screen and retro's visual compare | M2 |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
-| Harbor (its server, its office view and the `harbor` command), then the Bridge | M4 |
+| Harbor: its server, its office view, the `harbor` command and its start-of-session hook | **Available** |
+| The Bridge: review pages on Harbor's server for the design pick, the T3 diff and decide | M4 |
 
 Until M1 lands, the loop hasn't yet taken a real project end to end, so Epikloop is not ready for
 real projects. See the [roadmap](#roadmap).
@@ -156,6 +157,9 @@ Harbor is a second, optional plugin, and it depends on the core one:
 /plugin install epikloop-harbor@epikloop
 ```
 
+Start a new session after installing it, then run `/epikloop:harbor on`. Harbor starts with every
+session from then on, until `/epikloop:harbor off`.
+
 ### Update or remove
 
 ```
@@ -180,8 +184,8 @@ files and `~/.epikloop/` in place.
   account's prompt-cache setup, and the lanes this machine can build. Inside a project, it also
   checks the project files, the git hooks, the gate files against the plugin's current ones
   (`init.mjs --refresh` brings them up to date), the team-mode workflow, a web project's Playwright,
-  and whether the emitter is writing this session's events. It says how to fix what it finds.
-  Harbor's reachability joins the report with Harbor.
+  and whether the emitter is writing this session's events. While Harbor is on, it checks that
+  Harbor answers. It says how to fix what it finds.
 - `claude plugin details epikloop` lists the plugin's components and its projected token cost.
 
 ## Quick start
@@ -458,7 +462,7 @@ The front door is `/epikloop`. Every other command is namespaced as `/epikloop:<
 | `/epikloop:release` | The go-live story: production, promotion, a rollback note and a post-launch checklist | high | you only |
 | `/epikloop:harbor on\|off\|open` | Harbor's switch and its view | low | you only |
 
-Every command has its full instructions now, except `design` (M2) and `harbor` (M4).
+Every command has its full instructions now, except `design` (M2).
 
 - **Started by.** Claude may start a "you or Claude" command when it fits. A "you only" command is
   a ceremony Claude never starts on its own, and its description stays out of Claude's context.
@@ -704,6 +708,7 @@ to edit, and `init.mjs --refresh` replaces only the gate files.
 | `~/.epikloop/events/YYYY-MM-DD.jsonl` | The event log: one line per event, written only inside an Epikloop project |
 | `~/.epikloop/projects/<id>/cost.jsonl` | One cost row per closed story: tier, wall time, cost, model and effort |
 | `~/.epikloop/config.json` | Your settings: effort overrides and the Harbor switch |
+| `~/.epikloop/harbor.json` | Where the Harbor plugin is installed, which its start-of-session hook records |
 
 The emitter, a hooks module, writes the events and cost rows. Events say where, never what: no tool
 output, prompts, file contents or secret values. Claude Code transcripts are never parsed.
@@ -755,9 +760,9 @@ file beside it.
 
 ### Privacy
 
-Nothing leaves the machine. Epikloop has no telemetry, and its hooks and Harbor make no network
-calls. Network traffic happens only where you direct it (git push, deploys, the staging smoke) and
-reaches only the project's own hosts.
+Nothing leaves the machine. Epikloop has no telemetry, its hooks make no network calls, and
+Harbor only serves its page to your browser on 127.0.0.1. Network traffic happens only where you
+direct it (git push, deploys, the staging smoke) and reaches only the project's own hosts.
 
 More in [Architecture → The product repo footprint](docs/architecture.md#the-product-repo-footprint)
 and [Event log and cost rows](docs/architecture.md#event-log-and-cost-rows).
@@ -854,9 +859,6 @@ More in [Architecture → Token economy](docs/architecture.md#token-economy).
 
 ## Harbor
 
-> [!NOTE]
-> Harbor arrives in M4. Today the `epikloop-harbor` plugin is a manifest only.
-
 Harbor is an optional, local view of your Epikloop projects as offices. It is drawn from files
 Epikloop already writes: the event log in `~/.epikloop/events/` and each project's repository
 files.
@@ -884,9 +886,14 @@ files.
 The loudest motion always means you are needed.
 
 `/epikloop:harbor on` and `off` flip one line in `~/.epikloop/config.json`, and off means no Harbor
-process exists. `/epikloop:harbor open` shows Harbor in the browser. Later, the Bridge adds review
-pages on the same server (the design pick, the T3 diff, decide), and they write back the same
-repository files the CLI writes.
+process exists: Harbor stops within 2 seconds. `/epikloop:harbor open` shows Harbor in the browser,
+at `http://127.0.0.1:4747/`, starting it if it isn't running. While Harbor is on, its plugin's
+start-of-session hook starts it with each session, and says so only when it can't.
+
+The plugin carries Harbor's build: the server in one file, and the page with its source maps and
+its art. Harbor itself is built in a repository of its own. Later, the Bridge adds review pages on
+the same server (the design pick, the T3 diff, decide), and they write back the same repository
+files the CLI writes.
 
 More in [Architecture → Harbor](docs/architecture.md#harbor).
 
@@ -923,16 +930,16 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 |---|---|---|
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
-| `plugins/epikloop/skills/` | Sixteen skills, with full instructions for all but `design` (M2) and `harbor` (M4) | now, M2, M4 |
+| `plugins/epikloop/skills/` | Sixteen skills, with full instructions for all but `design` (M2) | now, M2 |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke and `doctor` | now |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke, `doctor` and Harbor's switch | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, the examples of each project file in `spec/` and `docs/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
 | `plugins/epikloop/evals/` | The eval suite: one folder per case, and `fixture.mjs`, which builds the fixture project each case starts in | now |
-| `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
+| `plugins/epikloop-harbor/` | Harbor's build, copied from where Harbor is built: `harbor.mjs` and `client/`; and its start-of-session hook, in `hooks/` and `scripts/session.mjs` | now |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
-| `tools/` | This repository's own checks: `laws.mjs`, the mutation check (`mutate.mjs` with `mutations.mjs`), and `evals.mjs`, which runs the eval suite | now |
+| `tools/` | This repository's own checks: `laws.mjs`, the mutation check (`mutate.mjs` with `mutations.mjs`), `evals.mjs`, which runs the eval suite, and `harbor.mjs`, which runs the Harbor plugin's hook and build in a throwaway home | now |
 | `.github/workflows/ci.yml` | CI on Linux, macOS and Windows, with the mutation check on Linux | now |
 
 ### Checks
@@ -949,9 +956,11 @@ node plugins/epikloop/scripts/init.mjs --self-test
 node plugins/epikloop/scripts/state.mjs --self-test
 node plugins/epikloop/scripts/smoke.mjs --self-test
 node plugins/epikloop/scripts/doctor.mjs --self-test
+node plugins/epikloop/scripts/switch.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/scripts/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
+node tools/harbor.mjs
 node plugins/epikloop/evals/fixture.mjs --self-test
 node tools/evals.mjs --self-test
 node tools/laws.mjs --self-test
@@ -964,7 +973,8 @@ gate runner's self-test also runs on Node 22.0.0, the floor.
 - **`tools/laws.mjs`** holds this repository to its mechanical rules:
   - the prompt ceiling of 700 lines
   - a shell only as a thin shim: `scripts/check.sh`, and each eval case's `scaffold.sh`
-  - no network call in hook or Harbor code
+  - no network call in hook or Harbor code, but for Harbor's two: its server listening on
+    127.0.0.1, and its page opening its own event stream
   - skill and agent frontmatter: a one-sentence description, a name only on the front door, an
     effort on every skill a person can invoke, a model only on the worker, and brackets and quotes
     quoted
@@ -1052,10 +1062,11 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 
 | Milestone | Delivers |
 |---|---|
-| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design` and `harbor`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), this repository's own law checks and the CI mutation check (done), the eval suite with its fixture project, run on a contributor's machine (done), and lint as laws (done) |
+| **M1: Core that builds a web app** | The emitter and the event log (done), `check.sh` and its gates (done), the guard (done), the SessionStart briefing (done), the project marker (done), the living-spec format (done), the commands with sequential workers (done, all but `design`), the `web` and `service` lanes and the lane authoring guide (done), the team-mode workflow and `CLAUDE.md` templates (done), this repository's own law checks and the CI mutation check (done), the eval suite with its fixture project, run on a contributor's machine (done), and lint as laws (done) |
+| **Harbor, between M1 and M2** | Harbor's build in `epikloop-harbor`, its start-of-session hook, `/epikloop:harbor` and `doctor`'s Harbor check (done) |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
-| **M4: Harbor, then the Bridge** | Harbor's server and office view, then the Bridge's review pages |
+| **M4: The Bridge** | Review pages on Harbor's server: the design pick, the T3 diff and decide |
 
 M1 is done when Harbor's own web app has been built with Epikloop end to end, and an existing
 production repository has been adopted end to end.

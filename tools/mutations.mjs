@@ -9,6 +9,8 @@ const STATE = `${SCRIPTS}state.mjs`
 const SMOKE = `${SCRIPTS}smoke.mjs`
 const DOCTOR = `${SCRIPTS}doctor.mjs`
 const FOLD = `${SCRIPTS}fold.mjs`
+const SWITCH = `${SCRIPTS}switch.mjs`
+const SESSION = 'plugins/epikloop-harbor/scripts/session.mjs'
 const RUNNER = 'plugins/epikloop/templates/githooks/check.mjs'
 const WORKFLOW = 'plugins/epikloop/templates/github/workflows/check.yml'
 const EMIT = 'plugins/epikloop/hooks/emit.js'
@@ -181,6 +183,26 @@ export const MUTATIONS = [
   m(DOCTOR, ['doctor'], 'skip the team check', "  if (opened.project?.mode === 'team') {", '  if (false) {'),
   m(DOCTOR, ['doctor'], 'report the team check in solo mode too', "  if (opened.project?.mode === 'team') {", '  if (true) {'),
   m(DOCTOR, ['doctor'], 'count a missing workflow as in place', "if (fs.existsSync(path.join(opened.root, '.github', 'workflows', 'check.yml')))", 'if (true)'),
+  m(DOCTOR, ['doctor'], "take any answer for Harbor's", "if (app === 'epikloop-harbor') ok(", 'if (app !== null) ok('),
+  m(DOCTOR, ['doctor'], "skip Harbor's plugin record", "if (typeof root !== 'string' || !fs.existsSync(path.join(root, 'harbor.mjs'))) {", 'if (false) {'),
+  m(DOCTOR, ['doctor'], 'check Harbor with its flag off', "if (readJson(path.join(home, '.epikloop', 'config.json'))?.harbor === true) {", 'if (true) {'),
+
+  // Harbor's switch, by its self-test.
+  m(SWITCH, ['switch'], 'drop the config\'s other keys', "config.harbor = command === 'on'", "config = { format: 1, harbor: command === 'on' }"),
+  m(SWITCH, ['switch'], 'turn the flag on for off too', "config.harbor = command === 'on'", 'config.harbor = true'),
+  m(SWITCH, ['switch'], "write over a config that doesn't parse", "if (config === null || typeof config !== 'object' || Array.isArray(config)) {", 'if (false) {'),
+  m(SWITCH, ['switch'], 'start Harbor on off', "if (command === 'off') return { code: 0, text:", 'if (false) return { code: 0, text:'),
+  m(SWITCH, ['switch'], 'start Harbor for open', "[harbor, command === 'on' ? 'start' : 'open']", "[harbor, 'start']"),
+  m(SWITCH, ['switch'], 'trust a record whose folder is gone', 'if (harbor === null || !fs.existsSync(harbor)) {', 'if (harbor === null) {'),
+  m(SWITCH, ['switch'], "swallow Harbor's failure", 'return { code: run.status ?? 1, text:', 'return { code: 0, text:'),
+
+  // Harbor's start-of-session hook, by the Harbor check, which runs it with the copied build.
+  m(SESSION, ['harbor'], 'start Harbor with the flag off', "  if (readJson(path.join(dir, 'config.json'))?.harbor !== true) return null\n", ''),
+  m(SESSION, ['harbor'], "pass on Harbor's start line", 'if (run.status === 0) return null', 'if (run.status === 0) return run.stdout.trim()'),
+  m(SESSION, ['harbor'], "say nothing when Harbor can't start", 'if (message !== null) process.stdout.write(', 'if (false) process.stdout.write('),
+  m(SESSION, ['harbor'], "exit 1 when Harbor can't start", 'process.exitCode = 0', 'process.exitCode = message === null ? 0 : 1'),
+  m(SESSION, ['harbor'], "skip the plugin's record", 'if (readJson(pointer)?.root !== ROOT) {', 'if (false) {'),
+  m(SESSION, ['harbor'], 'keep an older record', 'if (readJson(pointer)?.root !== ROOT) {', 'if (!fs.existsSync(pointer)) {'),
 
   // This repository's laws.
   m(LAWS, ['laws'], 'raise the ceiling', 'const CEILING = 700', 'const CEILING = 7000'),
@@ -188,6 +210,9 @@ export const MUTATIONS = [
   m(LAWS, ['laws'], 'read shell files by name only', 'SHELL_NAME.test(file) || SHELL_LINE.test(firstLine(path.join(root, file)))', 'SHELL_NAME.test(file)'),
   m(LAWS, ['laws'], "don't follow hook code's imports", '    for (const match of text.matchAll(RELATIVE_IMPORT)) queue.push(path.resolve(path.dirname(file), match[1]))\n', ''),
   m(LAWS, ['laws'], 'leave Harbor unread', "  queue.push(...walk(path.join(root, 'plugins', 'epikloop-harbor')).filter((file) => CODE.test(file)))\n", ''),
+  m(LAWS, ['laws'], "let Harbor's two files call anything", "const rest = allowed === undefined ? line : line.split(allowed).join('')", "const rest = allowed === undefined ? line : ''"),
+  m(LAWS, ['laws'], "drop Harbor's two exceptions", "const rest = allowed === undefined ? line : line.split(allowed).join('')", 'const rest = line'),
+  m(LAWS, ['laws'], "allow the page's stream in any of Harbor's files", 'const allowed = HARBOR_CALLS.get(shown)', "const allowed = HARBOR_CALLS.get(shown) ?? (shown.startsWith('plugins/epikloop-harbor/') ? 'new EventSource(\"/events\")' : undefined)"),
   m(LAWS, ['laws'], 'take any sign-off as the author', 'if (!signers.includes(email.toLowerCase()))', 'if (signers.length === 0)'),
   m(LAWS, ['laws'], 'ask merges for a sign-off', "commits(root, '%h%x00%ae%x00%s%x00%B', ['--no-merges'])", "commits(root, '%h%x00%ae%x00%s%x00%B', [])"),
   m(LAWS, ['laws'], 'pass a shallow clone', "if (gitOk(root, ['rev-parse', '--is-shallow-repository']).trim() === 'true') {", 'if (false) {'),

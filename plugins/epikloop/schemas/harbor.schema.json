@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Yheng/Epikloop/main/plugins/epikloop/schemas/harbor.schema.json",
+  "title": "Harbor's plugin record",
+  "description": "~/.epikloop/harbor.json: where the epikloop-harbor plugin is installed. Its start-of-session hook writes it, and /epikloop:harbor and doctor read it. Never committed.",
+  "type": "object",
+  "required": ["format", "root"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": 1, "description": "Format version of this file." },
+    "root": { "type": "string", "minLength": 1, "description": "The plugin's root folder, which holds harbor.mjs." }
+  }
+}

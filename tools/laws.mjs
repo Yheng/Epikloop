@@ -175,6 +175,13 @@ const NETWORK = [
 ]
 const RELATIVE_IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)['"](\.\.?\/[^'"]+)['"]/gm
 const CODE = /\.(?:[cm]?[jt]s|[jt]sx)$/
+// Harbor's two calls, each allowed in one file of its build, exactly as the build writes it: its
+// server listens on 127.0.0.1 through node:http, and its page opens its own event stream. Anything
+// else on those lines, and either call anywhere else, is still a network call.
+const HARBOR_CALLS = new Map([
+  ['plugins/epikloop-harbor/harbor.mjs', 'import http from "node:http";'],
+  ['plugins/epikloop-harbor/client/harbor.js', 'new EventSource("/events")'],
+])
 
 // The code that hooks run, which must not reach the network: what hooks/hooks.json names and
 // everything it imports by relative path, the git hooks a product carries, and all of Harbor.
@@ -215,8 +222,10 @@ export function networkLaw(root) {
       problems.push(`network: ${shown} is run or imported by hook code, and can't be read`)
       continue
     }
+    const allowed = HARBOR_CALLS.get(shown)
     for (const [i, line] of text.split(/\r?\n/).entries()) {
-      for (const [re, what] of NETWORK) if (re.test(line)) problems.push(`network: ${shown}:${i + 1} uses ${what}; hook and Harbor code makes no network call`)
+      const rest = allowed === undefined ? line : line.split(allowed).join('')
+      for (const [re, what] of NETWORK) if (re.test(rest)) problems.push(`network: ${shown}:${i + 1} uses ${what}; hook and Harbor code makes no network call`)
     }
     for (const match of text.matchAll(RELATIVE_IMPORT)) queue.push(path.resolve(path.dirname(file), match[1]))
   }
@@ -810,7 +819,20 @@ async function selfTest() {
       ['the hooks module', { 'plugins/epikloop/hooks/emit.js': "import https from 'node:https'\n" }, 'network: plugins/epikloop/hooks/emit.js:1 uses a network module'],
       ['the gate runner', { 'plugins/epikloop/templates/githooks/check.mjs': "const http = require('http')\n" }, 'network: plugins/epikloop/templates/githooks/check.mjs:1 uses a network module'],
       ['Harbor', { 'plugins/epikloop-harbor/server/feed.mjs': 'const feed = new EventSource(url)\n' }, 'network: plugins/epikloop-harbor/server/feed.mjs:1 uses EventSource'],
+      ["Harbor's server, beside the import it may make", { 'plugins/epikloop-harbor/harbor.mjs': 'import http from "node:http";\nimport https from "node:https";\n' }, 'network: plugins/epikloop-harbor/harbor.mjs:2 uses a network module'],
+      ["Harbor's server, on the line it may import on", { 'plugins/epikloop-harbor/harbor.mjs': 'import http from "node:http"; await fetch(url)\n' }, 'network: plugins/epikloop-harbor/harbor.mjs:1 uses fetch()'],
+      ["Harbor's page, beside the stream it may open", { 'plugins/epikloop-harbor/client/harbor.js': 'function f(){let t=new EventSource("/events");return fetch("/x")}\n' }, 'network: plugins/epikloop-harbor/client/harbor.js:1 uses fetch()'],
+      ["Harbor's page, to another address", { 'plugins/epikloop-harbor/client/harbor.js': 'let t=new EventSource("/events"),u=new EventSource("https://example.com/feed")\n' }, 'network: plugins/epikloop-harbor/client/harbor.js:1 uses EventSource'],
+      ["another of Harbor's files, with the server's import", { 'plugins/epikloop-harbor/scripts/session.mjs': 'import http from "node:http";\n' }, 'network: plugins/epikloop-harbor/scripts/session.mjs:1 uses a network module'],
+      ["another of Harbor's files, with the page's stream", { 'plugins/epikloop-harbor/client/other.js': 'let t=new EventSource("/events")\n' }, 'network: plugins/epikloop-harbor/client/other.js:1 uses EventSource'],
     ].map(([where, files, text]) => [`a network call in ${where} fails`, () => k.has(networkLaw(networkRepo(files)).problems, text)]),
+    [
+      "Harbor's two calls pass: its server's node:http import and its page's stream to /events",
+      () => {
+        const files = { 'plugins/epikloop-harbor/harbor.mjs': 'import fs from "node:fs";\nimport http from "node:http";\n', 'plugins/epikloop-harbor/client/harbor.js': 'function Ct(e){let t=new EventSource("/events");return t}\n' }
+        return k.none(networkLaw(networkRepo(files)).problems)
+      },
+    ],
     [
       "the real skills, agents, hooks, manifests and formats pass",
       () => {

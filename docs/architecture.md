@@ -17,9 +17,10 @@ epikloop plugin (user scope)          .epikloop/project.json                    
   events/         append-only log            docs/queue.md                         team mode only:
   projects/<id>/  cost rows, state    scripts/check.sh + .githooks/                  .github/workflows/check.yml
   config.json     effort, harbor      CLAUDE.md (project rules only)                 (required PR check)
+  harbor.json     Harbor's plugin
 
 epikloop-harbor plugin (optional)
-  local server + prebuilt client
+  Harbor's build + its session hook
 ```
 
 - Both plugins install at user scope from this repository's marketplace. Nothing of the tool is
@@ -27,7 +28,8 @@ epikloop-harbor plugin (optional)
 - All state lives in files, in the product repo or under `~/.epikloop/`, never in a conversation. A
   power outage, a new teammate or a six-week pause recover the same way.
 - There is no status line; Claude Code's default is enough.
-- Nothing leaves the machine: no telemetry, and no network calls from hooks or Harbor.
+- Nothing leaves the machine: no telemetry, and no network calls from hooks or Harbor, which only
+  serves itself on 127.0.0.1.
 
 ## The product repo footprint
 
@@ -225,6 +227,9 @@ The gates' self-test measures two targets:
   `cost`, `model` and `effort`. The rows are the instrument for tuning effort.
 - **`~/.epikloop/config.json`** ([schema](../plugins/epikloop/schemas/config.schema.json)) holds the
   user's effort overrides and the Harbor switch.
+- **`~/.epikloop/harbor.json`** ([schema](../plugins/epikloop/schemas/harbor.schema.json)) records
+  where the `epikloop-harbor` plugin is installed, for `/epikloop:harbor` and `doctor`. Harbor's
+  start-of-session hook writes it.
 - Claude Code transcripts are never parsed. Their format is internal and changes between versions.
 
 ## Gates
@@ -507,10 +512,25 @@ The visual vocabulary:
 
 The loudest motion always means the human is needed.
 
-`/epikloop:harbor on|off` flips one line in `~/.epikloop/config.json`; off means no Harbor process
-exists. Later, the Bridge adds review pages on the same server (design pick, T3 diff, decide), and
-they write back the same repo files the CLI writes. Office imagery belongs to Harbor alone; the
-tool's name and docs don't use it.
+How it ships ([issue #5](https://github.com/Yheng/Epikloop/issues/5)):
+
+- The plugin carries Harbor's build, copied unchanged from where Harbor is built: `harbor.mjs`, the
+  server in one file, and `client/`, the page with its source maps and its art. Harbor's source,
+  tests and art sheets stay where it's built.
+- Its start-of-session hook records where the plugin is installed, in `~/.epikloop/harbor.json`,
+  since a plugin can't reach another plugin's files. While the switch is on, the hook starts
+  Harbor, which returns at once when Harbor already runs. It prints nothing unless Harbor couldn't
+  start, and then only a message for the human.
+- `/epikloop:harbor on|off|open` runs the core's `scripts/switch.mjs`. It flips one line in
+  `~/.epikloop/config.json`, keeping the rest, then starts Harbor, or opens it, from the folder that
+  record names. Off means no Harbor process exists, since Harbor stops within 2 seconds.
+- Harbor makes two network calls, each allowed in one file of its build: the server listens on
+  127.0.0.1 through `node:http`, and the page opens its event stream at `/events`. The laws refuse
+  any other.
+
+Later, the Bridge adds review pages on the same server (design pick, T3 diff, decide), and they
+write back the same repo files the CLI writes. Office imagery belongs to Harbor alone; the tool's
+name and docs don't use it.
 
 ## Repository layout
 
@@ -518,14 +538,14 @@ tool's name and docs don't use it.
 |---|---|---|
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
-| `plugins/epikloop/skills/` | Sixteen skills, with bodies for all but `design` and `harbor` | now, M2, M4 |
+| `plugins/epikloop/skills/` | Sixteen skills, with bodies for all but `design` | now, M2 |
 | `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke and doctor | now |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke, doctor and Harbor's switch | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, an example of each project file in `spec/` and `docs/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
 | `plugins/epikloop/evals/` | The eval suite, inside the plugin where `claude plugin eval` reads it: a folder per case, and `fixture.mjs`, which builds the fixture project each case starts in | now |
-| `plugins/epikloop-harbor/` | The manifest now; the server, client source and prebuilt `dist/` later | now, M4 |
+| `plugins/epikloop-harbor/` | Harbor's build, copied from where Harbor is built: `harbor.mjs` and `client/`; and its start-of-session hook, in `hooks/` and `scripts/session.mjs` | now |
 | `docs/` | Doctrine, architecture, formats, roadmap, and the lane authoring guide | now |
-| `tools/` | This repository's own checks: `laws.mjs` for the mechanical rules, lint included, the self-tests' mutation check (`mutate.mjs` with `mutations.mjs`), and `evals.mjs`, which runs the eval suite under the machine's own login | now |
+| `tools/` | This repository's own checks: `laws.mjs` for the mechanical rules, lint included, the self-tests' mutation check (`mutate.mjs` with `mutations.mjs`), `evals.mjs`, which runs the eval suite under the machine's own login, and `harbor.mjs`, which runs the Harbor plugin's hook and build in a throwaway home | now |
 | `.github/workflows/ci.yml` | Validation, every self-test and the laws, lint among them, on Linux, macOS and Windows; the mutation check on Linux. The eval suite runs on a contributor's machine, so no Claude credential is stored on GitHub | now |

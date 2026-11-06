@@ -32,6 +32,8 @@ const TESTS = {
   smoke: [process.execPath, 'plugins/epikloop/scripts/smoke.mjs', '--self-test'],
   doctor: [process.execPath, 'plugins/epikloop/scripts/doctor.mjs', '--self-test'],
   fold: [process.execPath, 'plugins/epikloop/scripts/fold.mjs', '--self-test'],
+  switch: [process.execPath, 'plugins/epikloop/scripts/switch.mjs', '--self-test'],
+  harbor: [process.execPath, 'tools/harbor.mjs'],
   check: [process.execPath, 'plugins/epikloop/templates/githooks/check.mjs', '--self-test'],
   emit: ['claude', 'plugin', 'test', 'plugins/epikloop'],
   laws: [process.execPath, 'tools/laws.mjs', '--self-test'],

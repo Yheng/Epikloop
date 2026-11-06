@@ -46,8 +46,8 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
     files differ from the plugin's
   - stage 3, design, is held until M2 brings design's body; until then a UI lane goes on to
     `architect`
-  - `adopt`'s token extraction joins with `design` in M2, and `doctor`'s Harbor check with Harbor
-    in M4
+  - `adopt`'s token extraction joins with `design` in M2; `doctor`'s Harbor check came with
+    Harbor's plugin
 - the `web` and `service` lanes (done): each a profile and a fragment, whose sections the state
   reader prints into the plan, the worker's brief and the retro's brief; the guard allows the
   lane's test runner, and `doctor` reports the lanes this machine can build
@@ -135,8 +135,23 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
 
 - Harbor's own web app has been built with Epikloop, end to end.
   - Started on 2026-11-01, in a private repository of its own, from a brief drawn from the
-    architecture's Harbor section. Its built server and client join `epikloop-harbor` in M4.
+    architecture's Harbor section. Its build joined `epikloop-harbor` on 2026-11-06, as below.
 - An existing production repo has been adopted, end to end.
+
+## Harbor, between M1 and M2 (done)
+
+Done on 2026-11-06 ([issue #5](https://github.com/Yheng/Epikloop/issues/5)).
+Harbor's app was ready, and its release waited on the plugin, so it shipped ahead of the design
+phase:
+
+- `epikloop-harbor` carries Harbor's build, copied unchanged from where Harbor is built
+- its start-of-session hook records where the plugin is installed and starts Harbor while the
+  switch is on
+- `/epikloop:harbor on|off|open`, through the core's switch, and `doctor`'s Harbor check
+- the network law's two exceptions, one call each in one file of the build
+- a CI check that serves the copied build from a throwaway home on Linux, macOS and Windows
+
+The Bridge's review pages need design, so they stay in M4.
 
 ## M2 — Design phase
 
@@ -168,7 +183,8 @@ rise. Known so far:
 
 With the full lane set in place, the core becomes 1.0.0, and the Node floor (22 today) is revisited.
 
-## M4 — Harbor, then the Bridge
+## M4 — The Bridge
 
-The emitter already exists. This milestone delivers the server, the office view and, later, the
-Bridge's review pages.
+Harbor shipped between M1 and M2. This milestone delivers the Bridge's review pages on Harbor's
+server: the design pick, the T3 diff and decide. They write back the same repository files the CLI
+writes.

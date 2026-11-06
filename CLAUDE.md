@@ -19,11 +19,11 @@ This is the tool, not a product built with it.
   `scripts/check.sh`, `.githooks/`) appear here only as templates and eval fixtures.
 - This repository's own `docs/` is documentation about Epikloop.
 
-Every skill has its body except `design` (M2) and `harbor` (M4), which have frontmatter and a
-purpose paragraph only, and so does the worker. The git guard, the emitter, the gate runner, the
-SessionStart briefing, project setup, the state reader, the staging smoke, `doctor`, the project
-file formats, the `web` and `service` lanes, the team-mode workflow and the product `CLAUDE.md`
-template are in place. CI checks this repository's laws, lint among them, and the self-tests'
+Every skill has its body except `design` (M2), which has frontmatter and a purpose paragraph only,
+and so does the worker. The git guard, the emitter, the gate runner, the SessionStart briefing,
+project setup, the state reader, the staging smoke, `doctor`, the project file formats, the `web`
+and `service` lanes, the team-mode workflow, the product `CLAUDE.md` template and Harbor's plugin
+are in place. CI checks this repository's laws, lint among them, and the self-tests'
 mutations, and the eval suite runs on a contributor's machine. M1 is done when Harbor's own web app
 has been built with Epikloop and an existing production repo adopted, each end to end
 (`docs/roadmap.md`).
@@ -51,6 +51,9 @@ has been built with Epikloop and an existing production repo adopted, each end t
   - `scripts/smoke.mjs` — the staging smoke that `retro` and `release` run, with its self-test
   - `scripts/doctor.mjs` — the machine check behind `doctor`, which also folds the emitter's
     files, with its self-test
+  - `scripts/switch.mjs` — Harbor's switch behind `/epikloop:harbor`, with its self-test: sets
+    the flag in `~/.epikloop/config.json`, then starts or opens Harbor from the folder
+    `~/.epikloop/harbor.json` names
   - `templates/spec/` and `templates/docs/` — an example of each project file, in the formats
     `docs/formats.md` defines; the state reader's self-test parses them
   - `scripts/fold.mjs` — folds the emitter's files into `.jsonl` files, with its self-test
@@ -72,13 +75,19 @@ has been built with Epikloop and an existing production repo adopted, each end t
   - `evals/fixture.mjs` — builds each fixture project, a greeter repository at the stage a case
     starts from, with its self-test. The fixtures before a batch carry a remote nothing has been
     pushed to.
-- `plugins/epikloop-harbor/` — a manifest only, until M4.
+- `plugins/epikloop-harbor/` — Harbor:
+  - `harbor.mjs` and `client/` — Harbor's build, copied unchanged from where Harbor is built (the
+    commit that copies it names Harbor's commit); the network law allows its server's `node:http`
+    and its page's stream to `/events`, and nothing else
+  - `hooks/hooks.json` and `scripts/session.mjs` — the start-of-session hook: it records where the
+    plugin is installed in `~/.epikloop/harbor.json`, and starts Harbor while the flag is on
 - `tools/` — this repository's own checks, which no plugin ships:
   - `laws.mjs` checks the mechanical rules: the constitution's, and those below for frontmatter,
     hooks, plugin paths and layout, and JSON
   - `mutate.mjs`, with its list in `mutations.mjs`, is the self-tests' mutation check
   - `evals.mjs` runs the eval suite, each case as a headless session under the machine's own
     login, with its self-test
+  - `harbor.mjs` checks the Harbor plugin as it ships: its hook and its build, in a throwaway home
 - `CONSTITUTION.md` — the rules for changing Epikloop.
 - `docs/doctrine.md`, `docs/architecture.md` (the settled decisions), `docs/formats.md` (the
   project file formats), `docs/lanes.md` (writing a lane) and `docs/roadmap.md`.
@@ -108,7 +117,8 @@ has been built with Epikloop and an existing production repo adopted, each end t
   - They never register `WorktreeCreate` or `WorktreeRemove`.
   - No blocking hook goes on a non-shell tool. The guard covers `Bash|PowerShell` with
     `onFailure: "block"`.
-- **Nothing leaves the machine.** No telemetry, and no network calls from hooks or Harbor.
+- **Nothing leaves the machine.** No telemetry, and no network calls from hooks or Harbor, which
+  only serves itself on 127.0.0.1.
 - **The product-repo footprint is fixed** (constitution, article 8). Never add a file to it.
 - **Prompt ceiling.** Model-facing text in the core plugin totals at most 700 lines.
   - Count non-blank lines, wrapped at 100 columns.
@@ -160,9 +170,11 @@ node plugins/epikloop/scripts/init.mjs --self-test
 node plugins/epikloop/scripts/state.mjs --self-test
 node plugins/epikloop/scripts/smoke.mjs --self-test
 node plugins/epikloop/scripts/doctor.mjs --self-test
+node plugins/epikloop/scripts/switch.mjs --self-test
 claude plugin test plugins/epikloop
 node plugins/epikloop/scripts/fold.mjs --self-test
 node plugins/epikloop/templates/githooks/check.mjs --self-test
+node tools/harbor.mjs
 node plugins/epikloop/evals/fixture.mjs --self-test
 node tools/evals.mjs --self-test
 node tools/laws.mjs --self-test
@@ -204,13 +216,23 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
 - **The doctor's self-test** runs the checks in process, against throwaway repos and homes, with a
   fake `claude`, git version and `npx`. It covers each floor, each account, the lanes this machine
   can build, the UI test tool, the hooks, the gate files, team mode's workflow, this session's
-  events and the fold.
+  events, Harbor against stand-in servers on 127.0.0.1, and the fold.
+- **The switch's self-test** runs `/epikloop:harbor`'s script in throwaway homes, with a stand-in
+  for Harbor's `harbor.mjs`. It covers a first `on`, kept keys, `off` and `open`, a missing or stale
+  record of Harbor's plugin, a config that doesn't parse, Harbor's own failure and the usage line.
 - **The plugin test** runs the emitter's suite against simulated events, with no login. Among
   them are a project set up mid-session, a `/clear`, and notifications while none, one and two
   workers are at work.
 - **The fold's self-test** folds sample files in a temporary folder. It covers the lock free,
   held, left stale and freed by a fold that throws, a folder that's gone, and four processes
   folding one folder at once.
+- **The Harbor check** (`tools/harbor.mjs`) runs Harbor's start-of-session hook with the plugin's
+  copied build, in throwaway homes on free ports, on all three systems.
+  - With the flag on, Harbor answers its health, page, art and event stream, and it stops once the
+    flag turns off.
+  - With the flag off, no config or one that doesn't parse, nothing starts and nothing waits.
+  - A Harbor that can't start comes back as the hook's JSON message, with exit 0.
+  - The plugin's record is written every time.
 - **The gate runner's self-test** builds throwaway repos with bare remotes in a temporary folder.
   - It commits and pushes through the real hooks, and runs every gate's samples.
   - Then it checks that each mutation of the secret scan is caught.
@@ -227,7 +249,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - a shell only as a thin shim: the `check.sh` template, and each eval case's `scaffold.sh`,
     exactly the two lines that hand a fixture's name to `fixture.mjs`
   - no network call in hook code (what `hooks.json` runs, its imports and the git hooks) or in
-    Harbor
+    Harbor, but for Harbor's two: `import http from "node:http";` in `harbor.mjs`, and
+    `new EventSource("/events")` in `client/harbor.js`
   - skill and agent frontmatter: a one-sentence description, `name` only on the front door,
     `effort` on every skill a person can invoke, `model` only on the worker, and brackets and
     quotes quoted. Frontmatter the laws can't read fails, naming its line.

@@ -40,9 +40,13 @@ jobs:
       - run: node plugins/epikloop/scripts/state.mjs --self-test
       - run: node plugins/epikloop/scripts/smoke.mjs --self-test
       - run: node plugins/epikloop/scripts/doctor.mjs --self-test
+      - run: node plugins/epikloop/scripts/switch.mjs --self-test
       - run: claude plugin test plugins/epikloop
       - run: node plugins/epikloop/scripts/fold.mjs --self-test
       - run: node plugins/epikloop/templates/githooks/check.mjs --self-test
+      # Harbor's plugin as it ships: its start-of-session hook and the build copied from Harbor,
+      # served from a throwaway home on each system.
+      - run: node tools/harbor.mjs
       # The eval suite's fixtures and runner, neither of which makes a model call. The suite itself
       # runs on a contributor's machine under their own Claude Code login, so no credential is
       # stored here.

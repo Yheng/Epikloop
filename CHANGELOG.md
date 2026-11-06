@@ -170,6 +170,17 @@ All notable changes to Epikloop are recorded here.
   - **JSON formats:** each schema requires a `format` version. Every key in the schemas, their
     examples and the lane profiles is snake_case, apart from JSON Schema's `$schema` and the tiers
     `T1`–`T3`.
+- Harbor, in `epikloop-harbor` at 0.1.0
+  ([issue #5](https://github.com/Yheng/Epikloop/issues/5)).
+  - The plugin carries Harbor's build, copied unchanged from where Harbor is built: the server in
+    one Node file on built-ins only, and the page with its source maps and its art.
+  - Its start-of-session hook records where the plugin is installed in `~/.epikloop/harbor.json`
+    ([schema](plugins/epikloop/schemas/harbor.schema.json)), and starts Harbor while the flag is
+    on.
+  - `/epikloop:harbor on|off|open` has its body, through the core's `scripts/switch.mjs`, and
+    `doctor` checks that Harbor answers while it's on.
+  - CI runs the switch's self-test, and `tools/harbor.mjs`, which serves the copied build through
+    the hook from a throwaway home, on Linux, macOS and Windows.
 
 ### Changed
 
@@ -243,6 +254,9 @@ All notable changes to Epikloop are recorded here.
     the human found its code-drawn ships and docks too plain. After its MVP it planned the office.
   - The architecture now says the server uses Node's built-ins only, where it said `http` and `fs`
     only. The server also reads git through `child_process`.
+- Harbor shipped between M1 and M2, since its app was ready and its release waited on the plugin.
+  M4 is now the Bridge, whose review pages need design
+  ([issue #5](https://github.com/Yheng/Epikloop/issues/5)).
 
 ### Removed
 
@@ -720,3 +734,32 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
     session offered to record a second `Go live later`, which the state reader would never read.
   - Now the brief and the skill name the `live` tag. Once a `Go live later` stands, the brief says
     that if going live still waits, nothing is set up or recorded and the release ends there.
+
+### Hook rules (adopted 2026-11-06)
+
+- **Harbor's start-of-session hook records where its plugin is, and starts Harbor while the flag
+  is on** ([issue #5](https://github.com/Yheng/Epikloop/issues/5)).
+  - On 2026-11-06, shipping the first dogfood project's Harbor showed that `/epikloop:harbor`, a
+    core skill, couldn't start it. In a skill, `${CLAUDE_PLUGIN_ROOT}` is its own plugin's folder,
+    and Claude Code gives a plugin no way to find another's. So the hook writes the plugin's folder
+    to `~/.epikloop/harbor.json`, and the core's switch reads it.
+  - The project's handoff had the hook print Harbor's line, which a start-of-session hook would
+    add to every session's context, and exit 1 when Harbor couldn't start. It prints nothing,
+    or a message for the human when Harbor couldn't start, and always exits 0.
+  - It reads the flag itself. Harbor waits 5 seconds on a config that doesn't parse before it
+    counts it as off, and no session start waits that out.
+  - A spike on Windows, on 2026-11-06, found that a detached process started the way Harbor's
+    `start` starts its server outlives the hook that launched it and its session, whether a hook
+    or the Bash tool launched it.
+
+### Law rules (adopted 2026-11-06)
+
+- **The network law allows Harbor's two calls, each in one file of its build.** The server's
+  `import http from "node:http";` in `harbor.mjs`, to listen on 127.0.0.1, and the page's
+  `new EventSource("/events")` in `client/harbor.js`.
+  - On 2026-11-06 the first dogfood project's build was copied into the plugin. The law reads all
+    of Harbor's code, and it refused both: a server has to listen, and the page has to read its
+    own event stream.
+  - Each exception is the exact text the build writes, taken out of its own line before the line is
+    checked. Any other network call on that line or in those files fails, and so does either call
+    in any other file.

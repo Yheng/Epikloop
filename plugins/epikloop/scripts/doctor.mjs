@@ -2,8 +2,8 @@
 // line per check, each ending "ok" or with its fix: Node, git and Claude Code against their floors,
 // the account's prompt cache and, inside a project, its files, its git hooks, its gate files against
 // the plugin's templates, team mode's workflow, and whether this session's events are being written.
-// It also folds the emitter's files from past days into their .jsonl files. It fixes nothing; the
-// human runs the fixes.
+// While Harbor's flag is on, it checks that Harbor answers. It also folds the emitter's files from
+// past days into their .jsonl files. It fixes nothing; the human runs the fixes.
 //
 // `node doctor.mjs --self-test` runs every case below in throwaway repositories and homes.
 import { spawnSync } from 'node:child_process'
@@ -23,6 +23,8 @@ const FLOORS = { node: '22.0.0', git: '2.23.0', claude: '2.1.295' }
 const SUBSCRIPTION = ['claude.ai', 'oauth_token']
 const API = ['api_key', 'api_key_helper', 'third_party']
 const SETTING = 'set "promptCacheTtl": "1h" in ~/.claude/settings.json'
+// Where Harbor answers in production.
+const HARBOR = 'http://127.0.0.1:4747/'
 
 const versionOf = (text) => /(\d+)\.(\d+)\.(\d+)/.exec(text ?? '')?.slice(1, 4).map(Number) ?? null
 const below = (version, floor) => {
@@ -31,6 +33,25 @@ const below = (version, floor) => {
   return false
 }
 const floorShown = (floor) => floor.replace(/\.0$/, '').replace(/^(\d+)\.0$/, '$1')
+
+function readJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch {
+    return undefined
+  }
+}
+
+// The app that /health names at `base`, '' for an answer that names none, or null for no answer.
+async function healthApp(base) {
+  try {
+    const response = await fetch(new URL('health', base), { signal: AbortSignal.timeout(2000) })
+    const app = JSON.parse(await response.text())?.app
+    return typeof app === 'string' ? app : ''
+  } catch (error) {
+    return error instanceof SyntaxError ? '' : null
+  }
+}
 
 function entries(dir) {
   try {
@@ -103,7 +124,7 @@ function foldAll(fold, home, now) {
 }
 
 // The report, as lines: a summary, then one line per check.
-export async function report({ cwd, env, home, node, exec, now }) {
+export async function report({ cwd, env, home, node, exec, now, harbor = HARBOR }) {
   const lines = []
   let fixes = 0
   const ok = (what) => lines.push(`- ${what}: ok.`)
@@ -208,6 +229,20 @@ export async function report({ cwd, env, home, node, exec, now }) {
     }
   }
 
+  // Harbor, while its flag is on: its plugin has recorded where it is, and Harbor answers at its
+  // address. With the flag off there is nothing to check.
+  if (readJson(path.join(home, '.epikloop', 'config.json'))?.harbor === true) {
+    const root = readJson(path.join(home, '.epikloop', 'harbor.json'))?.root
+    if (typeof root !== 'string' || !fs.existsSync(path.join(root, 'harbor.mjs'))) {
+      fix("Harbor: it's on, but its plugin, epikloop-harbor, hasn't run in a session here", 'install it with claude plugin install epikloop-harbor@epikloop, then start a new session')
+    } else {
+      const app = await healthApp(harbor)
+      if (app === 'epikloop-harbor') ok(`Harbor: it answers at ${harbor}`)
+      else if (app === null) fix(`Harbor: it's on, but nothing answers at ${harbor}`, '/epikloop:harbor open starts it')
+      else fix(`Harbor: it's on, but what answers at ${harbor} isn't Harbor`, 'stop what holds that port, then /epikloop:harbor open')
+    }
+  }
+
   const { fold } = await import('./fold.mjs')
   const folded = foldAll(fold, home, now)
   if (folded.events + folded.rows > 0) {
@@ -268,7 +303,7 @@ async function selfTest() {
     // The report, with a fake claude, git version and npx: `claude` is { version, auth }, either one
     // null for a claude that can't say; `git` is the version git reports, or null for no git; `npx`
     // is npx's version, or null for no npx.
-    async run({ cwd = k.dir('plain'), home = k.home(), env = { CLAUDE_CODE_SESSION_ID: SESSION }, node = '22.12.0', claude = {}, git = '2.45.1', npx = '10.9.2' } = {}) {
+    async run({ cwd = k.dir('plain'), home = k.home(), env = { CLAUDE_CODE_SESSION_ID: SESSION }, node = '22.12.0', claude = {}, git = '2.45.1', npx = '10.9.2', harbor } = {}) {
       const { version = '2.1.314', auth = 'claude.ai' } = claude
       const fake = (program, args, at) => {
         if (program === 'claude' && args[0] === '--version') return version === null ? { status: null, stdout: '' } : { status: 0, stdout: `${version} (Claude Code)\n` }
@@ -277,7 +312,14 @@ async function selfTest() {
         if (program === 'npx') return npx === null ? { status: null, stdout: '' } : { status: 0, stdout: `${npx}\n` }
         return exec(program, args, at)
       }
-      return `${(await report({ cwd, env, home, node, exec: fake, now: NOW })).join('\n')}\n`
+      return `${(await report({ cwd, env, home, node, exec: fake, now: NOW, harbor })).join('\n')}\n`
+    },
+    // A server on 127.0.0.1 whose /health names `app`, and its address.
+    async server(app) {
+      const http = await import('node:http')
+      const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ app, version: '0.1.0', format: 1 })))
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+      return { url: `http://127.0.0.1:${server.address().port}/`, close: () => new Promise((resolve) => server.close(resolve)) }
     },
     expect: (pairs) => pairs.filter(([actual, wanted]) => actual !== wanted).map(([actual, wanted]) => `got ${JSON.stringify(actual)}, not ${JSON.stringify(wanted)}`),
     has: (actual, ...parts) => parts.filter((part) => !actual.includes(part)).map((part) => `no ${JSON.stringify(part)} in ${JSON.stringify(actual)}`),
@@ -425,6 +467,39 @@ async function selfTest() {
           ...(fs.existsSync(path.join(events, today, mine)) && !fs.existsSync(path.join(events, `${today}.jsonl`)) ? [] : ["today's events were folded"]),
           ...(fs.existsSync(path.join(home, '.epikloop', 'projects', '000000000000', 'cost.jsonl')) ? [] : ["the cost row isn't folded"]),
         ]
+      },
+    ],
+    [
+      "Harbor, while its flag is on: its plugin's record, and what answers at its address",
+      async () => {
+        const plugin = k.dir('harbor-plugin')
+        k.write(plugin, 'harbor.mjs', '')
+        const at = (config, root) => {
+          const home = k.home()
+          if (config !== undefined) k.write(home, '.epikloop/config.json', JSON.stringify(config))
+          if (root !== undefined) k.write(home, '.epikloop/harbor.json', JSON.stringify({ format: 1, root }))
+          return home
+        }
+        const on = { format: 1, harbor: true }
+        const harbor = await k.server('epikloop-harbor')
+        const other = await k.server('something-else')
+        const closed = await k.server('epikloop-harbor')
+        await closed.close()
+        try {
+          const off = await k.run({ home: at({ format: 1, harbor: false }, plugin), harbor: harbor.url })
+          const none = await k.run({ home: at(undefined, plugin), harbor: harbor.url })
+          return [
+            ...(off.includes('Harbor') || none.includes('Harbor') ? ['spoke of Harbor with its flag off'] : []),
+            ...k.has(await k.run({ home: at(on, plugin), harbor: harbor.url }), `- Harbor: it answers at ${harbor.url}: ok.\n`),
+            ...k.has(await k.run({ home: at(on), harbor: harbor.url }), "- Harbor: it's on, but its plugin, epikloop-harbor, hasn't run in a session here. Fix: install it with claude plugin install epikloop-harbor@epikloop, then start a new session.\n"),
+            ...k.has(await k.run({ home: at(on, k.dir('gone')), harbor: harbor.url }), "hasn't run in a session here"),
+            ...k.has(await k.run({ home: at(on, plugin), harbor: closed.url }), `- Harbor: it's on, but nothing answers at ${closed.url}. Fix: /epikloop:harbor open starts it.\n`),
+            ...k.has(await k.run({ home: at(on, plugin), harbor: other.url }), `- Harbor: it's on, but what answers at ${other.url} isn't Harbor. Fix: stop what holds that port, then /epikloop:harbor open.\n`),
+          ]
+        } finally {
+          await harbor.close()
+          await other.close()
+        }
       },
     ],
     [
