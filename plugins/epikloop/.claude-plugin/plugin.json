@@ -1,7 +1,7 @@
 {
   "name": "epikloop",
   "displayName": "Epikloop",
-  "version": "0.1.0-dev.0",
+  "version": "0.1.0-dev.1",
   "description": "An agentic delivery loop: spec it, story it, run the epic unattended through hard gates, decide, run again, ship.",
   "author": {
     "name": "Ariel Retes"

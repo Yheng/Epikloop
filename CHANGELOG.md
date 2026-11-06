@@ -170,7 +170,7 @@ All notable changes to Epikloop are recorded here.
   - **JSON formats:** each schema requires a `format` version. Every key in the schemas, their
     examples and the lane profiles is snake_case, apart from JSON Schema's `$schema` and the tiers
     `T1`–`T3`.
-- Harbor, in `epikloop-harbor` at 0.1.0
+- Harbor, in `epikloop-harbor` at 0.1.0, released on 2026-11-06 as `epikloop-harbor--v0.1.0`
   ([issue #5](https://github.com/Yheng/Epikloop/issues/5)).
   - The plugin carries Harbor's build, copied unchanged from where Harbor is built: the server in
     one Node file on built-ins only, and the page with its source maps and its art.
@@ -257,6 +257,9 @@ All notable changes to Epikloop are recorded here.
 - Harbor shipped between M1 and M2, since its app was ready and its release waited on the plugin.
   M4 is now the Bridge, whose review pages need design
   ([issue #5](https://github.com/Yheng/Epikloop/issues/5)).
+- The core plugin is 0.1.0-dev.1. Claude Code keeps an installed plugin on its cached copy until its
+  version changes, so a core installed at 0.1.0-dev.0 would have kept `/epikloop:harbor` without
+  the switch that Harbor 0.1.0 needs.
 
 ### Removed
 
