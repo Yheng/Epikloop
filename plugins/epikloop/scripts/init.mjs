@@ -5,12 +5,16 @@
 // template layout it tags the last commit before-adoption, the rollback point for converting it. It
 // never overwrites a file and never commits. It prints one summary line, and exits 1 only when it
 // couldn't do its job.
+// A new project starts on its default branch, level with its remote, or init writes nothing and
+// says why. Before laying down team mode's workflow, init asks GitHub through gh whether origin's
+// default branch can be protected, and refuses team mode when GitHub says the repository's plan
+// can't have it.
 // When it wrote the marker, the pipeline protocol follows the line: the session that sets a
 // project up began outside it, so that session's briefing had none.
 //
 // `node init.mjs --refresh` brings an existing project's gate files up to the plugin's: it copies in
 // each one that is missing or differs from its template, and stages it, leaving the marker alone.
-// In team mode it also lays down the workflow when it is missing.
+// In team mode it also lays down the workflow when it is missing, asking GitHub first as above.
 // `node init.mjs --self-test` runs every case below against throwaway repositories.
 import { spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
@@ -18,7 +22,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { PROTOCOL } from './brief.mjs'
-import { EARLIER, laneNames } from './state.mjs'
+import { EARLIER, batchFacts, branchProblem, laneNames } from './state.mjs'
 
 const USAGE = 'usage: node init.mjs --lane <lane> --mode solo|team | --refresh'
 export const TEMPLATES = path.join(import.meta.dirname, '..', 'templates')
@@ -109,6 +113,44 @@ function projectId(top) {
   return { id, from: remote ?? 'the repository path' }
 }
 
+// A GitHub remote as owner/repo, lowercased; null for any other remote.
+export function githubRepo(url) {
+  return /^github\.com\/([^/]+\/[^/]+)$/.exec(normalizeRemote(url) ?? '')?.[1] ?? null
+}
+
+// What GitHub's answer about the default branch's protection means for team mode, whose required
+// check needs it: { refusal } when GitHub refuses protection on the repository's plan, { note }
+// when it couldn't be asked, and {} when it can be protected, already is, or isn't known yet.
+export function protectionVerdict(run, repo, branch) {
+  const unasked = (why) => ({ note: `GitHub didn't say whether ${branch} can be protected: ${why}` })
+  if (run.error) return unasked(`gh ${run.error.code ?? run.error.message}`)
+  if (run.status === 0) return {}
+  const said = (run.stderr ?? '').trim().split('\n').find((line) => /\(HTTP \d+\)/.test(line))?.replace(/^gh: /, '') ?? ''
+  const status = Number(/\(HTTP (\d+)\)/.exec(said)?.[1])
+  if (status === 404) return {}
+  if (status === 403 && /upgrade|public/i.test(said)) {
+    let message = said.replace(/\s*\(HTTP 403\)$/, '')
+    try {
+      message = JSON.parse(run.stdout).message ?? message
+    } catch {}
+    return { refusal: `GitHub refuses branch protection on ${repo} (HTTP 403: ${message}), so team mode's check can't be required there; set the project up with --mode solo` }
+  }
+  return unasked(said || (run.stderr ?? '').trim().split('\n')[0] || `gh exited ${run.status}`)
+}
+
+// Asks GitHub, through gh, whether origin's default branch can be protected, when origin is on
+// GitHub; {} for any other remote.
+function protection(top) {
+  const url = git(top, ['remote', 'get-url', 'origin'])
+  const repo = url.status === 0 ? githubRepo(url.stdout.trim()) : null
+  if (repo === null) return {}
+  const head = git(top, ['symbolic-ref', '-q', 'refs/remotes/origin/HEAD'])
+  const branch = head.status === 0 ? head.stdout.trim().replace(/^refs\/remotes\/origin\//, '') : git(top, ['symbolic-ref', '-q', '--short', 'HEAD']).stdout.trim()
+  if (branch === '') return {}
+  const run = spawnSync('gh', ['api', `repos/${repo}/branches/${branch}/protection`], { cwd: top, encoding: 'utf8', timeout: 30_000, windowsHide: true })
+  return protectionVerdict(run, repo, branch)
+}
+
 // The rollback point for adopting a repository on an earlier template layout: its last commit,
 // tagged before anything is converted. A tag already there stays where it is. Null when there is no
 // earlier layout, or no commit to tag.
@@ -147,8 +189,8 @@ function init(argv) {
   let mode = options.mode
 
   const marker = path.join(top, '.epikloop', 'project.json')
+  let kept = null
   if (fs.existsSync(marker)) {
-    let kept
     try {
       const project = JSON.parse(fs.readFileSync(marker, 'utf8').replace(/^﻿/, ''))
       mode = project.mode
@@ -158,8 +200,23 @@ function init(argv) {
     } catch {
       kept = "kept, though it doesn't parse"
     }
-    parts.push(`.epikloop/project.json ${kept}`)
   } else {
+    // A new project starts from its default branch, level with its remote, so nothing it converts
+    // or commits is already out of date.
+    const facts = batchFacts(top)
+    const problem = facts === null ? null : branchProblem(facts, 'setup')
+    if (problem !== null) return console.log(`init: ${problem}`)
+  }
+  // Team mode's required check needs a default branch GitHub can protect.
+  const notes = []
+  if (mode === 'team' && !fs.existsSync(path.join(top, ...WORKFLOW.split('/')))) {
+    const { refusal, note } = protection(top)
+    if (refusal !== undefined) return console.log(`init: ${refusal}`)
+    if (note !== undefined) notes.push(note)
+  }
+
+  if (kept !== null) parts.push(`.epikloop/project.json ${kept}`)
+  else {
     const { id, from } = projectId(top)
     fs.mkdirSync(path.dirname(marker), { recursive: true })
     fs.writeFileSync(marker, `${JSON.stringify({ format: 1, id, lane: options.lane, mode: options.mode }, null, 2)}\n`)
@@ -201,7 +258,7 @@ function init(argv) {
 
   const armed = arm(top)
   if (armed) parts.push(armed)
-  if (laid.includes(WORKFLOW)) parts.push(PROTECTION)
+  if (laid.includes(WORKFLOW)) parts.push(PROTECTION, ...notes)
   console.log(`init: ${parts.join(' · ')}`)
   if (wrote.includes('.epikloop/project.json')) console.log(`\n${PROTOCOL}`)
   process.exitCode = 0
@@ -220,6 +277,13 @@ function refresh(argv) {
   try {
     mode = JSON.parse(fs.readFileSync(marker, 'utf8').replace(/^﻿/, '')).mode
   } catch {}
+  // Team mode's required check needs a default branch GitHub can protect.
+  const notes = []
+  if (mode === 'team' && !fs.existsSync(path.join(top, ...WORKFLOW.split('/')))) {
+    const { refusal, note } = protection(top)
+    if (refusal !== undefined) return console.log(`init: ${refusal}`)
+    if (note !== undefined) notes.push(note)
+  }
   const stale = staleGates(top)
   for (const [file, template, shim] of stale) {
     const target = path.join(top, ...file.split('/'))
@@ -236,7 +300,7 @@ function refresh(argv) {
   if (stale.length > 0) parts.push(`refreshed ${stale.map(([file]) => file).join(', ')}`)
   if (laid.length > 0) parts.push(`${laid.join(' and ')} written`)
   if (parts.length === 0) console.log("init: the gate files already match the plugin's")
-  else console.log(`init: ${[...parts, 'staged', ...(laid.length > 0 ? [PROTECTION] : [])].join(' · ')}`)
+  else console.log(`init: ${[...parts, 'staged', ...(laid.length > 0 ? [PROTECTION, ...notes] : [])].join(' · ')}`)
   process.exitCode = 0
 }
 
@@ -294,6 +358,58 @@ const CASES = [
       const dir = k.repo()
       k.git(dir, 'remote', 'add', 'upstream', 'git@host.example:team/app.git')
       return k.marks(dir, k.init(dir), 'host.example/team/app')
+    },
+  ],
+  [
+    'setup starts on the default branch, level with its remote',
+    (k) => {
+      const dir = k.repo()
+      k.git(dir, 'symbolic-ref', 'HEAD', 'refs/heads/main')
+      k.write(dir, 'app.js', 'one\n')
+      k.commit(dir, 'one')
+      k.write(dir, 'app.js', 'two\n')
+      k.commit(dir, 'two')
+      const bare = k.folder()
+      k.git(bare, 'init', '-q', '--bare')
+      k.git(dir, 'remote', 'add', 'origin', bare)
+      k.git(dir, 'push', '-q', 'origin', 'main')
+      k.git(dir, 'switch', '-q', '-c', 'side')
+      const problems = k.fails(k.init(dir), 'init: Setup starts on main, and this checkout is on side.', dir)
+      k.git(dir, 'switch', '-q', 'main')
+      k.git(dir, 'reset', '-q', '--hard', 'HEAD~1')
+      problems.push(...k.fails(k.init(dir), 'init: main is 1 commit behind origin/main; `git pull --ff-only origin main` brings it up to date.', dir))
+      k.write(dir, 'app.js', 'three\n')
+      k.commit(dir, 'three')
+      problems.push(...k.fails(k.init(dir), 'init: main and origin/main have diverged, and the human reconciles them before setup starts.', dir))
+      k.git(dir, 'reset', '-q', '--hard', 'origin/main')
+      problems.push(...k.says(k.init(dir), '.epikloop/project.json written'))
+      return problems
+    },
+  ],
+  [
+    'team mode asks GitHub whether the default branch can be protected, and a 403 refuses it',
+    () => {
+      const body = (message, status) => JSON.stringify({ message, documentation_url: 'https://docs.github.com/rest/branches/branch-protection#get-branch-protection', status })
+      const answer = (message, status) => ({ status: 1, stdout: body(message, String(status)), stderr: `gh: ${message} (HTTP ${status})\n` })
+      const upgrade = 'Upgrade to GitHub Pro or make this repository public to enable this feature.'
+      const verdict = (run) => JSON.stringify(protectionVerdict(run, 'owner/app', 'main'))
+      const expect = (run, wanted) => (verdict(run) === JSON.stringify(wanted) ? [] : [`gave ${verdict(run)}, not ${JSON.stringify(wanted)}`])
+      return [
+        ...expect(answer(upgrade, 403), { refusal: `GitHub refuses branch protection on owner/app (HTTP 403: ${upgrade}), so team mode's check can't be required there; set the project up with --mode solo` }),
+        ...expect(answer('Branch not protected', 404), {}),
+        ...expect(answer('Not Found', 404), {}),
+        ...expect({ status: 0, stdout: '{"url":"https://api.github.com/repos/owner/app/branches/main/protection"}', stderr: '' }, {}),
+        ...expect(answer('Must have admin rights to Repository.', 403), { note: "GitHub didn't say whether main can be protected: Must have admin rights to Repository. (HTTP 403)" }),
+        ...expect({ status: null, stdout: '', stderr: '', error: Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }) }, { note: "GitHub didn't say whether main can be protected: gh ENOENT" }),
+        ...[
+          ['https://user:tok@GitHub.com/Owner/App.git', 'owner/app'],
+          ['git@github.com:Owner/App.git', 'owner/app'],
+          ['ssh://git@github.com/owner/app', 'owner/app'],
+          ['https://gitlab.com/owner/app.git', null],
+          ['https://github.com/owner/app/extra.git', null],
+          ['../elsewhere.git', null],
+        ].flatMap(([url, wanted]) => (githubRepo(url) === wanted ? [] : [`${url} gave ${githubRepo(url)}, not ${wanted}`])),
+      ]
     },
   ],
   [

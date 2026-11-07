@@ -24,8 +24,9 @@ SessionStart briefing, project setup, the state reader, the staging smoke, `doct
 gallery, the project file formats, the `web` and `service` lanes, the team-mode workflow, the
 product `CLAUDE.md` template and Harbor's plugin are in place. CI checks this repository's laws,
 lint among them, and the self-tests' mutations, and the eval suite runs on a contributor's machine.
-M1 is done when Harbor's own web app has been built with Epikloop and an existing production repo
-adopted, each end to end (`docs/roadmap.md`). M2's three slices are in: the design skill, the
+M1 is done: Harbor's own web app has been built with Epikloop and an existing production repo
+adopted, each end to end (`docs/roadmap.md`), and the core's first release, 0.1.0, follows. M2's
+three slices are in: the design skill, the
 screens as the truth at story and retro time, and adopting a production repository, which converts
 an earlier template layout and brings in the design the product has.
 
@@ -204,6 +205,11 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   arming, an unknown lane, `CLAUDE.md`, the team workflow, the protocol after a new marker and
   `--refresh`. On an earlier template layout it tags `before-adoption` at HEAD and keeps a tag
   already there; without that layout, without a commit or with a kept marker, it tags nothing.
+  - It refuses a new marker on a side branch, or behind or diverged from a bare remote, and writes
+    one once the branch is level.
+  - It reads GitHub's answers about branch protection in process, from sample `gh` results: a 403
+    for the repository's plan refuses team mode; a 404, a 200, another 403 and no `gh` don't.
+    It parses GitHub's owner and repository from each remote form. No case calls the real `gh`.
   - It holds the workflow template to its settled parts and its pinned gates step, and runs that
     step over a pull request whose secret a later commit removed.
   - Its last case commits through the real pre-commit hook.
@@ -219,11 +225,16 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
     `--design` before and after the pick, with an audit's findings and the missing files it names.
   - With a design, a worker's brief names the screens that show its story's requirements and no
     others, and the retro's brief says how far the visual compare reaches; without one, neither
-    does.
+    does. A screen or a helper under `design/screens/` that loads a font or a script from a URL is
+    one problem, which counts the other files; a namespace or a hyperlink isn't.
   - For an adopted product, it reports an earlier template's `PIPELINE_VERSION` first, numbers the
     next epic after the story files and every `feat(N.M):` commit, and reads a design that came
     with the product. A product adopted while live goes to stage 10 and runs its planned work,
     after its confirmation and a design it started.
+  - After going live, an epic whose stories have all landed, one of them since the `live` tag,
+    waits for its retro before the next epic: the ready list holds, and the retro's brief lists
+    every story, signs nothing off and then prints its tag. An epic that landed before `live`
+    waits for none.
   - It holds every lane file to its format, and checks `--lanes`, `--lane` and an unknown lane.
 - **The smoke's self-test** smokes a server on 127.0.0.1: answers, redirects, a timeout, a closed
   port, the marker's URL, and credentials sent but never printed. In throwaway repos, it checks the

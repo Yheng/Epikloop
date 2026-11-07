@@ -121,8 +121,8 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | Harbor: its server, its office view, the `harbor` command and its start-of-session hook | **Available** |
 | The Bridge: review pages on Harbor's server for the design pick, the T3 diff and decide | M4 |
 
-Until M1 lands, the loop hasn't yet taken a real project end to end, so Epikloop is not ready for
-real projects. See the [roadmap](#roadmap).
+M1 is done: the loop has built a web app and adopted a production repository, each end to end. The
+core plugin's first release, 0.1.0, comes next. See the [roadmap](#roadmap).
 
 ## Install
 
@@ -241,7 +241,7 @@ after six weeks.
 | 7 | The current phase is complete but not tagged | `retro` |
 | 8 | Every MVP epic is tagged, and there is no `mvp` tag | `retro` for the MVP sign-off, which waits until queue Δ ≤ 0 and the staging smoke is green |
 | 9 | There is an `mvp` tag but no `live` tag | `release` |
-| 10 | There is a `live` tag, from `release` or from adopting a product already in production | Post-MVP mode: the backlog becomes visible, `epic N` runs planned work, and `plan --extend` takes new work |
+| 10 | There is a `live` tag, from `release` or from adopting a product already in production | Post-MVP mode: the backlog becomes visible, `epic N` runs planned work, each epic that lands closes with `retro` before the next, and `plan --extend` takes new work |
 
 ### The session briefing
 
@@ -403,12 +403,16 @@ step is also a command you can run directly.
     `spec/architecture.md` describes, and the release is tagged `live`. When production comes
     later, the release records that going live waits instead, and the planned work runs first.
 11. **Keep going.** After release the project is in post-MVP mode. The backlog becomes visible, and
-    `/epikloop:plan --extend` plans new work without touching the frozen set.
+    `/epikloop:plan --extend` plans new work without touching the frozen set. Each epic that lands
+    closes with `/epikloop:retro` before the next: the deep gates, the visual compare, the staging
+    smoke and the queue's pruning, with nothing to sign off.
 
 ### An existing codebase
 
 `/epikloop:adopt` brings existing code into Epikloop without breaking its build:
 
+- It starts from the default branch, level with its remote after a fetch. Setup refuses a side
+  branch, or one that is behind or has diverged, and says how to bring it up to date.
 - The code is read into `spec/`, with every requirement marked `observed`, and
   `spec/architecture.md` describes the system as built.
 - Gate commands come from the project's own scripts. If a gate fails on today's code, the adoption
@@ -417,7 +421,8 @@ step is also a command you can run directly.
 - It ends with one confirmation batch, in which you confirm, correct or retire the observed
   requirements.
 - A design the product already has, its tokens and screen mockups, comes into `design/` as it is,
-  with no directions to pick. A web product with no design goes on to `design` as a new one does.
+  with no directions to pick. What the mockups load from outside, such as a script or a web font,
+  is copied in beside them, so the screens render offline. A web product with no design goes on to `design` as a new one does.
 - A product already in production is tagged `live` once its adoption lands, so it goes on in
   post-MVP mode: no MVP to freeze or sign off, and `plan --extend` plans its next work.
 - Epics are numbered after every number the repository's history already used.
@@ -456,6 +461,9 @@ Team mode is the standard; solo mode is supported. You choose during `plan`.
     `adopt` copies them from your existing CI.
   - It blocks merges once you require it. On GitHub, protect the default branch with a branch
     protection rule or a ruleset, and add `check` as a required status check.
+  - GitHub gives a private repository branch protection only on a paid plan. Before laying the
+    workflow down, setup asks GitHub through `gh`, and where GitHub says the branch can't be
+    protected, it refuses team mode, so the project goes on in solo mode.
 - Solo mode creates no workflow, and `check.sh` fails if a workflow appears that
   `gates.allow_workflows` doesn't list.
 - Progress is derived, never stored. In solo mode a story is done when a `feat(X.X):` commit exists
@@ -1102,8 +1110,8 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
 | **M4: The Bridge** | Review pages on Harbor's server: the design pick, the T3 diff and decide |
 
-M1 is done when Harbor's own web app has been built with Epikloop end to end, and an existing
-production repository has been adopted end to end.
+M1 was done when Harbor's own web app had been built with Epikloop end to end, and an existing
+production repository adopted end to end. Both were met by 2026-11-07.
 
 Each plugin follows semver on its own. The core plugin ships 0.x pre-releases through M1–M3 and
 becomes 1.0.0 when the full lane set lands; Harbor starts at 0.1.0. Releases are tagged

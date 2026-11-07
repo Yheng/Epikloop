@@ -7,8 +7,9 @@ allowed-tools:
 ---
 
 Outcome: `spec/` describes the product as it stands once the story lands, because the story's
-delta is applied in the same commit as its code. Scope: the delta the story declares; a change to
-the spec beyond it is a finding for the queue.
+delta is applied in the same commit as its code. Scope: the delta the story declares, and any
+requirement the story's code makes untrue, changed with it; any other change to the spec is a
+finding for the queue.
 
 Each delta line acts on one requirement under its stable ID, which is never renumbered or reused.
 `add` writes a new requirement into the capability file that holds its CODE, or into a new

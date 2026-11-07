@@ -38,8 +38,9 @@ this format, which a script reads, so its headings and fields stay exactly as sh
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example manifest`
 
-Each state is its own HTML file in `design/screens/`, linking `../tokens.css`: `<screen>.html` for
-the default, and `<screen>.<state>.html` for `empty`, `loading` and `error`. A screen carries the
+Each state is its own HTML file in `design/screens/`, linking `../tokens.css` and loading nothing
+from outside `design/`: `<screen>.html` for the default, and `<screen>.<state>.html` for `empty`,
+`loading` and `error`. A screen carries the
 product's real copy, drawn from the spec and its quoted business rules, and works at both widths.
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/gallery.mjs"` writes `design/index.html`, which frames the
 directions and every state at both widths; run it on its own whenever they change, and point the

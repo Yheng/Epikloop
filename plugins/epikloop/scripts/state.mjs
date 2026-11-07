@@ -395,7 +395,69 @@ function readDesign(root, lane, requirements, decisions, problems) {
   }
   design.started = design.brief || design.directions.length > 0 || screens !== null
   design.complete = design.tokens && screens !== null && screens.length > 0 && design.missing.length === 0
+  const outside = outsideLoads(root)
+  if (outside.length > 0) {
+    const [first] = outside
+    const more = outside.length - 1
+    const also = more === 0 ? '' : `, and so ${more === 1 ? 'does 1 more design file' : `do ${more} more design files`}`
+    problems.push(`${first.file}:${first.line}: loads ${urlShown(first.url)} from outside design/${also}; the screens spec renders design files offline, so what they load belongs in design/`)
+  }
   return design
+}
+
+// The loads a design file can make from outside design/: a script, image or frame source, a link,
+// a CSS url() or @import, a JS import, and a quoted URL to a script, style or font. A namespace or a
+// hyperlink loads nothing.
+const LOADS = [
+  /<(?:script|img|source|iframe|video|audio|embed)\b[^>]*?\bsrc\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi,
+  /<link\b[^>]*?\bhref\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi,
+  /url\(\s*["']?(https?:\/\/[^"')\s]+)/gi,
+  /@import\s+["'](https?:\/\/[^"']+)/gi,
+  /\b(?:import|from)\s*\(?\s*["'](https?:\/\/[^"']+)/g,
+  /["'](https?:\/\/[^"'\s]+?\.(?:m?js|css|woff2?|ttf|otf)(?:\?[^"'\s]*)?)["']/gi,
+]
+
+// What the files the screens spec renders load from outside design/: the tokens and everything
+// under design/screens/, each file's first such load as { file, line, url }.
+function outsideLoads(root) {
+  const found = []
+  const scan = (rel) => {
+    let text
+    try {
+      text = fs.readFileSync(path.join(root, ...rel.split('/')), 'utf8')
+    } catch {
+      return
+    }
+    let first = null
+    for (const pattern of LOADS) for (const match of text.matchAll(pattern)) if (first === null || match.index < first.index) first = match
+    if (first !== null) found.push({ file: rel, line: text.slice(0, first.index).split('\n').length, url: first[1] })
+  }
+  const walk = (rel) => {
+    let entries
+    try {
+      entries = fs.readdirSync(path.join(root, ...rel.split('/')), { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.name.startsWith('.')) continue
+      if (entry.isDirectory()) walk(`${rel}/${entry.name}`)
+      else if (/\.(?:html?|css|m?js)$/i.test(entry.name)) scan(`${rel}/${entry.name}`)
+    }
+  }
+  scan('design/tokens.css')
+  walk('design/screens')
+  return found
+}
+
+// A URL as a problem names it: its origin and path.
+function urlShown(url) {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.origin}${parsed.pathname}`
+  } catch {
+    return url
+  }
 }
 
 // A design adopt brought in with the product: its tokens, and no directions or pick.
@@ -452,6 +514,18 @@ function doneTimes(git, branch) {
     if (feat !== null) done.set(feat[1], Number(time) * 1000)
   }
   return done
+}
+
+// The stories landed after the live tag: those whose feat commit on the default branch the tag
+// doesn't reach. Empty without the tag.
+function landedAfterLive(git, branch, tags) {
+  const after = new Set()
+  if (branch === null || !tags.has('live')) return after
+  for (const subject of (git(['log', ...FEAT_LOG, '--format=%s', `refs/tags/live..${branch}`]) ?? '').split('\n')) {
+    const feat = /^feat\((\d+\.\d+)\):/.exec(subject)
+    if (feat !== null) after.add(feat[1])
+  }
+  return after
 }
 
 // The cost rows the emitter wrote for this project on this machine, folded or not.
@@ -512,8 +586,20 @@ const signed = (delta) => (delta > 0 ? `+${delta}` : String(delta))
 // Why sign-off can't happen yet by the queue, or null when queue Δ allows it.
 const queueWait = (delta) => (delta === null ? 'queue Δ is unknown' : delta > 0 ? `queue Δ is ${signed(delta)}` : null)
 
-// Post-MVP mode: the backlog is visible, and planned work runs epic by epic.
+// Post-MVP mode: the backlog is visible, and planned work runs epic by epic. Each epic that lands
+// after the live tag is a phase too, closed by its retro before the next.
 function liveStage(s) {
+  const epics = [...new Set(planOrder(s.stories).map((story) => story.epic))]
+  const closing = epics.find((epic) => {
+    const stories = [...s.stories.values()].filter((story) => story.epic === epic)
+    return !s.tags.has(`phase-${epic}`) && stories.every((story) => s.done.has(story.id)) && stories.some((story) => s.afterLive.has(story.id))
+  })
+  if (closing !== undefined) {
+    const why = recorded(s, `Phase ${closing} retro`)
+      ? `the product is live; epic ${closing}'s retro is recorded, and phase-${closing} isn't tagged yet`
+      : `the product is live, and epic ${closing}'s stories are done with no phase-${closing} tag`
+    return { n: 10, epic: closing, retro: true, why, next: '/epikloop:retro' }
+  }
   const work = planOrder(s.stories).find((story) => !s.done.has(story.id))
   const why = `the product is live${s.backlog > 0 ? `, and docs/queue.md holds ${plural(s.backlog, 'backlog line')}` : ''}`
   return { n: 10, epic: work?.epic, why, next: work === undefined ? '/epikloop:plan --extend' : `/epikloop:epic ${work.epic}` }
@@ -657,7 +743,8 @@ export function readState(root, project, { now = Date.now(), home = os.homedir()
   const git = gitReader(root)
   const { branch, tags } = refsOf(git)
   const done = doneTimes(git, branch)
-  const s = { requirements, stories, questions, backlog, decisions, problems, done, tags, design }
+  const afterLive = landedAfterLive(git, branch, tags)
+  const s = { requirements, stories, questions, backlog, decisions, problems, done, afterLive, tags, design }
 
   // Queue Δ: the open entries now minus those at the start of the current phase. Until the `mvp`
   // tag, the current phase is the lowest untagged MVP epic, else the last one, so sign-off weighs
@@ -726,20 +813,29 @@ function hold(story, state, facts) {
   return null
 }
 
-// Why a batch or a ceremony can't start from this checkout, naming the git command that fixes it
-// when there is one, or null. `what` says what starts: "a batch", "a retro" or "a release".
-function startProblem(project, facts, what) {
-  if (!facts.clean) return `The working tree has changes that aren't committed, and ${what} starts from a clean tree.`
+// Why this checkout isn't the default branch level with its remote, naming the git command that
+// fixes it when there is one, or null: on a side branch, diverged or behind. Commits the remote
+// lacks are left to the caller. `what` says what starts. Setup checks this too.
+export function branchProblem(facts, what) {
   if (facts.current === null || facts.current !== facts.name) {
     return `${what[0].toUpperCase()}${what.slice(1)} starts on ${facts.name}, and ${facts.current === null ? 'HEAD is detached' : `this checkout is on ${facts.current}`}.`
   }
   if (facts.ahead > 0 && facts.behind > 0) return `${facts.name} and ${facts.upstream} have diverged, and the human reconciles them before ${what} starts.`
+  if (facts.behind > 0) return `${facts.name} is ${plural(facts.behind, 'commit')} behind ${facts.upstream}; \`git pull --ff-only ${facts.remote} ${facts.name}\` brings it up to date.`
+  return null
+}
+
+// Why a batch or a ceremony can't start from this checkout, naming the git command that fixes it
+// when there is one, or null. `what` says what starts: "a batch", "a retro" or "a release".
+function startProblem(project, facts, what) {
+  if (!facts.clean) return `The working tree has changes that aren't committed, and ${what} starts from a clean tree.`
+  const branch = branchProblem(facts, what)
+  if (branch !== null) return branch
   if (facts.ahead > 0) {
     const one = facts.ahead === 1
     const how = project.mode === 'team' ? `in team mode ${one ? 'it lands' : 'they land'} through a pull request` : `\`git push ${facts.remote} ${facts.name}\` lands ${one ? 'it' : 'them'}`
     return `${facts.name} has ${plural(facts.ahead, 'commit')} that ${facts.upstream} lacks; ${how} before ${what} starts.`
   }
-  if (facts.behind > 0) return `${facts.name} is ${plural(facts.behind, 'commit')} behind ${facts.upstream}; \`git pull --ff-only ${facts.remote} ${facts.name}\` brings it up to date.`
   return null
 }
 
@@ -763,7 +859,7 @@ export function readyList(state, project, facts, select) {
     const why = hold(story, state, facts)
     return why === null ? { lines: [line(story)] } : say(`${select} ${why}, so it is not ready.`)
   }
-  if (select === undefined && stage.n === 7) return say(`Nothing is ready: ${stage.why}. Next: ${stage.next}.`)
+  if (select === undefined && (stage.n === 7 || stage.retro)) return say(`Nothing is ready: ${stage.why}. Next: ${stage.next}.`)
   const epic = select !== undefined ? Number(select) : stage.n === 6 ? stage.epic : null
   // A product adopted live has no mvp tag, and its planned work runs as after a sign-off.
   const signedOff = state.tags.has('mvp') || state.tags.has('live')
@@ -895,10 +991,13 @@ function costLines(project, home) {
   return ['The cost rows on this machine:', ...lines]
 }
 
-// The queue as a ceremony weighs it: its open entries, and queue Δ with its base.
+// The queue as a ceremony weighs it: its open entries, and queue Δ with its base, which only the
+// MVP's sign-off weighs.
 function queueLine(state) {
+  const open = `The queue: ${plural(state.questions.length, 'question')} and ${plural(state.backlog, 'backlog line')}`
+  if (state.stage.retro) return `${open}.`
   const delta = state.delta === null ? 'queue Δ unknown' : `queue Δ ${signed(state.delta)} since ${state.base === 'the freeze' ? 'the MVP set was frozen' : state.base}`
-  return `The queue: ${plural(state.questions.length, 'question')} and ${plural(state.backlog, 'backlog line')}; ${delta}.`
+  return `${open}; ${delta}.`
 }
 
 function stagingLine(project, what) {
@@ -918,19 +1017,21 @@ function compareLine(state) {
   return [`The visual compare covers ${plural(d.screens.length, 'screen')} in design/manifest.md, ${plural(states, 'state')} in all, each at ${d.widths[0]} and ${d.widths[1]} pixels.`]
 }
 
-// The retro's brief at stage 7, where a phase closes, or at stage 8, the MVP sign-off: what it
-// covers, the evidence it gathers, the queue, the cost rows, the record and how it lands. Once a
-// record is on the default branch, only the tags it leaves.
+// The retro's brief at stage 7, where a phase closes, at stage 8, the MVP sign-off, or once the
+// product is live, where each epic that lands closes: what it covers, the evidence it gathers, the
+// queue, the cost rows, the record and how it lands. Once a record is on the default branch, only
+// the tags it leaves.
 export function retroBrief(state, project, facts, { home = os.homedir() } = {}) {
   const { stage } = state
-  if (stage.n !== 7 && stage.n !== 8) return refuse(`A retro waits: ${stage.why}. Next: ${stage.next}.`)
+  const closing = stage.n === 7 || stage.retro === true
+  if (!closing && stage.n !== 8) return refuse(`A retro waits: ${stage.why}. Next: ${stage.next}.`)
   if (facts === null) return refuse('A retro needs a commit to start from.')
   const problem = startProblem(project, facts, 'a retro')
   if (problem !== null) return refuse(problem)
 
   const epics = [...new Set([...state.stories.values()].filter((story) => story.mvp).map((story) => story.epic))].sort((a, b) => a - b)
   const last = stage.n === 8 || stage.epic === epics.at(-1)
-  const retro = stage.n === 7 ? recorded(state, `Phase ${stage.epic} retro`) : undefined
+  const retro = closing ? recorded(state, `Phase ${stage.epic} retro`) : undefined
   const signOff = last ? recorded(state, 'MVP sign-off') : undefined
   const tags = []
   const notes = []
@@ -947,8 +1048,8 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
 
   const next = nextDecision(state)
   const out = []
-  if (stage.n === 7) {
-    const stories = planOrder(state.stories).filter((story) => story.epic === stage.epic && story.mvp)
+  if (closing) {
+    const stories = planOrder(state.stories).filter((story) => story.epic === stage.epic && (stage.retro || story.mvp))
     out.push(
       `Retro for phase ${stage.epic}: epic ${stage.epic}, ${stories[0].epicTitle}.`,
       'Its stories, for the click-through:',
@@ -967,21 +1068,22 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
     )
   }
   out.push(...notes)
+  if (stage.retro) out.push(`The product is live, so this retro closes epic ${stage.epic} and signs nothing off.`)
   if (last) {
     const current = state.delta === null ? 'it is unknown now' : `it is ${signed(state.delta)} now`
     const opening = stage.n === 7 ? `Epic ${stage.epic} is the last MVP epic, so this retro is also the MVP sign-off. ` : ''
     out.push(`${opening}Sign-off needs queue Δ at 0 or below, counted after the pruning, and a green staging smoke; ${current}.`)
   }
   const titles = []
-  if (stage.n === 7) titles.push(`a decision titled "Phase ${stage.epic} retro"`)
+  if (closing) titles.push(`a decision titled "Phase ${stage.epic} retro"`)
   if (last && signOff === undefined) titles.push(`${titles.length > 0 ? 'one' : 'a decision'} titled "MVP sign-off" if the human signs off`)
   out.push(
     titles.length === 0
       ? `The record: MVP sign-off is already recorded in ${signOff.id}, so the commit holds the pruning.`
       : `The record, in docs/decisions.md: ${titles.join(', and ')}, ${titles.length > 1 ? `from ${next} on` : next}.`,
   )
-  const subject = stage.n === 7 ? `chore(phase-${stage.epic}): retro` : 'chore(mvp): sign-off'
-  const branch = stage.n === 7 ? `retro/phase-${stage.epic}` : 'retro/mvp'
+  const subject = closing ? `chore(phase-${stage.epic}): retro` : 'chore(mvp): sign-off'
+  const branch = closing ? `retro/phase-${stage.epic}` : 'retro/mvp'
   out.push(landing(project, facts, `one commit whose subject is "${subject}", holding the record, the queue and whatever else the retro changes`, branch))
   out.push('Once it has landed, `--retro` again prints the tags.')
   return { text: out.join('\n') }
@@ -1620,6 +1722,68 @@ const CASES = [
     },
   ],
   [
+    'after going live, each epic that lands closes with a retro before the next',
+    (k) => {
+      const files = { 'spec/app.md': APP_SPEC, 'spec/architecture.md': '# Architecture\n', ...DESIGNED, 'docs/queue.md': queueFile({ backlog: 1 }) }
+      files['docs/stories/12-next.md'] = epicFile(12, [[1, 'T1', false], [2, 'T2', false]])
+      files['docs/stories/13-then.md'] = epicFile(13, [[1, 'T1', false]])
+      const dir = k.repo(files)
+      k.git(dir, 'tag', 'live')
+      k.commit(dir, 'feat(12.1): one', 0)
+      const got = [k.stage(dir, '10 the product is live, and docs/queue.md holds 1 backlog line → /epikloop:epic 12')]
+      k.commit(dir, 'feat(12.2): two', 0)
+      k.remote(dir)
+      const closing = "the product is live, and epic 12's stories are done with no phase-12 tag"
+      got.push(k.stage(dir, `10 ${closing} → /epikloop:retro`))
+      const brief = [
+        '0 Retro for phase 12: epic 12, Epic 12.',
+        'Its stories, for the click-through:',
+        '- 12.1 Story 12.1',
+        '- 12.2 Story 12.2',
+        "The evidence: the deep gates, `scripts/check.sh --deep` from Bash or `node .githooks/check.mjs --deep` from PowerShell; the gates' self-test, the same with `--self-test`; the staging smoke, though .epikloop/project.json has no staging_url: the human sets it, or the record says why there is no staging; and the human's click-through of these stories on staging.",
+        `The web lane: ${readLane('web').sections.Retro.replace(/\s*\n\s*/g, ' ')}`,
+        'The visual compare covers 1 screen in design/manifest.md, 1 state in all, each at 390 and 1280 pixels.',
+        'The queue: 0 questions and 1 backlog line.',
+        'There are no cost rows on this machine yet.',
+        'The product is live, so this retro closes epic 12 and signs nothing off.',
+        'The record, in docs/decisions.md: a decision titled "Phase 12 retro", DECISION-001.',
+        'Landing: one commit whose subject is "chore(phase-12): retro", holding the record, the queue and whatever else the retro changes, on main, then `git push origin main`.',
+        'Once it has landed, `--retro` again prints the tags.',
+        '',
+      ]
+      got.push(
+        k.expect([
+          [k.ready(dir), `0 Nothing is ready: ${closing}. Next: /epikloop:retro.\n`],
+          [k.ready(dir, '13'), '0 13.1 T1 Story 13.1\n'],
+          [k.run(dir, '--retro'), brief.join('\n')],
+        ]),
+      )
+      k.write(dir, 'docs/decisions.md', decisionsFile(['Phase 12 retro']))
+      k.commit(dir, 'chore(phase-12): retro', 0)
+      k.git(dir, 'push', '-q', 'origin', 'main')
+      got.push(
+        k.stage(dir, "10 the product is live; epic 12's retro is recorded, and phase-12 isn't tagged yet → /epikloop:retro"),
+        k.expect([[k.run(dir, '--retro'), "0 Recorded: Phase 12 retro in DECISION-001. What's left is the tag: `git tag phase-12`, then `git push origin phase-12`.\n"]]),
+      )
+      k.git(dir, 'tag', 'phase-12')
+      got.push(k.stage(dir, '10 the product is live, and docs/queue.md holds 1 backlog line → /epikloop:epic 13'))
+      return got.flat()
+    },
+  ],
+  [
+    'an epic that landed before going live closes with no retro',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true]], 5: [[1, 'T1', false]] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 0)
+      k.git(dir, 'tag', 'phase-1')
+      k.git(dir, 'tag', 'mvp')
+      k.write(dir, 'docs/decisions.md', decisionsFile(['Phase 1 retro', 'MVP sign-off', 'Go live later', 'Go live']))
+      k.commit(dir, 'feat(5.1): planned while going live waited', 0)
+      k.git(dir, 'tag', 'live')
+      return k.stage(dir, '10 the product is live → /epikloop:plan --extend')
+    },
+  ],
+  [
     'a product adopted while live still finishes its confirmation and its design first',
     (k) => {
       const observed = APP_SPEC.replace('## REQ-APP-001 It works\n', '## REQ-APP-001 It works\nStatus: observed\n')
@@ -1630,6 +1794,37 @@ const CASES = [
       k.commit(dir, 'docs(spec): confirmed', 0)
       got.push(k.stage(dir, '3 design/tokens.css came with the product, and design/manifest.md is missing → /epikloop:design'))
       return got.flat()
+    },
+  ],
+  [
+    'a design file that loads from outside design/ is a problem, since the screens spec renders it offline',
+    (k) => {
+      const outside = k.read(
+        k.folder({
+          'spec/app.md': APP_SPEC,
+          ...DESIGNED,
+          'design/screens/home.html': '<!doctype html>\n<link rel="stylesheet" href="../tokens.css">\n<link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet">\n',
+          'design/screens/lib/support.js': 'var READY = true;\nvar REACT_URL = "https://unpkg.com/react@18.3.1/umd/react.production.min.js";\n',
+          'design/screens/notes.md': 'Drawn with <script src="https://example.com/brief.js"></script> once.\n',
+        }),
+      )
+      const inside = k.read(
+        k.folder({
+          'spec/app.md': APP_SPEC,
+          ...DESIGNED,
+          'design/screens/home.html':
+            '<!doctype html>\n<link rel="stylesheet" href="../tokens.css">\n<svg xmlns="http://www.w3.org/2000/svg"></svg>\n<a href="https://example.com/help">Help</a>\n<style>.a { background: url(../refs/a.png) }</style>\n',
+        }),
+      )
+      return [
+        ...k.contains(outside.problems, [
+          'design/screens/home.html:3: loads https://fonts.googleapis.com/css2 from outside design/, and so does 1 more design file; the screens spec renders design files offline, so what they load belongs in design/',
+        ]),
+        ...k.expect([
+          [outside.problems.length, 1],
+          [inside.problems.join(' | '), ''],
+        ]),
+      ]
     },
   ],
   [

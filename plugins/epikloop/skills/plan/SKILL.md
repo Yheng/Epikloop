@@ -33,10 +33,13 @@ where it marks them. The second brings up staging. An adopted project leaves out
 
 Propose the MVP set and let the human decide it, along with solo or team mode, hours per day and
 any deadline. Record them in `.epikloop/project.json` as `mvp_frozen` (today's date), `mode`,
-`hours_per_day` and `deadline`, and commit them with the plan. In team mode, once the marker says
-so, `node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" --refresh` lays down the check each pull request
-runs, `.github/workflows/check.yml`, for the same commit; tell the human to make its check job
-required in the default branch's protection. The plan's commit is the queue's baseline: in solo
+`hours_per_day` and `deadline`, and commit them with the plan. Team mode needs a check GitHub can
+require: one GitHub Actions runs, required by branch protection, which a private repository has only
+on a paid plan. In team mode, once the marker says so,
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/init.mjs" --refresh` lays down the check each pull request
+runs, `.github/workflows/check.yml`, for the same commit, or refuses where GitHub says the branch
+can't be protected; tell the human to make its check job required in the default branch's
+protection. The plan's commit is the queue's baseline: in solo
 mode push it when the repository has a remote, and in team mode it lands through a pull request.
 The MVP set moves afterwards only through a recorded decision. With `--extend`, new epics follow
 on, their stories marked `MVP: no`, and frozen epics stay as they are.

@@ -71,6 +71,11 @@ Nothing else, ever.
   - In a repository on an earlier template layout, marked by a root `PIPELINE_VERSION`, a new
     marker's setup tags the last commit `before-adoption`: the rollback point for the conversion
     `adopt` makes. A tag already there stays where it is.
+  - A new marker is written only from the default branch, level with its remote: on a side
+    branch, behind it or diverged from it, setup writes nothing and says why.
+  - Before it lays down team mode's workflow, setup asks GitHub through `gh` whether origin's
+    default branch can be protected. Where GitHub refuses protection on the repository's plan, it
+    refuses team mode.
   - `--refresh` brings the gate files up to the plugin's, and in team mode lays down a missing
     workflow.
 - **`CLAUDE.md`** holds project rules only and stays under 200 lines. The pipeline protocol is never
@@ -92,6 +97,9 @@ Nothing else, ever.
       the template marks them.
     - The human makes its check job required in the default branch's protection, a GitHub setting
       that no file holds.
+    - So team mode needs GitHub Actions and branch protection, which GitHub gives a private
+      repository only on a paid plan. Setup refuses it where GitHub says the branch can't be
+      protected.
   - Solo mode creates no workflow, and `check.sh` fails if a workflow appears that
     `gates.allow_workflows` doesn't list.
 
@@ -337,6 +345,10 @@ only layers 2 and 3 gate them.
 - **Phases.** One epic is one phase. `retro` tags a closed phase `phase-N`, MVP sign-off tags
   `mvp`, and `release` tags `live`. The current phase is the lowest epic that has MVP stories and
   no `phase-N` tag.
+  - Once the product is live, each epic that lands is a phase too. An epic whose stories are all
+    done, one or more of them landed after `live`, closes with its retro before the next epic, with
+    no sign-off ([issue #8](https://github.com/Yheng/Epikloop/issues/8)). Epics that landed before
+    `live` keep none.
 
 ## Lanes
 
@@ -383,7 +395,7 @@ Native iOS and Android are community lanes. Contributors add lanes without touch
 | `/epikloop:epic N`, `:next`, `:story X.X` | The batch: one story-worker per story, in isolation. | medium | user, Claude |
 | `/epikloop:decide` | Batch-answer parked questions, record decisions, unblock. | low | user, Claude |
 | `/epikloop:triage "<what you found>"` | Human intake through the same router. | low | user only |
-| `/epikloop:retro` | Phase gate: staging smoke, deep gates, self-test, queue pruning, pipeline deletion, tag; MVP sign-off in the final phase. | medium | user only |
+| `/epikloop:retro` | Phase gate: staging smoke, deep gates, self-test, queue pruning, pipeline deletion, tag; MVP sign-off in the final phase; after go-live, each epic's close. | medium | user only |
 | `/epikloop:release` | The go-live story: production, promotion, rollback note, post-launch checklist. | high | user only |
 | `/epikloop:harbor on\|off\|open` | Harbor's switch and its view. | low | user only |
 
@@ -463,6 +475,9 @@ next step is the first one that fails, so the answer is the same after lunch or 
     - A product already in production when it's adopted is tagged `live` once its adoption lands,
       and goes on from here with no MVP set
       ([issue #7](https://github.com/Yheng/Epikloop/issues/7)). Stages 2–4 still come first.
+    - An epic whose stories are all done, one or more of them since the `live` tag, and which has
+      no `phase-N` tag → `retro`, before the next epic
+      ([issue #8](https://github.com/Yheng/Epikloop/issues/8))
 
 Each closing ceremony writes a record, a decision with a fixed title, and tags the default branch
 once the record has landed there: in team mode, after the human merges it. A `Go live later`

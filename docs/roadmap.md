@@ -142,6 +142,12 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
     architecture's Harbor section. Its build joined `epikloop-harbor` on 2026-11-06, as below.
 - An existing production repo has been adopted, end to end.
   - The first to be adopted is on an earlier template layout, which M2's third slice converts.
+  - Done 2026-11-07. It was adopted on 2026-11-06, then planned, built in two batches, decided,
+    amended in design and promoted to production. What it showed went into the slice that closes
+    M1: each epic after go-live closes with a retro, and setup refuses a stale branch and a team
+    mode GitHub can't protect.
+
+M1 is done. The core plugin's first release, 0.1.0, follows it.
 
 ## Harbor, between M1 and M2 (done)
 

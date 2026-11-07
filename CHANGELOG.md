@@ -894,3 +894,72 @@ As on 2026-10-28, each entry names the principle or the failure the instruction 
   `design/` as they are, with a brief from its design notes and a manifest, and with no directions
   the design reads as complete. `--design` and the gallery say it came with the product instead of
   waiting for a pick. Extracting tokens from code waits for an adopted product with no design.
+
+### Format rules (adopted 2026-11-07)
+
+- **After going live, each epic that lands closes with a retro**
+  ([issue #8](https://github.com/Yheng/Epikloop/issues/8)).
+  - The retro was the only place the deep gates, with their end-to-end tests, and the full visual
+    compare ran. Post-MVP mode had no retro, so once a product was live neither ran again.
+  - On 2026-11-06, adopting the production repository above, `adopt` proposed moving its
+    end-to-end tests from every push to the deep gates, "at the retro". The product went straight
+    to post-MVP mode, so they would never have run. The human kept them on every push.
+  - In that product's first two epics after going live, on 2026-11-07, each story read only its
+    own screens' default state at the narrow width. A difference one story found, a bar the
+    mockup pins that the app scrolls, went to the backlog, and nothing read the other states or
+    the wide width.
+  - Now an epic whose stories are all done, one or more of them since the `live` tag, and which has
+    no `phase-N` tag, is the next step: `/epikloop:retro`, before the next epic. Its brief covers
+    every story of the epic and the same evidence as a phase's retro, and signs nothing off. Epics
+    that landed before `live` keep no retro, so a project already past them isn't sent back.
+- **Design files load nothing from outside `design/`.**
+  - In the same product's first epic after going live, the screens spec rendered its mockups,
+    which load a script library, a JSX compiler and web fonts from CDNs. Its push gate's end-to-end
+    tests then needed the internet: a CDN that can't be reached fails a push.
+  - Now a screen or a helper under `design/screens/`, or the tokens, that loads a script, style,
+    font, image or frame from a URL is one problem in the briefing. It names the first such load
+    and counts the other files. `design` draws screens that load nothing from outside, and `adopt`
+    copies what a product's mockups load in beside them.
+
+### Setup rules (adopted 2026-11-07)
+
+- **A new project starts from its default branch, level with its remote.**
+  - On 2026-11-06, the production repository above was checked out on a side branch with an
+    untracked file, and its local default branch was 80 commits behind GitHub's. Nothing checked,
+    so `adopt` would have tagged and converted a stale tree. Reading the repository first caught it.
+  - Now `init.mjs` writes a new marker only on the default branch, neither behind its remote nor
+    diverged from it, and otherwise says why and which git command fixes it. `adopt` runs
+    `git fetch` first.
+- **Team mode asks GitHub whether its check can be required.**
+  - During the same adoption, `adopt` proposed team mode twice. The repository merges through pull
+    requests, but it is private on a plan that GitHub answers with 403 "Upgrade to GitHub Pro or
+    make this repository public" for branch protection, so a required check could never be
+    required. The project had also decided against GitHub Actions for its cost, and team mode's
+    check runs on Actions.
+  - Now, before laying down team mode's workflow, `init.mjs` asks GitHub through `gh` whether
+    origin's default branch can be protected, and refuses team mode on that 403. Any other answer,
+    or no `gh`, goes on as before, saying when GitHub couldn't say. `adopt` and `plan` say what team
+    mode needs, and that a project that decided against Actions stays solo.
+
+### Skill rules (adopted 2026-11-07)
+
+- **The conversion changes what reads what it removes.** On 2026-11-06, removing the earlier
+  template's gate script would have broken the product's own deploy script, which read the pass
+  receipt that script wrote. Reading the repository first caught it, and the deploy script now runs
+  the deep gates on HEAD. `adopt` now names a script that reads what goes beside one that runs or
+  tests it.
+- **The confirmation weighs the whole decision record, and doesn't confirm a broken premise.**
+  During the same adoption, the confirmation batch flagged requirements as diverging from early
+  decisions that later ones had refined. It also offered "confirm as is" for a requirement whose
+  premise production had already broken. Now `adopt` weighs each
+  requirement against the whole record and puts a broken premise as a correction.
+- **A story changes a requirement its code makes untrue.** On 2026-11-07 a story relaxed an approval
+  rule for some roles. Its delta changed the requirement it cited, and left another that still
+  stated the rule for everyone, as a backlog line, since `spec-delta`'s scope called any other
+  change a finding. Now that scope covers any requirement the story's code
+  makes untrue, changed in the same commit.
+- **Behaviour no requirement or screen describes is a product call.** On 2026-11-07 a worker decided
+  how one screen hands its work on to another, which no requirement or mockup covered, without
+  parking a question.
+  The batch's report caught it. The web lane now says such behaviour is a product call, parked
+  with its default.

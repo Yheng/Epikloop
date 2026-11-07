@@ -93,6 +93,9 @@ screen is drawn at; the `service` lane skips design.
 - **`screens/`** holds one HTML file per state of each screen, each linking `../tokens.css`:
   `<screen>.html` for the default state, and `<screen>.<state>.html` for `empty`, `loading` and
   `error`.
+  - The screens and the tokens load nothing from outside `design/`, since the screens spec renders
+    them offline. A script, style, font, image or frame they load from a URL is one problem, which
+    names the first such load and counts the other files that have one.
 - **`manifest.md`** lists the screens:
   - Each screen is a `## <screen> Title` heading. The name is lower-case letters, digits and
     hyphens, unique in the manifest, and the name of the screen's files.
@@ -105,8 +108,9 @@ screen is drawn at; the `service` lane skips design.
   directions: each direction, then each state of each screen, framed at both widths.
 - **A design that came with the product.** `adopt` brings in the tokens and screen mockups an
   existing product has as they are: a brief from its design notes, its `tokens.css`, and each
-  mockup as the default state of the screen it names, listed in the manifest. It has no directions
-  and no pick, and `amend` and `add` follow its tokens.
+  mockup as the default state of the screen it names, listed in the manifest, with what they load
+  from outside copied in beside them. It has no directions and no pick, and `amend` and `add`
+  follow its tokens.
 
 ## What design reads
 
@@ -144,6 +148,9 @@ screens.
   - `init` tags `before-adoption` on a repository on an earlier template layout: the rollback
     point, never moved once it's there.
 - **The current phase** is the lowest epic that has MVP stories and no `phase-N` tag.
+- **After going live,** an epic in `docs/stories/` whose stories are all done, one or more of them
+  by a `feat(N.M):` commit the `live` tag doesn't reach, and which has no `phase-N` tag, waits for
+  its retro. The lowest such epic is named first.
 - **In review.** A story whose `feat(N.M):` commit is on another branch, local or remote, and not
   yet on the default branch is in review.
 
@@ -156,7 +163,7 @@ in plan order. That line is the worker's spawn description.
   and no parked question blocks it. Before the `mvp` tag only MVP stories are ready; named alone,
   as `N.M`, any story can be.
 - **Which stories.** Without an argument, the current phase's epic, or every epic once all MVP
-  epics are tagged. Nothing is ready before stage 6, or while the phase waits for `retro`.
+  epics are tagged. Nothing is ready before stage 6, or while a phase waits for `retro`.
 - **Where a batch starts.** Only from a clean checkout of the default branch that its remote
   neither leads nor trails. Otherwise the list gives the reason, with the git command that fixes
   it when there is one.
@@ -171,14 +178,16 @@ in plan order. That line is the worker's spawn description.
 ## What a ceremony reads
 
 `state.mjs --retro` and `state.mjs --release` print the closing ceremonies' briefs. Each starts
-only at its stages, 7 and 8 for a retro and 9 for a release, and only where a batch would.
+only at its stages, 7 and 8 for a retro, or 10 while an epic waits for one, and 9 for a release,
+and only where a batch would.
 
 - **The retro's brief.** At stage 7: the phase's MVP stories, for the click-through; the evidence,
   which is the deep gates, the gates' self-test, the staging smoke and the click-through; with a
   complete design, how far the visual compare reaches; the queue and its Δ; this machine's cost
   rows per tier and effort; the record; and how it lands, as `chore(phase-N): retro`. When the phase is the last MVP epic, the retro is also the MVP
   sign-off, and the brief says what sign-off needs. At stage 8, the brief is the sign-off's alone,
-  landing as `chore(mvp): sign-off`.
+  landing as `chore(mvp): sign-off`. After going live, it covers every story of the epic, gives
+  the queue's counts without Δ, and says the retro signs nothing off.
 - **The release's brief.** Staging, where the hosting is described, the production smoke, the
   record, and how it lands, as `chore(release): go live`, after which it prints the `live` tag.
   Until a `Go live later` is recorded, it also gives that record, for when production comes later,

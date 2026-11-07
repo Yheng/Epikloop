@@ -25,7 +25,8 @@ builds or changes, creating the spec when there is none. The spec renders each s
 screen and state, so `npx playwright test <spec> -g <screen>` renders one screen. The story's UI
 evidence includes each screen it touches in its default state at the narrow width, as built, read
 beside its design render; what differs is fixed, or parked as a question when the design should
-change instead.
+change instead. Behaviour a screen needs that no requirement or design file describes is a product
+call, parked with its default.
 
 ## Retro
 
