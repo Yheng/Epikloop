@@ -25,8 +25,8 @@ gallery, the project file formats, the `web` and `service` lanes, the team-mode 
 product `CLAUDE.md` template and Harbor's plugin are in place. CI checks this repository's laws,
 lint among them, and the self-tests' mutations, and the eval suite runs on a contributor's machine.
 M1 is done: Harbor's own web app has been built with Epikloop and an existing production repo
-adopted, each end to end (`docs/roadmap.md`), and the core's first release, 0.1.0, follows. M2's
-three slices are in: the design skill, the
+adopted, each end to end (`docs/roadmap.md`), and the core's first release, 0.1.0, came out on
+2026-11-08. M2's three slices are in: the design skill, the
 screens as the truth at story and retro time, and adopting a production repository, which converts
 an earlier template layout and brings in the design the product has.
 

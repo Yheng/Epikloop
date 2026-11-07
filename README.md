@@ -31,10 +31,10 @@
 </p>
 
 > [!IMPORTANT]
-> **Epikloop is in pre-release.** This README describes the loop as it is designed. Today the
-> marketplace installs, the [git guard](#the-git-guard) and the gates protect Epikloop projects,
-> every command has its full instructions, the `web` and `service` lanes are in, and so is
-> [Harbor](#harbor). [Status](#status) shows what works now and when the rest lands.
+> **Epikloop is at 0.1.0, an early release.** This README describes the loop as it is designed.
+> Today the marketplace installs, the [git guard](#the-git-guard) and the gates protect Epikloop
+> projects, every command has its full instructions, the `web` and `service` lanes are in, and so
+> is [Harbor](#harbor). [Status](#status) shows what works now and when the rest lands.
 
 ## Contents
 
@@ -122,7 +122,7 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The Bridge: review pages on Harbor's server for the design pick, the T3 diff and decide | M4 |
 
 M1 is done: the loop has built a web app and adopted a production repository, each end to end. The
-core plugin's first release, 0.1.0, comes next. See the [roadmap](#roadmap).
+core plugin's first release, 0.1.0, came out on 2026-11-08. See the [roadmap](#roadmap).
 
 ## Install
 

@@ -147,7 +147,7 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
     M1: each epic after go-live closes with a retro, and setup refuses a stale branch and a team
     mode GitHub can't protect.
 
-M1 is done. The core plugin's first release, 0.1.0, follows it.
+M1 is done, and the core plugin's first release, 0.1.0, followed it on 2026-11-08.
 
 ## Harbor, between M1 and M2 (done)
 

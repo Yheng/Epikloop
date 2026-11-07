@@ -9,6 +9,12 @@ All notable changes to Epikloop are recorded here.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-08
+
+The core plugin's first release, tagged `epikloop--v0.1.0`. It holds everything below, from the
+marketplace's start to the close of M1. Harbor's own 0.1.0, released on 2026-11-06 as
+`epikloop-harbor--v0.1.0`, is recorded here too.
+
 ### Added
 
 - The `epikloop` marketplace, listing two plugins: `epikloop` and `epikloop-harbor`, both at
