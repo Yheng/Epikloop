@@ -1,8 +1,9 @@
 // Epikloop's emitter, a hooks module: it runs inside Claude Code and reaches everything through
 // `$`. It injects no text and never holds a call back. Inside an Epikloop project it writes one
-// JSON file per event under ~/.epikloop/events/YYYY-MM-DD/ and one cost row per story-worker under
-// ~/.epikloop/projects/<id>/cost/, which scripts/fold.mjs folds into .jsonl files. It also sets each
-// story-worker's effort from its story's tier and keeps the worker in the foreground.
+// JSON file per event under ~/.epikloop/events/YYYY-MM-DD/ and one cost row per turn of a
+// story-worker under ~/.epikloop/projects/<id>/cost/, which scripts/fold.mjs folds into .jsonl
+// files. It also sets each story-worker's effort from its story's tier and asks for the worker in
+// the foreground.
 //
 // The batch spawns epikloop:story-worker with a description that starts with the story and its
 // tier, `3.2 T2 login form`: that is how the tier is known at spawn time.
@@ -17,6 +18,7 @@ const WORKER = 'epikloop:story-worker'
 const SPAWN = /^(\d+\.\d+) (T[123])\b/
 // Story-worker effort per tier, beneath ~/.epikloop/config.json and .epikloop/project.json.
 const EFFORT = { T1: 'medium', T2: 'high', T3: 'xhigh' }
+const LEVELS = ['low', 'medium', 'high', 'xhigh', 'max']
 
 // Set inside an Epikloop project: at session.start, and at a prompt when none is open yet or the
 // session has gone on under another id. While it is null every hook passes its event on and
@@ -52,15 +54,18 @@ export function register(on) {
     return ran
   })
 
-  // A story-worker runs in the foreground, so the cost its row records is its own.
+  // A story-worker is asked for in the foreground.
   on('agent.spawn', ($, e, next) =>
     session !== null && e.subagentType === WORKER && e.background ? next({ ...e, background: false }) : next(e),
   )
 
-  // A cost row assumes a foreground, sequential worker, as in M1: between the worker's start and
-  // its stop the session's cost rises for the worker alone, and the first agent turn to start after
-  // its spawn is the worker's. With parallel workers the rise is shared, and `cost` is an upper
-  // bound.
+  // A worker may take several turns: it ends one while a command of its own runs in the
+  // background, and goes on when the command ends. Each turn's end writes a cost row with that
+  // turn's share: the rise in the session's cost over the turn, and the time since the turn before
+  // it ended, so the wait counts unless that turn died. The rows assume sequential workers, as in
+  // M1: the first agent turn to start after a spawn is its worker's, and a worker already known
+  // never takes the next one's. With parallel workers a turn's rise is shared, and `cost` is an
+  // upper bound.
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
       // The session that sets a project up began outside it, and a /clear goes on under a new
@@ -73,10 +78,19 @@ export function register(on) {
     }
     const s = session
     if (s === null) return next(e)
-    const spawn = s.spawning
-    s.spawning = null
-    if (spawn !== null) s.workers.set(e.agentId, { ...spawn, ...(await reading($)) })
-    emit($, 'subagent.start', { story: spawn?.story, agent: e.agentId })
+    let worker = s.workers.get(e.agentId)
+    if (worker === undefined && s.spawning !== null) {
+      worker = { ...s.spawning }
+      s.workers.set(e.agentId, worker)
+      s.spawning = null
+    }
+    if (worker !== undefined) {
+      worker.active = true
+      const now = await reading($)
+      worker.usd = now.usd
+      worker.at ??= now.at
+    }
+    emit($, 'subagent.start', { story: worker?.story, agent: e.agentId })
     return next(e)
   })
 
@@ -88,18 +102,22 @@ export function register(on) {
       return next(e)
     }
     const worker = s.workers.get(e.agentId)
-    s.workers.delete(e.agentId)
     emit($, 'subagent.stop', { story: worker?.story, agent: e.agentId, detail: { reason: e.reason } })
     if (worker !== undefined) {
+      worker.active = false
       const end = await reading($)
       const row = {
         story: worker.story,
         tier: worker.tier,
-        wall: (end.at - worker.at) / 1000,
-        cost: end.usd === undefined || worker.usd === undefined ? null : end.usd - worker.usd,
+        agent: e.agentId,
+        // A turn whose start went unheard after one that died counts its own length alone.
+        wall: (end.at - (worker.at ?? end.at - e.durationMs)) / 1000,
+        cost: rise(worker.usd, end.usd),
         model: e.usage?.model ?? null,
         effort: worker.effort,
       }
+      worker.usd = end.usd
+      worker.at = e.reason === 'answer' ? end.at : undefined
       save($, s, () => s.costs, row, end.at)
     }
     return next(e)
@@ -115,12 +133,13 @@ export function register(on) {
     return next(e)
   })
 
-  // A notification's documented input names no agent. While one story-worker is at work, as in M1,
-  // whatever asks is its story's; with none at work, or with several, it names no story.
+  // A notification's documented input names no agent. While one story-worker is inside a turn, as
+  // in M1, whatever asks is its story's; between turns, or with several at work, it names no story.
   on('classic.Notification', ($, e, next) => {
     const s = session
     if (s !== null) {
-      const story = s.workers.size === 1 ? [...s.workers.values()][0].story : undefined
+      const busy = [...s.workers.values()].filter((worker) => worker.active)
+      const story = busy.length === 1 ? busy[0].story : undefined
       emit($, 'notification', { story, detail: { notification_type: e.notification_type } })
     }
     return next(e)
@@ -159,7 +178,7 @@ async function open($, cwd) {
     sep,
     events: join(sep, home, '.epikloop', 'events'),
     costs: join(sep, home, '.epikloop', 'projects', project.id, 'cost'),
-    effort: { ...EFFORT, ...user.effort, ...project.effort },
+    effort: efforts(EFFORT, user.effort, project.effort),
     seq: 0,
     writes: new Set(),
     failures: 0,
@@ -184,11 +203,23 @@ function workerSpawn(s, e) {
   return match === null ? null : { story: match[1], tier: match[2], effort: s.effort[match[2]] }
 }
 
+// Each tier's effort from the layers given, the lowest first. A value that is no level is passed
+// over, so the layer beneath shows.
+function efforts(...layers) {
+  const effort = {}
+  for (const layer of layers) for (const tier of Object.keys(EFFORT)) if (LEVELS.includes(layer?.[tier])) effort[tier] = layer[tier]
+  return effort
+}
+
 // The session's cost so far in US dollars, absent where the host keeps no ledger, and the time.
 async function reading($) {
   const [usage, at] = await Promise.all([$.session.usage(), $.clock.now()])
   return { usd: usage.cost?.usd, at }
 }
+
+// What the session's cost rose by between two readings, or null where it keeps no total or the
+// total started over, as it does at a /clear.
+const rise = (from, to) => (from === undefined || to === undefined || to < from ? null : to - from)
 
 function emit($, kind, fields) {
   const s = session

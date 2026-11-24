@@ -185,9 +185,9 @@ macOS and Windows, and reads session cost.
 
 - **Events.** It uses a native module event wherever one exists. `task.created`, `task.completed`
   and `notification` have none, so they come from `classic.*` hooks.
-  - A notification's documented input names no agent. While one story-worker is at work, as in
-    M1, a `notification` carries its story. With none at work, or with several, it carries none
-    until M3 settles parallel workers.
+  - A notification's documented input names no agent. While one story-worker is inside a turn, as
+    in M1, a `notification` carries its story. Between a worker's turns, or with several at work,
+    it carries none until M3 settles parallel workers.
 - **Writes.** A module can't append, so each event is one small JSON file in
   `~/.epikloop/events/YYYY-MM-DD/`. The module finds home as Node's `os.homedir()` does:
   `USERPROFILE` on Windows, `HOME` elsewhere.
@@ -199,12 +199,19 @@ macOS and Windows, and reads session cost.
     fold one folder at once. A fold that finds the lock taken folds nothing that pass.
   - A lock older than ten minutes was left by a fold that died. The pass that finds it clears it,
     and the next pass folds.
-- **Cost rows.** A story's `cost` is the rise in the session's cost total, read with
-  `$.session.usage()`, from the worker's start to its end. `model` comes from the worker's
-  `turn.complete`, `wall` from the module's clock, and `tier` and `effort` from the story. Each
-  row is written as a file too, and folded into `projects/<id>/cost.jsonl` the same way.
-  - This assumes a foreground, sequential worker, as in M1. With parallel workers the rise is
-    shared, so a row's `cost` is an upper bound until M3 settles it.
+- **Cost rows.** A worker may take several turns: it ends one while a command of its own runs in
+  the background, such as the gates, and goes on when the command ends. Each turn's end writes one
+  row holding that turn's share ([issue #9](https://github.com/Yheng/Epikloop/issues/9)).
+  - `cost` is the rise in the session's cost total over the turn, read with `$.session.usage()`.
+    It is null where the session keeps no total, or where the total started over, as at a `/clear`.
+  - `wall` is the time since the worker's turn before this one ended, by the module's clock, so a
+    wait for the worker's own command counts. A worker's first turn counts from its start, and so
+    does a turn after one that died.
+  - `agent` names the worker, `model` comes from the turn's `turn.complete`, and `tier` and
+    `effort` from the story. The state reader adds a worker's rows into one run.
+  - Each row is written as a file too, and folded into `projects/<id>/cost.jsonl` the same way.
+  - The rows assume sequential workers, as in M1. With parallel workers a turn's rise is shared,
+    so a row's `cost` is an upper bound until M3 settles it.
 
 The module has these limits:
 
@@ -233,9 +240,10 @@ The gates' self-test measures two targets:
     `permission.requested`, `notification`, `stop`, `story.started|committed`,
     `gate.started|passed|failed`, `question.parked`, `decision.recorded` and `phase.tagged`.
   - Events say where, never what: no tool output, prompts, file contents or secret values.
-- **`~/.epikloop/projects/<id>/cost.jsonl`** has one row per closed story
-  ([schema](../plugins/epikloop/schemas/cost-row.schema.json)): `ts`, `story`, `tier`, `wall`,
-  `cost`, `model` and `effort`. The rows are the instrument for tuning effort.
+- **`~/.epikloop/projects/<id>/cost.jsonl`** has one row per turn of a story's worker
+  ([schema](../plugins/epikloop/schemas/cost-row.schema.json)): `ts`, `story`, `tier`, `agent`,
+  `wall`, `cost`, `model` and `effort`. A worker's rows add up to its run, and the runs are the
+  instrument for tuning effort.
 - **`~/.epikloop/config.json`** ([schema](../plugins/epikloop/schemas/config.schema.json)) holds the
   user's effort overrides and the Harbor switch.
 - **`~/.epikloop/harbor.json`** ([schema](../plugins/epikloop/schemas/harbor.schema.json)) records
@@ -409,10 +417,15 @@ the model through the state reader's briefs instead (see [Lanes](#lanes)).
 - Each story spawns it with the effort for the story's tier. The defaults are T1 medium, T2 high
   and T3 xhigh.
 - Overrides are set per tier. `.epikloop/project.json` takes precedence over
-  `~/.epikloop/config.json`.
+  `~/.epikloop/config.json`, and a value that is no effort level is passed over.
 - The hooks module stamps each tier's effort onto the worker's spawn, by rewriting the Agent
   call's `effort` in its `tool.call` hook. No blocking hook sits on non-shell tools, so the job
   lives in the module.
+- The batch passes that effort itself, from the last line of `state.mjs --ready`, so the rewrite
+  changes nothing. Auto mode gives no verdict on a call that a hook changed after its review, and
+  refused workers' spawns that way ([issue #9](https://github.com/Yheng/Epikloop/issues/9)).
+  - The module reads the overrides when the session opens, and `--ready` reads them each time. So
+    an override changed mid-session costs each spawn one refusal, until the next session.
 - The batch starts each spawn's `description` with the story and its tier, as in
   `3.2 T2 login form`, which is how the module knows the tier.
 - The batch takes those lines from `state.mjs --ready`, and the prompt names only the story. The

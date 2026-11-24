@@ -127,6 +127,9 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - The self-test's real commits and pushes confirm Linux and macOS in CI.
 - **Worker effort.** Settled: mechanically, inside the hooks module, by rewriting the Agent call's
   `effort` in a `tool.call` hook. The spike saw the rewrite reach the subagent's requests.
+  - Since 2026-11-24 the batch passes the effort too, from the ready list's last line, so the
+    rewrite changes nothing. Auto mode had refused workers' spawns whose input the hook changed
+    ([issue #9](https://github.com/Yheng/Epikloop/issues/9)).
 - **`bin/` or `scripts/`.** Settled on 2026-11-01: the core plugin's scripts live in `scripts/`.
   - claude.ai and Cowork don't install a plugin that has a top-level `bin/`, so Anthropic's
     directory couldn't list one.

@@ -9,6 +9,29 @@ All notable changes to Epikloop are recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- A story-worker's cost rows cover every one of its turns
+  ([issue #9](https://github.com/Yheng/Epikloop/issues/9)).
+  - **The failure, read on 2026-11-24 from one project's events:** a worker ends a turn while its
+    gate run finishes in the background, and the emitter wrote the worker's row at that first
+    turn's end and then forgot the worker. 44 of 97 workers took more than one turn, and the rows
+    recorded 68 hours of about 85. The ETA and each retro's cost review read those rows.
+  - Each turn's end now writes a row holding that turn's share, and the row names its worker as
+    `agent`. The state reader adds a worker's rows into one run.
+  - A wait for the worker's own command counts. A wait after a turn that died doesn't: one worker
+    was woken 155 minutes after such a turn.
+  - A cost the session's total can't give is null, and so is one after the total started over.
+- Auto mode no longer refuses a story-worker's spawn (the same issue).
+  - **The failure, read on 2026-11-24 from three projects' logs:** the emitter set the worker's
+    effort after auto mode had reviewed the call, and auto mode gives no verdict on a call a hook
+    changed. It refused 32 spawns, 7 of 104, 19 of 113 and 6 of 41, and each passed on its retry.
+  - `state.mjs --ready` now ends with the worker effort of each tier it lists, and `epic`, `next`
+    and `story` pass it as the Agent call's `effort`. The emitter's own setting of it stays, as
+    the backstop.
+  - An effort override that is not one of the five levels is passed over, so the layer beneath
+    shows.
+
 ## [0.1.0] - 2026-11-08
 
 The core plugin's first release, tagged `epikloop--v0.1.0`. It holds everything below, from the

@@ -14,10 +14,11 @@ fixed or tidied here.
 
 The next story comes from a script, never from reading the project files. Run `git fetch` on its
 own, then `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --ready`, also on its own. Its first line,
-such as `3.2 T2 Login form`, is the next story in plan order; otherwise the one line says why
-nothing can start, and when it names a git command, run that on its own and read the list again.
+such as `3.2 T2 Login form`, is the next story in plan order, and its last the worker effort;
+otherwise the one line says why nothing can start, and when it names a git command, run that on its
+own and read the list again.
 
-Spawn `epikloop:story-worker` in the foreground with that line exactly as the description, which
-sets the worker's effort, and `Story N.M.` as the whole prompt; the worker reads its own brief.
+Spawn `epikloop:story-worker` in the foreground with the story's line exactly as the description,
+its tier's effort as `effort`, and `Story N.M.` as the whole prompt; the worker reads its own brief.
 Report its one-line result, then the fuel gauge from
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs"`.

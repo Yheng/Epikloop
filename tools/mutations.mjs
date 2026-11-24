@@ -60,14 +60,23 @@ export const MUTATIONS = [
   m(FOLD, ['fold'], "throw on a folder that's gone", "    if (error.code === 'ENOENT') return []\n", ''),
 
   // The emitter, by the plugin's test suite.
-  m(EMIT, ['emit'], "put the user's effort over the project's", 'effort: { ...EFFORT, ...user.effort, ...project.effort },', 'effort: { ...EFFORT, ...project.effort, ...user.effort },'),
+  m(EMIT, ['emit'], "put the user's effort over the project's", 'effort: efforts(EFFORT, user.effort, project.effort),', 'effort: efforts(EFFORT, project.effort, user.effort),'),
+  m(EMIT, ['state'], "change a default effort the ready list doesn't follow", "const EFFORT = { T1: 'medium', T2: 'high', T3: 'xhigh' }", "const EFFORT = { T1: 'low', T2: 'high', T3: 'xhigh' }"),
+  m(EMIT, ['emit'], 'take any override for a level','if (LEVELS.includes(layer?.[tier])) effort[tier] = layer[tier]', 'if (layer?.[tier] !== undefined) effort[tier] = layer[tier]'),
   m(EMIT, ['emit'], "drop a worker's cost row", '      save($, s, () => s.costs, row, end.at)\n', ''),
+  m(EMIT, ['emit'], 'leave the worker out of a cost row', '        agent: e.agentId,\n', ''),
+  m(EMIT, ['emit'], "forget a worker at its first turn's end", '      worker.active = false\n', '      s.workers.delete(e.agentId)\n'),
+  m(EMIT, ['emit'], "let a worker's later turn take the next worker's spawn", 'if (worker === undefined && s.spawning !== null) {', 'if (s.spawning !== null) {'),
+  m(EMIT, ['emit'], "count what the session spent between a worker's turns", 'worker.usd = now.usd', 'worker.usd ??= now.usd'),
+  m(EMIT, ['emit'], "leave the wait for a worker's own command out of its row", 'worker.at ??= now.at', 'worker.at = now.at'),
+  m(EMIT, ['emit'], 'count the wait after a turn that died', "worker.at = e.reason === 'answer' ? end.at : undefined", 'worker.at = end.at'),
+  m(EMIT, ['emit'], 'write a cost below zero', ' || to < from ? null', ' ? null'),
   m(EMIT, ['emit'], 'open a project only at session start', "      if (startedIn !== null && (session === null || session.id !== (await $.session.id()))) {\n        session = await open($, startedIn)\n        if (session !== null) emit($, 'session.start', {})\n      }\n", ''),
   m(EMIT, ['emit'], 'open the project again at every prompt', 'if (startedIn !== null && (session === null || session.id !== (await $.session.id()))) {', 'if (startedIn !== null) {'),
   m(EMIT, ['emit'], 'keep the old session id after a /clear', '(session === null || session.id !== (await $.session.id()))', 'session === null'),
   m(EMIT, ['emit'], "drop a notification's story", "emit($, 'notification', { story, detail:", "emit($, 'notification', { detail:"),
-  m(EMIT, ['emit'], 'name a story while several workers are at work', 's.workers.size === 1 ?', 's.workers.size > 0 ?'),
-  m(EMIT, ['emit'], 'keep a worker after its stop', '    s.workers.delete(e.agentId)\n', ''),
+  m(EMIT, ['emit'], 'name a story while several workers are at work', 'busy.length === 1 ?', 'busy.length > 0 ?'),
+  m(EMIT, ['emit'], "name a worker's story between its turns", '.filter((worker) => worker.active)', ''),
 
   // Project setup.
   m(INIT, ['init'], 'accept any lane', 'if (!lanes.includes(options.lane)) return console.log(', 'if (false) return console.log('),
@@ -122,8 +131,18 @@ export const MUTATIONS = [
   m(RUNNER, ['check'], 'each line with a run id of its own', 'detail: { mode: ctx.mode, run: ctx.run, ...detail },', "detail: { mode: ctx.mode, run: crypto.randomBytes(4).toString('hex'), ...detail },"),
   m(RUNNER, ['check'], "the gates' own files matched anywhere in a path",'const OWN_FILES = /(?<![\\w.-])(?:\\.githooks\\/|scripts\\/check\\.sh(?![\\w.-]))/', 'const OWN_FILES = /(?:\\.githooks\\/|scripts\\/check\\.sh)/'),
 
+  // The state reader: the cost rows and the workers' effort.
+  m(STATE, ['state'], "count each of a worker's rows as a run", 'const run = runs.get(row.agent)', 'const run = undefined'),
+  m(STATE, ['state'], 'add up the rows that name no agent', 'if (row.agent !== undefined) runs.set(row.agent, row)', 'runs.set(row.agent, row)'),
+  m(STATE, ['state'], 'give a worker a cost when one of its rows has none', 'Number.isFinite(run.cost) && Number.isFinite(row.cost) ? run.cost + row.cost : null', '(run.cost ?? 0) + (row.cost ?? 0)'),
+  m(STATE, ['state'], "put the user's worker effort over the project's", '[WORKER_EFFORT, user.effort, project.effort]', '[WORKER_EFFORT, project.effort, user.effort]'),
+  m(STATE, ['state'], 'print a worker effort that is no level', 'if (EFFORTS.includes(layer?.[tier])) effort[tier] = layer[tier]', 'if (layer?.[tier] !== undefined) effort[tier] = layer[tier]'),
+  m(STATE, ['state'], "fail on a user config that doesn't parse", '  } catch {}\n  const effort = {}\n', '  } catch (error) {\n    throw error\n  }\n  const effort = {}\n'),
+  m(STATE, ['state'], 'leave the worker effort out of the ready list', "[...ready.lines, workerLine(ready.lines, opened.project, os.homedir())].join('\\n')", "ready.lines.join('\\n')"),
+  m(STATE, ['state'], "name every tier's worker effort, listed or not", ".filter((tier) => lines.some((line) => line.split(' ')[1] === tier))", ''),
+
   // The state reader: the batch.
-  m(STATE, ['state'], 'read the whole history for landed stories', "git(['log', ...FEAT_LOG, '--format=%ct%x09%s', branch])", "git(['log', '--format=%ct%x09%s', branch])"),
+  m(STATE, ['state'], 'read the whole history for landed stories',"git(['log', ...FEAT_LOG, '--format=%ct%x09%s', branch])", "git(['log', '--format=%ct%x09%s', branch])"),
   m(STATE, ['state'], "read every branch's whole log for the review set", "git(['log', ...FEAT_LOG, '--format=%s', '--branches', '--remotes', '--not', branch])", "git(['log', '--format=%s', '--branches', '--remotes', '--not', branch])"),
   m(STATE, ['state'], "match feat commits as the repository's grep setting says", "const FEAT_LOG = ['--basic-regexp', '--grep=", "const FEAT_LOG = ['--grep="),
   m(STATE, ['state'], 'drop the After check', 'const waits = story.after.filter((id) => !state.done.has(id))', 'const waits = []'),

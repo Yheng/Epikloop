@@ -216,10 +216,13 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
 - **The state reader's self-test** parses the templates and malformed files, and reads dated
   commits, tags, records and cost rows in throwaway repos into exact stages and gauges, stage 10
   included, and stage 9 while going live waits for planned work. One history's log runs past
-  Node's 1 MB.
+  Node's 1 MB. A worker's cost rows, one per turn, add up to one run, folded or not.
   - It also runs the batch's and the ceremonies' commands there: the ready list against branches,
     a bare remote and a team-mode review; a worker's exact brief; and the retro's and the release's
     briefs and tags, with the release's `Go live later` record and a release that still waits.
+  - The ready list ends with the worker effort of each tier it lists: the project's over the
+    user's over the default, passing over a value that is no level and a config that doesn't parse.
+    Its defaults are held to the emitter's.
   - It reads stage 3 at each point of a design, from no design to a complete one, for a project
     planned without one and for the service lane. It holds the manifest to its format, and checks
     `--design` before and after the pick, with an audit's findings and the missing files it names.
@@ -255,6 +258,9 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
 - **The plugin test** runs the emitter's suite against simulated events, with no login. Among
   them are a project set up mid-session, a `/clear`, and notifications while none, one and two
   workers are at work.
+  - A worker's turns start inside its Agent call and end after the call has answered. The suite
+    covers a worker that takes several turns, one whose later turn starts while the next worker's
+    spawn waits, a turn that died, and a cost the session's total can't give.
 - **The fold's self-test** folds sample files in a temporary folder. It covers the lock free,
   held, left stale and freed by a fold that throws, a folder that's gone, and four processes
   folding one folder at once.

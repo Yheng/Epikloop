@@ -16,12 +16,12 @@ and tidies nothing itself; a change of scope goes to the queue.
 
 Which stories are ready comes from a script, never from reading the project files. Run `git fetch`
 on its own, then `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --ready $ARGUMENTS`, also on its
-own. It prints one line per ready story in plan order, such as `3.2 T2 Login form`, or one line
-saying why nothing can start. When that line names a git command, run it on its own and read the
-list again; any other reason ends the batch before it starts.
+own. It prints one line per ready story in plan order, such as `3.2 T2 Login form`, then each tier's
+worker effort, or one line saying why nothing can start. When that line names a git command, run it
+on its own and read the list again; any other reason ends the batch before it starts.
 
 Spawn `epikloop:story-worker` for the first line, in the foreground, with that line exactly as the
-description, which sets the worker's effort, and `Story N.M.` as the whole prompt; the worker reads
+description, its tier's effort as `effort`, and `Story N.M.` as the whole prompt; the worker reads
 its own brief. When it reports, read the list again and go on with its first line. The batch ends
 when nothing is ready, or when the story just run is still listed, because then it didn't land.
 

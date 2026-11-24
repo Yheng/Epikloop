@@ -157,7 +157,8 @@ screens.
 ## What a batch reads
 
 `state.mjs --ready [N | N.M]` lists the stories a batch may start, one `N.M Tn Title` line each,
-in plan order. That line is the worker's spawn description.
+in plan order. That line is the worker's spawn description. A last line gives the worker effort of
+each tier listed, as in `Worker effort: T2 high, T3 xhigh.`, and the batch passes it with the spawn.
 
 - **Ready.** A story is ready when it isn't done or in review, every story in its `After` is done,
   and no parked question blocks it. Before the `mvp` tag only MVP stories are ready; named alone,
@@ -212,6 +213,7 @@ and only where a batch would.
   sooner.
 - **ETA.** The remaining MVP stories' average worker wall time for their tier, from this machine's
   cost rows, divided by `hours_per_day`.
+  - A worker writes one row per turn, and its rows add up to one run.
   - A tier with no rows takes the average of all rows.
   - With no rows, or no `hours_per_day`, the ETA is unknown.
 - **Queue Δ.** The open entries now minus the open entries at the start of the current phase:

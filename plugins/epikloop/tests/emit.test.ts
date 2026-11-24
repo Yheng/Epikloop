@@ -24,7 +24,7 @@ function project(effort: Record<string, string> = {}) {
 
 // What lies beneath the module, answered from memory and recorded.
 function world(on: On, files: Record<string, string>) {
-  const w = { now: NOW, usd: 0.25, cwd: '', id: SESSION, writes: [] as Write[], asked: [] as string[] }
+  const w = { now: NOW, usd: 0.25 as number | undefined, cwd: '', id: SESSION, writes: [] as Write[], asked: [] as string[] }
   const disk = (path: string) => path.replace(/\\/g, '/').replace(/^[A-Za-z]:/, '')
   on('env.get', (_, e) => ({ value: HOMES[e.name] }))
   on('clock.now', () => ({ value: w.now }))
@@ -64,6 +64,29 @@ function layout(writes: Write[]) {
 function records(writes: Write[]) {
   const seq = (write: Write) => Number(/-(\d+)\.json$/.exec(write.path)?.[1])
   return [...writes].sort((a, b) => seq(a) - seq(b)).map((write) => JSON.parse(write.text))
+}
+
+// The cost rows among the writes, in the order written, and the events beside them.
+function split(writes: Write[]) {
+  const { sep } = layout(writes)
+  const cost = (write: Write) => write.path.includes(`${sep}cost${sep}`)
+  return { rows: records(writes.filter(cost)), events: records(writes.filter((write) => !cost(write))) }
+}
+
+const USAGE = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'claude-opus-5-5' }
+// The end of an agent's turn, as the engine reports one that answered.
+const answered = (turnId: string, agentId: string) =>
+  ({ answer: 'done', durationMs: 1, isAborted: false, turnId, agentId, reason: 'answer', usage: USAGE }) as const
+
+const WORKER = { tool: 'Agent', subagent_type: 'epikloop:story-worker', prompt: 'p' }
+// A worker's first turn starts inside its Agent call, which answers at once, as a spawn's does; its
+// turns end after the call has answered.
+function spawning($: Engine, on: On, first: Record<string, () => Promise<unknown>>) {
+  on('tool.call', async (_, e) => {
+    await first[e.description]?.()
+    return { result: {} }
+  })
+  return (description: string) => $.tool.call({ ...WORKER, description })
 }
 
 test('outside a project the project is looked for at the start and at each prompt, and nothing is written', async ($, on) => {
@@ -164,8 +187,9 @@ test('inside a project each event is one line in a file of its own, under the ho
 
 test("a story-worker gets its tier's effort: the project over the user over the default", async ($, on) => {
   const user = JSON.stringify({ format: 1, effort: { T1: 'low', T2: 'low' } })
+  // An override that is no level is passed over, so T3 keeps its default.
   world(on, {
-    [MARKER]: project({ T2: 'max' }),
+    [MARKER]: project({ T2: 'max', T3: 'ultra' }),
     '/home/dev/.epikloop/config.json': user,
     '/Users/dev/.epikloop/config.json': user,
   })
@@ -212,29 +236,14 @@ test('a story-worker spawned in the background goes on in the foreground; others
   ])
 })
 
-test("a worker's stop writes its cost row: the cost's rise, the wall time, the model and the effort", async ($, on) => {
+test("a worker's turn writes its cost row at its end: the cost's rise, the wall time, the worker, the model and the effort", async ($, on) => {
   const w = world(on, { [MARKER]: project() })
-  on('tool.call', async (_, e) => {
-    if (e.tool === 'Agent') {
-      // The worker runs inside its Agent call, as a foreground spawn does.
-      await $.turn.start({ text: 'p', turnId: 't1', agentId: 'a1' })
-      w.now += 4000
-      w.usd = 0.75
-      const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
-      await $.turn.complete({
-        answer: 'done',
-        durationMs: 4000,
-        isAborted: false,
-        turnId: 't1',
-        agentId: 'a1',
-        reason: 'answer',
-        usage: { ...usage, model: 'claude-opus-5-5' },
-      })
-    }
-    return { result: {} }
-  })
+  const spawn = spawning($, on, { '2.3 T2 cart total': () => $.turn.start({ text: 'p', turnId: 't1', agentId: 'a1' }) })
   await start($)
-  await $.tool.call({ tool: 'Agent', subagent_type: 'epikloop:story-worker', description: '2.3 T2 cart total', prompt: 'p' })
+  await spawn('2.3 T2 cart total')
+  w.now += 4000
+  w.usd = 0.75
+  await $.turn.complete(answered('t1', 'a1'))
   await end($)
   const { sep, base } = layout(w.writes)
   const rows = w.writes.filter((write) => write.path.includes(`${sep}cost${sep}`))
@@ -245,16 +254,121 @@ test("a worker's stop writes its cost row: the cost's rise, the wall time, the m
     ts: new Date(NOW + 4000).toISOString(),
     story: '2.3',
     tier: 'T2',
+    agent: 'a1',
     wall: 4,
     cost: 0.5,
     model: 'claude-opus-5-5',
     effort: 'high',
   })
-  const events = records(w.writes.filter((write) => !rows.includes(write)))
+  const { events } = split(w.writes)
   expect(events.find((event) => event.kind === 'tool.pre')).toMatchObject({ tool: 'Agent', story: '2.3' })
   expect(events.filter((event) => event.kind.startsWith('subagent.'))).toMatchObject([
     { kind: 'subagent.start', story: '2.3', agent: 'a1' },
     { kind: 'subagent.stop', story: '2.3', agent: 'a1', detail: { reason: 'answer' } },
+  ])
+})
+
+test('a worker that takes several turns keeps its story, and its rows add up to its time and its cost', async ($, on) => {
+  const w = world(on, { [MARKER]: project() })
+  const spawn = spawning($, on, { '2.3 T2 cart total': () => $.turn.start({ text: 'p', turnId: 't1', agentId: 'a1' }) })
+  await start($)
+  await spawn('2.3 T2 cart total')
+  w.now += 4000
+  w.usd = 0.75
+  await $.turn.complete(answered('t1', 'a1'))
+  // Its own command runs for a minute, and the session spends on the main loop meanwhile.
+  w.now += 60000
+  w.usd = 1
+  await $.turn.start({ text: '', turnId: 't2', agentId: 'a1' })
+  w.now += 2000
+  w.usd = 1.5
+  await $.turn.complete(answered('t2', 'a1'))
+  await end($)
+  const { rows, events } = split(w.writes)
+  expect(rows).toMatchObject([
+    { story: '2.3', tier: 'T2', agent: 'a1', wall: 4, cost: 0.5, effort: 'high' },
+    { story: '2.3', tier: 'T2', agent: 'a1', wall: 62, cost: 0.5, effort: 'high' },
+  ])
+  const turns = events.filter((event) => event.kind.startsWith('subagent.'))
+  expect(turns.map((event) => [event.kind, event.story, event.agent])).toEqual([
+    ['subagent.start', '2.3', 'a1'],
+    ['subagent.stop', '2.3', 'a1'],
+    ['subagent.start', '2.3', 'a1'],
+    ['subagent.stop', '2.3', 'a1'],
+  ])
+})
+
+test("a worker's later turn leaves the next worker's spawn alone", async ($, on) => {
+  const w = world(on, { [MARKER]: project() })
+  // 2.3's worker goes on while 2.4's spawn still waits for its own first turn.
+  const spawn = spawning($, on, {
+    '2.3 T2 cart total': () => $.turn.start({ text: 'p', turnId: 't1', agentId: 'a1' }),
+    '2.4 T1 cart badge': async () => {
+      await $.turn.start({ text: '', turnId: 't2', agentId: 'a1' })
+      await $.turn.start({ text: 'p', turnId: 't3', agentId: 'a2' })
+    },
+  })
+  await start($)
+  await spawn('2.3 T2 cart total')
+  await $.turn.complete(answered('t1', 'a1'))
+  await spawn('2.4 T1 cart badge')
+  await $.turn.complete(answered('t2', 'a1'))
+  await $.turn.complete(answered('t3', 'a2'))
+  await end($)
+  const { rows, events } = split(w.writes)
+  const starts = events.filter((event) => event.kind === 'subagent.start')
+  expect(starts.map((event) => [event.agent, event.story])).toEqual([
+    ['a1', '2.3'],
+    ['a1', '2.3'],
+    ['a2', '2.4'],
+  ])
+  expect(rows.map((row) => [row.agent, row.story, row.tier, row.effort])).toEqual([
+    ['a1', '2.3', 'T2', 'high'],
+    ['a1', '2.3', 'T2', 'high'],
+    ['a2', '2.4', 'T1', 'medium'],
+  ])
+})
+
+test("the wait after a turn that died is not the worker's", async ($, on) => {
+  const w = world(on, { [MARKER]: project() })
+  const spawn = spawning($, on, { '2.3 T2 cart total': () => $.turn.start({ text: 'p', turnId: 't1', agentId: 'a1' }) })
+  await start($)
+  await spawn('2.3 T2 cart total')
+  w.now += 4000
+  await $.turn.complete({ answer: '', durationMs: 4000, isAborted: false, turnId: 't1', agentId: 'a1', reason: 'error' })
+  // Two and a half hours pass before someone wakes it.
+  w.now += 9_000_000
+  await $.turn.start({ text: 'go on', turnId: 't2', agentId: 'a1' })
+  w.now += 3000
+  await $.turn.complete(answered('t2', 'a1'))
+  await end($)
+  const { rows } = split(w.writes)
+  expect(rows.map((row) => [row.wall, row.model])).toEqual([
+    [4, null],
+    [3, 'claude-opus-5-5'],
+  ])
+})
+
+test("a cost the session's total can't give is null", async ($, on) => {
+  const w = world(on, { [MARKER]: project() })
+  const spawn = spawning($, on, { '2.3 T2 cart total': () => $.turn.start({ text: 'p', turnId: 't1', agentId: 'a1' }) })
+  await start($)
+  await spawn('2.3 T2 cart total')
+  // The host keeps no total at this turn's end.
+  w.now += 4000
+  w.usd = undefined
+  await $.turn.complete(answered('t1', 'a1'))
+  // And the total starts over during the next, as it does at a /clear.
+  w.usd = 0.5
+  await $.turn.start({ text: '', turnId: 't2', agentId: 'a1' })
+  w.now += 2000
+  w.usd = 0.1
+  await $.turn.complete(answered('t2', 'a1'))
+  await end($)
+  const { rows } = split(w.writes)
+  expect(rows.map((row) => [row.wall, row.cost])).toEqual([
+    [4, null],
+    [2, null],
   ])
 })
 
@@ -278,7 +392,7 @@ test('task and notification events carry identifiers, never their text', async (
   expect(w.writes.some((write) => write.text.includes('canary'))).toBe(false)
 })
 
-test('a notification names the story of the one worker at work, and no story otherwise', async ($, on) => {
+test("a notification names the story of the one worker inside a turn, and no story otherwise", async ($, on) => {
   const w = world(on, { [MARKER]: project() })
   on('classic.Notification', () => ({}))
   // Each worker's Agent call stays open until its worker's turn completes, as a foreground spawn's
@@ -317,8 +431,11 @@ test('a notification names the story of the one worker at work, and no story oth
   await ask()
   await first()
   await ask()
+  // The first worker goes on, in a later turn.
+  await $.turn.start({ text: '', turnId: 'a1-2', agentId: 'a1' })
+  await ask()
   await end($)
   const asked = records(w.writes).filter((event) => event.kind === 'notification')
-  expect(asked.map((event) => event.story ?? null)).toEqual([null, '2.3', null, '2.3', null])
+  expect(asked.map((event) => event.story ?? null)).toEqual([null, '2.3', null, '2.3', null, '2.3'])
   expect(asked.every((event) => event.detail.notification_type === 'permission_prompt')).toBe(true)
 })

@@ -16,6 +16,10 @@ graders:
     type: tool_used
     tool: Agent
     input_match: 'epikloop:story-worker'
+  - name: passes-the-effort
+    type: tool_used
+    tool: Agent
+    input_match: '"effort":"(?:low|medium|high|xhigh|max)"'
   - name: lands-feat-1-1
     type: regex
     target: { source: file, path: .git/logs/HEAD }

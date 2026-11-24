@@ -739,7 +739,7 @@ to edit, and `init.mjs --refresh` replaces only the gate files.
 | Path | Holds |
 |---|---|
 | `~/.epikloop/events/YYYY-MM-DD.jsonl` | The event log: one line per event, written only inside an Epikloop project |
-| `~/.epikloop/projects/<id>/cost.jsonl` | One cost row per closed story: tier, wall time, cost, model and effort |
+| `~/.epikloop/projects/<id>/cost.jsonl` | One cost row per turn of a story's worker: tier, worker, wall time, cost, model and effort. A worker's rows add up to its run |
 | `~/.epikloop/config.json` | Your settings: effort overrides and the Harbor switch |
 | `~/.epikloop/harbor.json` | Where the Harbor plugin is installed, which its start-of-session hook records |
 
@@ -773,6 +773,7 @@ A cost row ([schema](plugins/epikloop/schemas/cost-row.schema.json)):
   "ts": "2026-10-19T15:41:07.502Z",
   "story": "2.3",
   "tier": "T2",
+  "agent": "a79e4ab7f74d9b14f",
   "wall": 1260,
   "cost": null,
   "model": "claude-opus-5-5",

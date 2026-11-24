@@ -4,7 +4,7 @@
 // is stored; every read derives it again. The briefing imports it, and skills run it:
 //
 //   node state.mjs                                          the state of the project here
-//   node state.mjs --ready [N | N.M]                        the stories a batch may start, or why none
+//   node state.mjs --ready [N | N.M]                        the stories a batch may start and their workers' effort, or why none
 //   node state.mjs --story N.M                              a story-worker's brief
 //   node state.mjs --ids                                    the next question, decision and epic numbers
 //   node state.mjs --retro                                  the retro's brief, or the tags it leaves
@@ -528,15 +528,26 @@ function landedAfterLive(git, branch, tags) {
   return after
 }
 
-// The cost rows the emitter wrote for this project on this machine, folded or not.
+// The cost rows the emitter wrote for this project on this machine, folded or not, as one row per
+// run. A story-worker writes a row at each of its turns' ends, naming itself as `agent`, and those
+// add up to its run; a row that names no agent is a run of its own.
 function costRows(home, id) {
   const dir = path.join(home, '.epikloop', 'projects', id)
   const rows = []
+  const runs = new Map()
   const add = (text) => {
     for (const line of text.split('\n')) {
       try {
         const row = JSON.parse(line)
-        if (/^T[123]$/.test(row.tier) && Number.isFinite(row.wall) && row.wall > 0) rows.push(row)
+        if (!(/^T[123]$/.test(row.tier) && Number.isFinite(row.wall) && row.wall > 0)) continue
+        const run = runs.get(row.agent)
+        if (run === undefined) {
+          rows.push(row)
+          if (row.agent !== undefined) runs.set(row.agent, row)
+        } else {
+          run.wall += row.wall
+          run.cost = Number.isFinite(run.cost) && Number.isFinite(row.cost) ? run.cost + row.cost : null
+        }
       } catch {}
     }
   }
@@ -840,7 +851,8 @@ function startProblem(project, facts, what) {
 }
 
 // The stories a batch may start, as `N.M Tn Title` lines in plan order, the line a worker's spawn
-// description starts with. `select` is an epic's number, or one story's ID, which may be outside
+// description starts with; the CLI adds the workers' effort as a last line (`workerLine`).
+// `select` is an epic's number, or one story's ID, which may be outside
 // the MVP set; without it, the current phase's epic, or every epic once all are tagged. Before the
 // `mvp` or `live` tag only MVP stories run. When none can start, `text` says why, and `fails` is set
 // when the checkout has to change first.
@@ -971,6 +983,30 @@ function tagging(facts, tags) {
 }
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+// A story-worker's effort per tier, beneath ~/.epikloop/config.json and .epikloop/project.json.
+const WORKER_EFFORT = { T1: 'medium', T2: 'high', T3: 'xhigh' }
+
+// Each tier's worker effort, as the emitter sets it: the project's over the user's over the
+// default. A value that is no level is passed over, and so is a config that doesn't parse.
+function workerEffort(project, home) {
+  let user = {}
+  try {
+    user = JSON.parse(fs.readFileSync(path.join(home, '.epikloop', 'config.json'), 'utf8').replace(/^﻿/, '')) ?? {}
+  } catch {}
+  const effort = {}
+  for (const layer of [WORKER_EFFORT, user.effort, project.effort]) {
+    for (const tier of Object.keys(WORKER_EFFORT)) if (EFFORTS.includes(layer?.[tier])) effort[tier] = layer[tier]
+  }
+  return effort
+}
+
+// The ready list's last line: the worker effort of each tier the list holds. The batch passes it
+// with the worker's spawn, so the emitter's own setting of it changes nothing.
+function workerLine(lines, project, home) {
+  const effort = workerEffort(project, home)
+  const tiers = Object.keys(WORKER_EFFORT).filter((tier) => lines.some((line) => line.split(' ')[1] === tier))
+  return `Worker effort: ${tiers.map((tier) => `${tier} ${effort[tier]}`).join(', ')}.`
+}
 
 // The cost rows on this machine, per tier and effort: how many runs, and their mean wall time and
 // cost.
@@ -1245,7 +1281,8 @@ function cli(argv) {
     }
     const ready = readyList(state, opened.project, facts, name)
     if (ready.fails) process.exitCode = 1
-    return console.log(ready.lines.length > 0 ? ready.lines.join('\n') : ready.text)
+    if (ready.lines.length === 0) return console.log(ready.text)
+    return console.log([...ready.lines, workerLine(ready.lines, opened.project, os.homedir())].join('\n'))
   }
   const state = opened.problem === null ? readState(opened.root, opened.project) : null
   const { parts, needs } = summary(opened, state)
@@ -1696,7 +1733,7 @@ const CASES = [
         k.stage(dir, `9 ${waits} → /epikloop:epic 2`),
         k.expect([
           [k.run(dir, '--retro'), `1 A retro waits: ${waits}. Next: /epikloop:epic 2.\n`],
-          [k.ready(dir), '0 2.1 T1 Story 2.1\n2.2 T1 Story 2.2\n'],
+          [k.ready(dir), '0 2.1 T1 Story 2.1\n2.2 T1 Story 2.2\nWorker effort: T1 medium.\n'],
         ]),
       ]
       k.commit(dir, 'feat(2.1): two', 0)
@@ -1717,7 +1754,7 @@ const CASES = [
       const got = [k.stage(dir, '10 the product is live → /epikloop:plan --extend')]
       k.write(dir, 'docs/stories/12-next.md', epicFile(12, [[1, 'T1', false], [2, 'T1', false, '12.1']]))
       k.commit(dir, 'plan: epic 12', 0)
-      got.push(k.stage(dir, '10 the product is live → /epikloop:epic 12'), k.expect([[k.ready(dir), '0 12.1 T1 Story 12.1\n']]))
+      got.push(k.stage(dir, '10 the product is live → /epikloop:epic 12'), k.expect([[k.ready(dir), '0 12.1 T1 Story 12.1\nWorker effort: T1 medium.\n']]))
       return got.flat()
     },
   ],
@@ -1754,7 +1791,7 @@ const CASES = [
       got.push(
         k.expect([
           [k.ready(dir), `0 Nothing is ready: ${closing}. Next: /epikloop:retro.\n`],
-          [k.ready(dir, '13'), '0 13.1 T1 Story 13.1\n'],
+          [k.ready(dir, '13'), '0 13.1 T1 Story 13.1\nWorker effort: T1 medium.\n'],
           [k.run(dir, '--retro'), brief.join('\n')],
         ]),
       )
@@ -1887,6 +1924,23 @@ const CASES = [
     },
   ],
   [
+    "a worker's rows add up to one run, folded or not",
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true], [3, 'T1', true]] }), { freeze: true, frozenAgo: 3 })
+      // Worker a1 took two turns, one of them folded; b1 took two, and one has no cost.
+      k.costs({
+        'cost.jsonl': [['T1', 1200, 'medium', 0.2, 'a1'], ['T1', 3600, 'medium', 0.4], ['T2', 3600, 'high', null, 'b1']],
+        'cost/1-x-1.json': [['T1', 600, 'medium', 0.1, 'a1']],
+        'cost/1-x-2.json': [['T2', 1800, 'high', 0.5, 'b1']],
+      })
+      // T1 runs take 0.5 h and 1 h, so the three left take 2.25 h, at 2 h a day: 2 days.
+      const problems = k.gauge(dir, `MVP 0/3 · 0.0 stories/day · ETA ${ymd(NOW + 2 * DAY)} · queue Δ 0`, { hours_per_day: 2 })
+      for (const m of [1, 2, 3]) k.commit(dir, `feat(1.${m}): story`, 0)
+      const retro = k.run(dir, '--retro')
+      return [...problems, ...k.has(retro, '- T1 at medium: 2 runs, 45.0 min and $0.35 each on average\n', '- T2 at high: 1 run, 90.0 min each on average\n')]
+    },
+  ],
+  [
     'no cost rows or no hours per day leave the ETA unknown',
     (k) => {
       const dir = k.repo(planned({ 1: [[1, 'T1', true]] }), { freeze: true, frozenAgo: 3 })
@@ -1942,13 +1996,13 @@ const CASES = [
       const before = [k.ready(dir), k.ready(dir, '1'), k.ready(dir, '2'), k.ready(dir, '1.3'), k.ready(dir, '1.4'), k.ready(dir, '9.9')]
       k.commit(dir, 'feat(1.1): one', 0)
       return k.expect([
-        [before[0], '0 1.1 T1 Story 1.1\n'],
-        [before[1], '0 1.1 T1 Story 1.1\n'],
-        [before[2], '0 2.1 T1 Story 2.1\n'],
-        [before[3], '0 1.3 T1 Story 1.3\n'],
+        [before[0], '0 1.1 T1 Story 1.1\nWorker effort: T1 medium.\n'],
+        [before[1], '0 1.1 T1 Story 1.1\nWorker effort: T1 medium.\n'],
+        [before[2], '0 2.1 T1 Story 2.1\nWorker effort: T1 medium.\n'],
+        [before[3], '0 1.3 T1 Story 1.3\nWorker effort: T1 medium.\n'],
         [before[4], '0 1.4 is blocked by Q-001, so it is not ready.\n'],
         [before[5], '1 9.9 is not a story.\n'],
-        [k.ready(dir), '0 1.2 T2 Story 1.2\n'],
+        [k.ready(dir), '0 1.2 T2 Story 1.2\nWorker effort: T2 high.\n'],
         [k.ready(dir, '1.1'), '0 1.1 is done.\n'],
       ])
     },
@@ -1963,8 +2017,36 @@ const CASES = [
       k.git(dir, 'tag', 'mvp')
       return k.expect([
         [unsigned, '0 Nothing is left to run. Next: /epikloop:retro.\n'],
-        [k.ready(dir), '0 2.2 T3 Story 2.2\n10.1 T2 Story 10.1\n'],
+        [k.ready(dir), '0 2.2 T3 Story 2.2\n10.1 T2 Story 10.1\nWorker effort: T2 high, T3 xhigh.\n'],
       ])
+    },
+  ],
+  [
+    'the ready list ends with the worker effort of each tier it lists: the project over the user over the default',
+    (k) => {
+      // The marker's T3 is no level, so it is passed over.
+      const dir = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T2', true], [3, 'T3', true]] }), { freeze: true, marker: { effort: { T2: 'max', T3: 'ultra' } } })
+      const list = '1.1 T1 Story 1.1\n1.2 T2 Story 1.2\n1.3 T3 Story 1.3\n'
+      const alone = k.ready(dir)
+      k.config(JSON.stringify({ format: 1, effort: { T1: 'low', T2: 'low' } }))
+      const layered = [k.ready(dir), k.ready(dir, '1.2')]
+      k.config('{ "effort": ')
+      return k.expect([
+        [alone, `0 ${list}Worker effort: T1 medium, T2 max, T3 xhigh.\n`],
+        [layered[0], `0 ${list}Worker effort: T1 low, T2 max, T3 xhigh.\n`],
+        [layered[1], '0 1.2 T2 Story 1.2\nWorker effort: T2 max.\n'],
+        [k.ready(dir), `0 ${list}Worker effort: T1 medium, T2 max, T3 xhigh.\n`],
+      ])
+    },
+  ],
+  [
+    "the worker effort's defaults are the emitter's",
+    () => {
+      // The two must agree, or auto mode refuses each spawn whose effort the emitter then changes.
+      const emitter = fs.readFileSync(path.join(import.meta.dirname, '..', 'hooks', 'emit.js'), 'utf8')
+      const theirs = /^const EFFORT = (\{.+\})$/m.exec(emitter)?.[1]
+      const ours = `{ ${Object.entries(WORKER_EFFORT).map(([tier, level]) => `${tier}: '${level}'`).join(', ')} }`
+      return theirs === ours ? [] : [`hooks/emit.js sets ${theirs}, and the ready list prints ${ours}`]
     },
   ],
   [
@@ -2029,7 +2111,7 @@ const CASES = [
       k.git(dir, 'branch', '-q', '-D', 'story/1.1')
       const review = '0 1.1 is in review, committed on another branch, so it is not ready.\n'
       return k.expect([
-        [local[0], '0 1.3 T1 Story 1.3\n'],
+        [local[0], '0 1.3 T1 Story 1.3\nWorker effort: T1 medium.\n'],
         [local[1], review],
         [k.ready(dir, '1.1'), review],
       ])
@@ -2505,9 +2587,11 @@ async function selfTest() {
     costs(files) {
       const dir = path.join(home, '.epikloop', 'projects', MARKER.id)
       for (const [file, rows] of Object.entries(files)) {
-        k.write(dir, file, rows.map(([tier, wall, effort = 'medium', cost = null]) => JSON.stringify({ format: 1, story: '9.9', tier, wall, cost, model: null, effort })).join('\n') + '\n')
+        k.write(dir, file, rows.map(([tier, wall, effort = 'medium', cost = null, agent]) => JSON.stringify({ format: 1, story: '9.9', tier, agent, wall, cost, model: null, effort })).join('\n') + '\n')
       }
     },
+    // The user's settings in this case's home, as text.
+    config: (text) => k.write(home, '.epikloop/config.json', text),
     read: (dir, fields = {}) => readState(dir, { ...(k.project ?? MARKER), ...fields }, { now: NOW, home }),
     // The CLI, run as a skill runs it, from `cwd`, with this case's home.
     cli: (cwd, args = [], script = import.meta.filename) =>
