@@ -36,6 +36,11 @@ All notable changes to Epikloop are recorded here.
     the work tree held. The next push of that work skipped its tests.
   - A green run now stamps only what it checked itself, and the marker's gate settings are part of
     the stamp's key.
+  - **A second failure, found on 2026-11-24, the day `gates.test_ignore` landed,** and shown by a
+    self-test case that failed first. A push of a commit that changed only listed paths carried
+    the stamp to the new state, and a deep run then skipped lint and the tests on a state no run
+    had tested. The stamp now says whether a run tested its state, and a deep run takes nothing
+    from one that didn't.
 - A story-worker's cost rows cover every one of its turns
   ([issue #9](https://github.com/Yheng/Epikloop/issues/9)).
   - **The failure, read on 2026-11-24 from one project's events:** a worker ends a turn while its

@@ -293,16 +293,17 @@ How the gates run:
   files, the runner, Node's version and the marker's gate settings
   ([issue #10](https://github.com/Yheng/Epikloop/issues/10)).
   - A run stamps only when it ran lint, typecheck, test and build itself, or when the working state
-    differs from the stamped one only under `gates.test_ignore`.
-  - On the stamped state, a commit and a push skip lint and typecheck, and `--deep` skips those and
-    the tests. `--deep` always builds, since end-to-end tests read the build's output, which no
-    stamp covers.
+    differs from the stamped one only under `gates.test_ignore`. The stamp says which.
+  - On the stamped state, a commit and a push skip lint and typecheck. `--deep` skips those and
+    the tests only where a run tested the state itself. `--deep` always builds, since end-to-end
+    tests read the build's output, which no stamp covers.
   - A push skips tests and build when every pushed tip's tree is the stamped one, or differs from
     it only under `gates.test_ignore`.
   - A full run skips nothing, and the secret scan always runs.
 - **`gates.test_ignore`.** Paths whose changes can't change what test and build answer, each with
   its reason. No path may match the marker or the gates' own files, and a file moved across the
-  line counts as changed on both sides. Full and deep runs never use the list.
+  line counts as changed on both sides. Full and deep runs never use the list: a stamp it carried
+  to a new state gives `--deep` nothing.
 - **The ratchet is held.** No brownfield baselines are enforced until an adoption needs them.
 - **Events.** A run writes `gate.started` before its first gate, and a `gate.passed` or
   `gate.failed` event for each gate when it ends. Every line is in the emitter's format, carries the

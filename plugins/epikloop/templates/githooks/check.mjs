@@ -1164,11 +1164,13 @@ async function main(argv) {
     ctx.work = ctx.before === null ? null : await related(ctx, stamp, ctx.before.tree)
     if (mode === 'push') ctx.stamped = await stampMatches(ctx, stamp)
     // What the stamp lets a gate skip. A full run skips nothing, and e2e and --deep's build always
-    // run: end-to-end tests read the build's output, which no stamp covers.
+    // run: end-to-end tests read the build's output, which no stamp covers. --deep skips only on a
+    // state a run tested itself: a stamp that gates.test_ignore carried here gives it nothing.
+    const holds = mode !== 'deep' || stamp?.tested === true
     const skip = (name) => {
-      if (name === 'lint' || name === 'typecheck') return mode !== 'full' && ctx.work === 'same' ? 'stamp' : null
+      if (name === 'lint' || name === 'typecheck') return mode !== 'full' && ctx.work === 'same' && holds ? 'stamp' : null
       if (mode === 'push' && (name === 'test' || name === 'build')) return ctx.stamped
-      return mode === 'deep' && name === 'test' && ctx.work === 'same' ? 'stamp' : null
+      return mode === 'deep' && name === 'test' && ctx.work === 'same' && holds ? 'stamp' : null
     }
     results = []
     results.push(await gate('shims', () => shimsGate()))
@@ -1189,11 +1191,13 @@ async function main(argv) {
   // A stamp is earned by a run that ran all four stamped commands itself, or by a green one whose
   // working state differs from the stamped one only under gates.test_ignore: lint and typecheck
   // skip only on the same tree, so that run ran both, and test and build are the stamped tree's.
+  // The stamp says which, as `tested`.
   const ran = (name) => results.some((r) => r.name === name && (r.status === 'ok' || r.status === 'none'))
-  const earned = STAMPED.every(ran) || ctx.work === 'ignored'
+  const tested = STAMPED.every(ran)
+  const earned = tested || ctx.work === 'ignored'
   if (green && earned && ctx.before !== null) {
     const after = await stampKey(ctx, envFiles)
-    if (after !== null && after.tree === ctx.before.tree && after.rest === ctx.before.rest) await writeStamp(after)
+    if (after !== null && after.tree === ctx.before.tree && after.rest === ctx.before.rest) await writeStamp({ ...after, tested })
   }
   for (const r of results) for (const line of r.lines ?? []) console.log(redact(line))
   const label = mode === 'full' ? 'check' : `check --${mode}`
@@ -2474,6 +2478,21 @@ function gateCases(k) {
         const again = await check(r, ['--deep'])
         const counts = (first === '1,1,2,1' && runs(r, 'test') === 2) || `lint, test, build and e2e ran ${first} times, then test ${runs(r, 'test')}`
         return every(passes(full), passes(deep), passes(again), counts)
+      },
+    ],
+    [
+      '--deep takes nothing from a stamp that gates.test_ignore carried',
+      async () => {
+        const r = await docs()
+        const full = await check(r, [])
+        const res = await push(r, refLine('refs/heads/main', await commitFiles(r, { 'docs/a.md': 'prose\n' })))
+        const deep = await check(r, ['--deep'])
+        const first = [runs(r, 'lint'), runs(r, 'test'), runs(r, 'build')].join()
+        // That deep run tested the state itself, so the next one skips what it covered.
+        const again = await check(r, ['--deep'])
+        const then = [runs(r, 'lint'), runs(r, 'test'), runs(r, 'build')].join()
+        const counts = (first === '3,2,2' && then === '3,2,3') || `lint, test and build ran ${first} times, then ${then}`
+        return every(passes(full), passes(res), passes(deep), passes(again), counts)
       },
     ],
     [

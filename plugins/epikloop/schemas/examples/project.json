@@ -14,7 +14,7 @@
       { "path": "src/legacy/**", "reason": "Pre-token UI, replaced in epic 4" }
     ],
     "test_ignore": [
-      { "path": "docs/**", "reason": "Planning files that no test or build reads" }
+      { "path": "docs/stories/**", "reason": "Story files that no test or build reads" }
     ],
     "allow_workflows": ["deploy.yml"],
     "cap_minutes": 20

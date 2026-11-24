@@ -560,11 +560,14 @@ The runner lives in your repository, so it works in a plain clone without the pl
   - A deep run on it skips lint, typecheck and the tests. It always builds, since end-to-end tests
     read the build's output.
   - A full run skips nothing, and the secret scan always runs.
-- **Paths that can't affect tests.** `gates.test_ignore` lists them, each with its reason: `docs/**`,
-  for example. A push whose commits differ from the stamped state only in those paths skips tests
-  and build, and still runs lint and typecheck.
+- **Paths that can't affect tests.** `gates.test_ignore` lists them, each with its reason:
+  `docs/stories/**`, for example. A push whose commits differ from the stamped state only in those
+  paths skips tests and build, and still runs lint and typecheck.
   - Nothing is listed until you list it, and no path may match the marker or the gates' own files.
-  - Full and deep runs never use the list, so a wrong one is caught at the next.
+  - Check a path before you list it. A test that reads a runbook makes `docs/**` wrong, and a
+    build that imports `design/tokens.css` makes `design/**` wrong.
+  - Full and deep runs never use the list, so a wrong one is caught at the next. A deep run skips
+    only on a state that a run tested itself.
 - **The secret scan** covers:
   - secret files at any depth
   - current key formats and password-bearing database URLs, in added lines only
@@ -861,7 +864,7 @@ you want to change a choice.
       { "path": "src/legacy/**", "reason": "Pre-token UI, replaced in epic 4" }
     ],
     "test_ignore": [
-      { "path": "docs/**", "reason": "Planning files that no test or build reads" }
+      { "path": "docs/stories/**", "reason": "Story files that no test or build reads" }
     ],
     "allow_workflows": ["deploy.yml"],
     "cap_minutes": 20
