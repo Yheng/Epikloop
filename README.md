@@ -461,6 +461,7 @@ Team mode is the standard; solo mode is supported. You choose during `plan`.
     `adopt` copies them from your existing CI.
   - It blocks merges once you require it. On GitHub, protect the default branch with a branch
     protection rule or a ruleset, and add `check` as a required status check.
+  - Its `timeout-minutes: 10` limits the whole job. Raise it when you raise `gates.cap_minutes`.
   - GitHub gives a private repository branch protection only on a paid plan. Before laying the
     workflow down, setup asks GitHub through `gh`, and where GitHub says the branch can't be
     protected, it refuses team mode, so the project goes on in solo mode.
@@ -545,13 +546,25 @@ The runner lives in your repository, so it works in a plain clone without the pl
   - Auto-detection for Node, Python, Go and Rust fills any blanks.
   - Each gate gets one command, and no auto-detected command fetches anything.
 - **Limits.**
-  - Every command is capped at 10 minutes.
+  - Every command is capped at 10 minutes, or at `gates.cap_minutes`, which a project sets from 1
+    to 60.
   - The output is failures and a one-line summary, never full logs.
   - A command that fails on `.githooks/` or `scripts/check.sh` is told to leave them out of what
     it checks. Your lint or formatter may cover them, but they ship as they are.
   - Everything printed is redacted.
-- **The stamp.** A green full run stamps the working state, so a push of exactly that tree skips
-  tests and build. The secret scan always runs.
+- **Stopping early.** Tests, build and end-to-end tests don't start once a quick gate has failed:
+  a law, the secret scan, the token gate, lint or typecheck. The summary shows them as `not run`.
+- **The stamp.** A green run stamps the working state it checked, so the same state isn't checked
+  again.
+  - Its commit and its push skip lint and typecheck, and the push skips tests and build.
+  - A deep run on it skips lint, typecheck and the tests. It always builds, since end-to-end tests
+    read the build's output.
+  - A full run skips nothing, and the secret scan always runs.
+- **Paths that can't affect tests.** `gates.test_ignore` lists them, each with its reason: `docs/**`,
+  for example. A push whose commits differ from the stamped state only in those paths skips tests
+  and build, and still runs lint and typecheck.
+  - Nothing is listed until you list it, and no path may match the marker or the gates' own files.
+  - Full and deep runs never use the list, so a wrong one is caught at the next.
 - **The secret scan** covers:
   - secret files at any depth
   - current key formats and password-bearing database URLs, in added lines only
@@ -824,7 +837,9 @@ you want to change a choice.
 | `staging_url` | | Where the staging smoke runs |
 | `gates.commands` | | Stack commands: `lint`, `typecheck`, `test`, `build` and `e2e`. Blanks are auto-detected for Node, Python, Go and Rust |
 | `gates.token_ignore` | | Exceptions to the token gate, each a `path` glob with its `reason` |
+| `gates.test_ignore` | | Paths whose changes can't change what tests and build answer, each a `path` glob with its `reason`; a push that changes only these skips both |
 | `gates.allow_workflows` | | Workflow files that solo mode tolerates; any other workflow fails the gates |
+| `gates.cap_minutes` | | The minutes each gate command gets, a whole number from 1 to 60; 10 when absent |
 
 <details>
 <summary><b>Example</b></summary>
@@ -845,7 +860,11 @@ you want to change a choice.
     "token_ignore": [
       { "path": "src/legacy/**", "reason": "Pre-token UI, replaced in epic 4" }
     ],
-    "allow_workflows": ["deploy.yml"]
+    "test_ignore": [
+      { "path": "docs/**", "reason": "Planning files that no test or build reads" }
+    ],
+    "allow_workflows": ["deploy.yml"],
+    "cap_minutes": 20
   }
 }
 ```

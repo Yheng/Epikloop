@@ -24,7 +24,7 @@ into the suite. In solo mode a T3 commit also parks a question titled `Review N.
 nothing, with "landed as built" as its default, so the human reads the diff.
 
 The gates are `scripts/check.sh` from Bash and `node .githooks/check.mjs` from PowerShell. A full
-run before committing stamps the tree, so the push doesn't repeat the tests and build. A failing
+run before committing stamps the tree, so the commit and the push repeat none of it. A failing
 gate is fixed, never bypassed. Each command runs on its own, with nothing chained or piped onto
 it, so the batch never waits on an approval.
 

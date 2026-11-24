@@ -273,6 +273,9 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - The plugin's record is written every time.
 - **The gate runner's self-test** builds throwaway repos with bare remotes in a temporary folder.
   - It commits and pushes through the real hooks, and runs every gate's samples.
+  - It holds the stamp to what a run checked: what a commit, a push and a deep run skip on a
+    stamped state, what a run may stamp, and the paths `gates.test_ignore` lists.
+  - It covers the slow gates held back by a quick failure, and the cap a project sets.
   - Then it checks that each mutation of the secret scan is caught.
   - CI runs it again on Node 22.0.0, the floor.
 - **The fixture's self-test** builds every eval fixture in a temporary folder with a home of its

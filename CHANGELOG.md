@@ -9,8 +9,33 @@ All notable changes to Epikloop are recorded here.
 
 ## [Unreleased]
 
+### Changed
+
+- The gate runner runs a check only where one is needed
+  ([issue #10](https://github.com/Yheng/Epikloop/issues/10)).
+  - **The failures, read on 2026-11-24 from one project's own gate events:** 621 runs took 39 hours
+    in 13 days, and a second project showed the same.
+  - `test`, `build` and `e2e` don't start once a quick gate has failed. In 32 full runs the secret
+    scan, the token gate, lint or typecheck failed, and the six-minute tests ran anyway.
+  - A working state that already passed isn't checked again. Its commit and its push skip lint and
+    typecheck, and a deep run skips those and the tests, and always builds. Lint had run 572
+    times, 7.2 hours, mostly on trees that had passed.
+  - `gates.test_ignore` lists the paths that can't change what test and build answer, each with
+    its reason. A push that differs from a stamped state only in those skips both. 63 pushes of
+    commits that changed only docs had run the whole test command: 5.8 hours.
+  - `gates.cap_minutes` sets the cap on each gate command, a whole number from 1 to 60, and 10 by
+    default. The cap had cut 12 commands off with nothing failing, and three stories were planned
+    only to fit it.
+
 ### Fixed
 
+- A stamp no longer covers work that no run tested (issue #10).
+  - **The failure, found on 2026-11-24 by reading the runner,** and shown by two self-test cases
+    that failed before the fix. A push of a stamped commit from a work tree with other edits
+    stamped those edits. A push that sent nothing, such as a branch's deletion, stamped whatever
+    the work tree held. The next push of that work skipped its tests.
+  - A green run now stamps only what it checked itself, and the marker's gate settings are part of
+    the stamp's key.
 - A story-worker's cost rows cover every one of its turns
   ([issue #9](https://github.com/Yheng/Epikloop/issues/9)).
   - **The failure, read on 2026-11-24 from one project's events:** a worker ends a turn while its

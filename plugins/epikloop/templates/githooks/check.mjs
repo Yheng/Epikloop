@@ -10,6 +10,10 @@
 //   --self-test            known-bad and known-good samples for every gate, and mutations of this file
 //   --arm                  the install step: points core.hooksPath at .githooks when nothing else owns it
 //
+// The slow gates, test, build and e2e, don't start once a quick one has failed. A green run stamps
+// the working state it checked, and a commit, a push or a deep run of that state skips what the
+// stamp covers; a full run skips nothing.
+//
 // It prints failures and one summary line, and never a secret's value. It fails unless it ends
 // green: the hooks set exit code 1 before they load it, and so does its first statement.
 import { spawn } from 'node:child_process'
@@ -22,10 +26,17 @@ process.exitCode = 1
 
 const SHIMS = ['.githooks/pre-commit', '.githooks/pre-push', 'scripts/check.sh']
 const COMMAND_GATES = ['lint', 'typecheck', 'test', 'build', 'e2e']
+// The slow gates, which don't start once a quick one has failed.
+const HEAVY = ['test', 'build', 'e2e']
+// The commands a stamp stands for.
+const STAMPED = ['lint', 'typecheck', 'test', 'build']
+// What no gates.test_ignore path may match: the marker and the gates' own files.
+const NEVER_IGNORED = ['.epikloop/project.json', '.githooks/check.mjs', ...SHIMS]
 const GIT_CAP = 60_000
-// A command gets 10 minutes, the team-mode check's own job timeout. The self-test lowers the cap
-// to test it; nothing raises it.
-const CAP = Math.min(600_000, Number(process.env.CHECK_TIMEOUT_MS) || 600_000)
+// A command gets the project's cap, gates.cap_minutes, or 10 minutes, the team-mode check's own job
+// timeout. CHECK_TIMEOUT_MS only lowers it, for the self-test.
+const capOf = (config, env = process.env) => Math.min((config.gates.cap_minutes ?? 10) * 60_000, Number(env.CHECK_TIMEOUT_MS) || Infinity)
+let CAP = 600_000
 const ZERO = /^0+$/
 const POSIX = process.platform !== 'win32'
 
@@ -138,16 +149,23 @@ function readConfig() {
   if (project?.mode !== 'solo' && project?.mode !== 'team') problems.push('mode must be solo or team')
   const gates = project?.gates ?? {}
   for (const key of Object.keys(gates)) {
-    if (!['commands', 'token_ignore', 'allow_workflows'].includes(key)) problems.push(`gates.${key} is not a gate setting`)
+    if (!['commands', 'token_ignore', 'test_ignore', 'allow_workflows', 'cap_minutes'].includes(key)) problems.push(`gates.${key} is not a gate setting`)
   }
   for (const [name, command] of Object.entries(gates.commands ?? {})) {
     if (!COMMAND_GATES.includes(name)) problems.push(`gates.commands.${name} is not a command gate`)
     else if (typeof command !== 'string' || command.trim() === '') problems.push(`gates.commands.${name} must be a command`)
   }
-  for (const [i, entry] of [gates.token_ignore ?? []].flat().entries()) {
-    const ok = typeof entry?.path === 'string' && entry.path !== '' && typeof entry?.reason === 'string'
-    if (!ok || entry.reason.trim() === '') problems.push(`gates.token_ignore[${i}] needs a path and its reason`)
+  for (const list of ['token_ignore', 'test_ignore']) {
+    for (const [i, entry] of [gates[list] ?? []].flat().entries()) {
+      const ok = typeof entry?.path === 'string' && entry.path !== '' && typeof entry?.reason === 'string'
+      if (!ok || entry.reason.trim() === '') problems.push(`gates.${list}[${i}] needs a path and its reason`)
+      else if (list === 'test_ignore' && NEVER_IGNORED.some((file) => glob(entry.path).test(file))) {
+        problems.push(`gates.test_ignore[${i}] matches the marker or the gates' own files`)
+      }
+    }
   }
+  const cap = gates.cap_minutes
+  if (cap !== undefined && !(Number.isInteger(cap) && cap >= 1 && cap <= 60)) problems.push('gates.cap_minutes must be a whole number from 1 to 60')
   for (const name of [gates.allow_workflows ?? []].flat()) {
     if (typeof name !== 'string' || !/^[A-Za-z0-9._-]+\.ya?ml$/.test(name)) {
       problems.push(`gates.allow_workflows: ${JSON.stringify(name)} is not a workflow file name`)
@@ -884,10 +902,18 @@ function envValues(files) {
 }
 
 // The key a green run stamps: the tree of the working state, tracked plus untracked files that
-// aren't ignored, built in a throwaway index, and a hash of the ignored env files, this runner and
-// the Node version. Null when it can't be built; the stamp is only a shortcut.
-async function stampKey(envFiles) {
+// aren't ignored, built in a throwaway index, and `rest`, a hash of what else a run depends on: the
+// ignored env files, this runner, the Node version, the marker's gate settings and the commands
+// they resolve to. Null when it can't be built; the stamp is only a shortcut. Given `only`, a stamp
+// or null, the tree is built only when that stamp could apply, so a commit pays for it only then.
+async function stampKey(ctx, envFiles, only) {
   try {
+    const hash = crypto.createHash('sha256')
+    for (const file of envFiles) hash.update(`${file}\0`).update(fs.readFileSync(file)).update('\0')
+    hash.update(fs.readFileSync(import.meta.filename)).update(`\0${process.version}\0`)
+    hash.update(JSON.stringify([ctx.config.gates, ctx.commands]))
+    const rest = hash.digest('hex')
+    if (only !== undefined && only?.rest !== rest) return null
     const scratch = await gitPath('check-index')
     const index = await gitPath('index')
     if (fs.existsSync(index)) {
@@ -900,11 +926,7 @@ async function stampKey(envFiles) {
     const env = { ...process.env, GIT_INDEX_FILE: scratch }
     try {
       await git(['add', '-A'], { env })
-      const tree = text(await git(['write-tree'], { env }))
-      const hash = crypto.createHash('sha256')
-      for (const file of envFiles) hash.update(`${file}\0`).update(fs.readFileSync(file)).update('\0')
-      hash.update(fs.readFileSync(import.meta.filename)).update(`\0${process.version}`)
-      return { tree, rest: hash.digest('hex') }
+      return { tree: text(await git(['write-tree'], { env })), rest }
     } finally {
       fs.rmSync(scratch, { force: true })
     }
@@ -915,7 +937,8 @@ async function stampKey(envFiles) {
 
 async function readStamp() {
   try {
-    return JSON.parse(fs.readFileSync(await gitPath('check-stamp.json'), 'utf8'))
+    const stamp = JSON.parse(fs.readFileSync(await gitPath('check-stamp.json'), 'utf8'))
+    return /^[0-9a-f]{40,64}$/.test(stamp?.tree) && typeof stamp.rest === 'string' ? stamp : null
   } catch {
     return null
   }
@@ -927,15 +950,33 @@ async function writeStamp(key) {
   } catch {}
 }
 
-// At push, test and build are skipped only when every pushed tip's tree is the tree a green run
-// stamped, with the same ignored env files, runner and Node.
-async function stampMatches(ctx) {
+// How a tree stands to the stamped one, with the rest of the key equal: 'same'; 'ignored', when
+// every path that differs is under gates.test_ignore; or null. Renames are off, so a file moved
+// across that line counts on both sides. A diff git can't read, as when the stamped tree has been
+// pruned, is null.
+async function related(ctx, stamp, tree) {
+  if (stamp === null || ctx.before === null || stamp.rest !== ctx.before.rest) return null
+  if (tree === stamp.tree) return 'same'
+  const ignored = [ctx.config.gates.test_ignore ?? []].flat().map((entry) => glob(entry.path))
+  const diff = await git(['diff-tree', '-r', '-z', '--no-renames', '--name-only', stamp.tree, tree], { allow: true }).catch(() => null)
+  if (diff === null || diff.code !== 0) return null
+  const paths = splitZ(diff)
+  return paths.length > 0 && paths.every((file) => ignored.some((re) => re.test(file))) ? 'ignored' : null
+}
+
+// At push, test and build are skipped only when every pushed tip's tree is the stamped one, or
+// differs from it only under gates.test_ignore. A push that sends nothing skips them too.
+async function stampMatches(ctx, stamp) {
   const tips = pushedTips(ctx)
   if (tips.length === 0) return 'nothing pushed'
-  const stamp = await readStamp()
-  if (stamp === null || ctx.before === null || stamp.rest !== ctx.before.rest) return null
-  for (const tip of tips) if (text(await git(['rev-parse', `${tip}^{tree}`])) !== stamp.tree) return null
-  return 'stamp'
+  let all = 'stamp'
+  for (const tip of tips) {
+    const tree = await git(['rev-parse', '--verify', '-q', `${tip}^{tree}`], { allow: true })
+    const how = tree.code === 0 ? await related(ctx, stamp, text(tree)) : null
+    if (how === null) return null
+    if (how === 'ignored') all = 'stamp + test_ignore'
+  }
+  return all
 }
 
 const REDACTIONS = [...KEYS.map((key) => new RegExp(key.re.source, 'g')), new RegExp(DB_URL.source, 'gi')]
@@ -1063,7 +1104,7 @@ function writeEvents(ctx, results) {
   try {
     let seq = 0
     for (const r of results) {
-      if (r.status === 'none' || r.status === 'off') continue
+      if (r.status === 'none' || r.status === 'off' || r.status === 'held') continue
       const detail = { ms: Math.round(r.ms ?? 0) }
       if (r.skipped) detail.skipped = r.skipped
       if (r.first?.file) detail.file = r.first.file.slice(0, 512)
@@ -1088,6 +1129,7 @@ async function gate(name, body) {
 function shown(r) {
   if (r.status === 'fail') return r.count ? `FAIL ${r.count}` : 'FAIL'
   if (r.status === 'skipped') return `skipped (${r.skipped})`
+  if (r.status === 'held') return `not run (${r.held} failed)`
   return r.status
 }
 
@@ -1103,7 +1145,7 @@ async function main(argv) {
   const started = performance.now()
   const top = text(await git(['rev-parse', '--show-toplevel']))
   process.chdir(top)
-  const ctx = { mode, top, config: null, push: null, before: null, stamped: null, run: crypto.randomBytes(4).toString('hex') }
+  const ctx = { mode, top, config: null, commands: null, push: null, before: null, work: null, stamped: null, run: crypto.randomBytes(4).toString('hex') }
   let results = null
   try {
     ctx.config = readConfig()
@@ -1114,24 +1156,43 @@ async function main(argv) {
   const envFiles = await ignoredEnvFiles().catch(() => [])
   secretValues = envValues(envFiles)
   if (results === null) {
+    CAP = capOf(ctx.config)
+    ctx.commands = resolveCommands(ctx.config)
     if (mode === 'push') ctx.push = await readPush(rest[0], rest[1])
-    if (mode !== 'fast') ctx.before = await stampKey(envFiles)
-    if (mode === 'push') ctx.stamped = await stampMatches(ctx)
+    const stamp = await readStamp()
+    ctx.before = await stampKey(ctx, envFiles, mode === 'fast' ? stamp : undefined)
+    ctx.work = ctx.before === null ? null : await related(ctx, stamp, ctx.before.tree)
+    if (mode === 'push') ctx.stamped = await stampMatches(ctx, stamp)
+    // What the stamp lets a gate skip. A full run skips nothing, and e2e and --deep's build always
+    // run: end-to-end tests read the build's output, which no stamp covers.
+    const skip = (name) => {
+      if (name === 'lint' || name === 'typecheck') return mode !== 'full' && ctx.work === 'same' ? 'stamp' : null
+      if (mode === 'push' && (name === 'test' || name === 'build')) return ctx.stamped
+      return mode === 'deep' && name === 'test' && ctx.work === 'same' ? 'stamp' : null
+    }
     results = []
     results.push(await gate('shims', () => shimsGate()))
     results.push(await gate('workflows', () => workflowsGate(ctx)))
     results.push(await gate('secrets', () => secretsGate(ctx)))
     results.push(await gate('tokens', () => tokensGate(ctx)))
-    const commands = resolveCommands(ctx.config)
     const names = ['lint', 'typecheck', ...(mode === 'fast' ? [] : ['test', 'build']), ...(mode === 'deep' ? ['e2e'] : [])]
     for (const name of names) {
-      if (ctx.stamped !== null && (name === 'test' || name === 'build')) results.push({ name, status: 'skipped', skipped: ctx.stamped })
-      else results.push(await gate(name, () => commandGate(name, commands[name])))
+      const why = skip(name)
+      // A slow gate doesn't start once a quick one has failed.
+      const failed = results.find((r) => r.status === 'fail' && !HEAVY.includes(r.name))
+      if (why !== null) results.push({ name, status: 'skipped', skipped: why })
+      else if (failed !== undefined && HEAVY.includes(name)) results.push({ name, status: 'held', held: failed.name })
+      else results.push(await gate(name, () => commandGate(name, ctx.commands[name])))
     }
   }
   const green = results.every((r) => r.status !== 'fail')
-  if (green && ctx.before !== null) {
-    const after = await stampKey(envFiles)
+  // A stamp is earned by a run that ran all four stamped commands itself, or by a green one whose
+  // working state differs from the stamped one only under gates.test_ignore: lint and typecheck
+  // skip only on the same tree, so that run ran both, and test and build are the stamped tree's.
+  const ran = (name) => results.some((r) => r.name === name && (r.status === 'ok' || r.status === 'none'))
+  const earned = STAMPED.every(ran) || ctx.work === 'ignored'
+  if (green && earned && ctx.before !== null) {
+    const after = await stampKey(ctx, envFiles)
     if (after !== null && after.tree === ctx.before.tree && after.rest === ctx.before.rest) await writeStamp(after)
   }
   for (const r of results) for (const line of r.lines ?? []) console.log(redact(line))
@@ -1607,6 +1668,22 @@ function secretCases(k) {
       },
     ],
     [
+      'a key added then removed under an ignored path is blocked at push',
+      async (src) => {
+        const r = await makeRepo({ src, gates: { test_ignore: [{ path: 'docs/**', reason: 'prose' }] } })
+        const full = await check(r, [])
+        if (full.code !== 0) return `the full run failed: ${k.brief(full.out)}`
+        k.write(r.dir, 'docs/k.md', sourceLine(sample('AWS access key id')))
+        await g(r.dir, 'add', '-A')
+        await commitIndex(r.dir, 'a key in the docs')
+        k.write(r.dir, 'docs/k.md', 'prose\n')
+        await g(r.dir, 'add', '-A')
+        const tip = await commitIndex(r.dir, 'remove it')
+        const res = await push(r, refLine('refs/heads/main', tip))
+        return every(blocked(res, 'docs/k.md:1 AWS access key id'), hides(res, sample('AWS access key id')))
+      },
+    ],
+    [
       'a new branch carrying a force-added .env is blocked at push',
       async (src) => {
         const r = await makeRepo({ src })
@@ -1873,8 +1950,21 @@ function hookCases(k) {
         const r = await armed({ commands: true })
         const full = await check(r, [])
         const res = await gitIn(r, 'push', '-q', 'origin', 'main')
-        const skipped = res.out.includes('test skipped (stamp)') || `no skip: ${k.brief(res.out)}`
+        const skipped = (res.out.includes('lint skipped (stamp)') && res.out.includes('test skipped (stamp)')) || `no skip: ${k.brief(res.out)}`
         return every(passes(full), passes(res), skipped, k.runs(r, 'test') === 1 || `test ran ${k.runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'commit -a of the stamped work skips lint, and its push skips the tests',
+      async () => {
+        const r = await armed({ commands: true })
+        write(r.dir, '.gitignore', '.env\n.env.test\nnotes/\n')
+        const full = await check(r, [])
+        const commit = await gitIn(r, 'commit', '-q', '-a', '-m', 'ignore notes')
+        const res = await gitIn(r, 'push', '-q', 'origin', 'main')
+        const skipped = (commit.out.includes('lint skipped (stamp)') && res.out.includes('test skipped (stamp)')) || `no skip: ${k.brief(commit.out)} / ${k.brief(res.out)}`
+        const counts = (k.runs(r, 'lint') === 1 && k.runs(r, 'test') === 1) || `lint ran ${k.runs(r, 'lint')} times and test ${k.runs(r, 'test')}`
+        return every(passes(full), passes(commit), passes(res), skipped, counts)
       },
     ],
     [
@@ -2006,6 +2096,14 @@ function gateCases(k) {
     for (const [file, content] of Object.entries(files)) write(r.dir, file, content)
     return r
   }
+  // A repository whose marker says changes under docs/ can't change what test and build answer.
+  const docs = (files) => repoWith({ commands: true, gates: { test_ignore: [{ path: 'docs/**', reason: 'prose' }] } }, files)
+  // Writes the files and commits the whole working state; the new commit's id.
+  const commitFiles = async (r, files) => {
+    for (const [file, content] of Object.entries(files)) write(r.dir, file, content)
+    await g(r.dir, 'add', '-A')
+    return commitIndex(r.dir, 'more')
+  }
   return [
     [
       'a failing lint fails --fast and shows its output',
@@ -2116,6 +2214,282 @@ function gateCases(k) {
         write(r.dir, '.env.test', 'A=two\n')
         const res = await push(r, refLine('refs/heads/main', tip))
         return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'a push of a stamped tip from a dirty tree stamps nothing',
+      async () => {
+        const r = await makeRepo({ commands: true })
+        const tip = await g(r.dir, 'rev-parse', 'HEAD')
+        const full = await check(r, [])
+        // An edit no run has tested, in the work tree while the stamped tip is pushed.
+        write(r.dir, 'a.ts', 'v1\n')
+        const first = await push(r, refLine('refs/heads/main', tip))
+        await g(r.dir, 'add', 'a.ts')
+        const next = await commitIndex(r.dir, 'a')
+        const second = await push(r, refLine('refs/heads/main', next))
+        const skipped = first.out.includes('test skipped (stamp)') || `no skip: ${k.brief(first.out)}`
+        return every(passes(full), passes(first), skipped, passes(second), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'a push that sends nothing stamps nothing',
+      async () => {
+        const r = await repoWith({ commands: true }, { 'a.ts': 'v1\n' })
+        // No run has tested a.ts when a push sends no commit.
+        const empty = await push(r, '')
+        await g(r.dir, 'add', 'a.ts')
+        const tip = await commitIndex(r.dir, 'a')
+        const res = await push(r, refLine('refs/heads/main', tip))
+        const skipped = empty.out.includes('test skipped (nothing pushed)') || `no skip: ${k.brief(empty.out)}`
+        return every(passes(empty), skipped, passes(res), runs(r, 'test') === 1 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'a commit of changed code stamps nothing',
+      async () => {
+        const r = await repoWith({ commands: true }, { 'a.ts': 'v1\n' })
+        const full = await check(r, [])
+        write(r.dir, 'a.ts', 'v2\n')
+        const first = await check(r, ['--fast'])
+        const second = await check(r, ['--fast'])
+        return every(passes(full), passes(first), passes(second), runs(r, 'lint') === 3 || `lint ran ${runs(r, 'lint')} times`)
+      },
+    ],
+    [
+      'a failing lint holds test and build back',
+      async () => {
+        const r = await makeRepo({ commands: true })
+        setState(r, 'lint', 'exit', '1')
+        const res = await check(r, [])
+        const ran = (runs(r, 'typecheck') === 1 && runs(r, 'test') + runs(r, 'build') === 0) || 'typecheck did not run, or a gate held back did'
+        return every(blocked(res, 'lint FAIL', 'test not run (lint failed)', 'build not run (lint failed)'), ran)
+      },
+    ],
+    [
+      'a failing scan holds test back',
+      async () => {
+        const r = await repoWith({ commands: true }, { 'k.ts': sourceLine(k.sample('GitHub token')) })
+        return every(blocked(await check(r, []), 'test not run (secrets failed)'), runs(r, 'test') === 0 || 'test ran')
+      },
+    ],
+    [
+      'a failing test holds nothing back',
+      async () => {
+        const r = await makeRepo({ commands: true })
+        setState(r, 'test', 'exit', '1')
+        const res = await check(r, ['--deep'])
+        return every(blocked(res, 'test FAIL'), (runs(r, 'build') === 1 && runs(r, 'e2e') === 1) || 'build or e2e did not run')
+      },
+    ],
+    [
+      'the stamped tree skips lint and typecheck at commit',
+      async () => {
+        const r = await repoWith({ commands: true }, { 'a.ts': 'v1\n' })
+        const full = await check(r, [])
+        await g(r.dir, 'add', '-A')
+        const res = await check(r, ['--fast'])
+        const skipped = res.out.includes('lint skipped (stamp) · typecheck skipped (stamp)') || `no skip: ${k.brief(res.out)}`
+        return every(passes(full), passes(res), skipped, runs(r, 'lint') === 1 || `lint ran ${runs(r, 'lint')} times`)
+      },
+    ],
+    [
+      'a full run skips nothing',
+      async () => {
+        const r = await makeRepo({ commands: true })
+        const first = await check(r, [])
+        const second = await check(r, [])
+        return every(passes(first), passes(second), (runs(r, 'lint') === 2 && runs(r, 'test') === 2) || `lint ran ${runs(r, 'lint')} times and test ${runs(r, 'test')}`)
+      },
+    ],
+    [
+      'a commit of part of the stamped work is tested at push',
+      async () => {
+        const r = await repoWith({ commands: true }, { 'a.ts': 'v1\n', 'b.ts': 'v1\n' })
+        const full = await check(r, [])
+        await g(r.dir, 'add', 'a.ts')
+        const tip = await commitIndex(r.dir, 'a alone')
+        const res = await push(r, refLine('refs/heads/main', tip))
+        return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'a worktree has its own stamp',
+      async () => {
+        const r = await makeRepo({ commands: true })
+        const full = await check(r, [])
+        const other = path.join(r.root, 'other')
+        await g(r.dir, 'worktree', 'add', '-q', '-b', 'side', other)
+        const res = await check(r, ['--fast'], { cwd: other })
+        return every(passes(full), passes(res), runs(r, 'lint') === 2 || `lint ran ${runs(r, 'lint')} times`)
+      },
+    ],
+    [
+      'a commit with no stamp builds no tree',
+      async () => {
+        const r = await repoWith({ commands: true }, { 'big.txt': 'never hashed\n' })
+        const res = await check(r, ['--fast'])
+        const id = (await k.exec('git', ['hash-object', 'big.txt'], { cwd: r.dir })).stdout.trim()
+        const stored = await k.exec('git', ['cat-file', '-e', id], { cwd: r.dir })
+        return every(passes(res), stored.code !== 0 || 'the untracked file was written to the object store')
+      },
+    ],
+    [
+      "a tree that can't be built skips nothing",
+      async () => {
+        const r = await makeRepo({ commands: true })
+        const full = await check(r, [])
+        fs.mkdirSync(path.join(r.dir, '.git', 'check-index'))
+        const res = await check(r, ['--fast'])
+        return every(passes(full), passes(res), runs(r, 'lint') === 2 || `lint ran ${runs(r, 'lint')} times`)
+      },
+    ],
+    [
+      'a docs-only commit skips test and build at push',
+      async () => {
+        const r = await docs()
+        const full = await check(r, [])
+        const res = await push(r, refLine('refs/heads/main', await commitFiles(r, { 'docs/a.md': 'prose\n' })))
+        const skipped = res.out.includes('test skipped (stamp + test_ignore) · build skipped (stamp + test_ignore)') || `no skip: ${k.brief(res.out)}`
+        const counts = (runs(r, 'test') === 1 && runs(r, 'lint') === 2) || `test ran ${runs(r, 'test')} times and lint ${runs(r, 'lint')}`
+        return every(passes(full), passes(res), skipped, counts)
+      },
+    ],
+    [
+      'without gates.test_ignore the same push runs the tests',
+      async () => {
+        const r = await makeRepo({ commands: true })
+        const full = await check(r, [])
+        const res = await push(r, refLine('refs/heads/main', await commitFiles(r, { 'docs/a.md': 'prose\n' })))
+        return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'code beside the docs runs the tests',
+      async () => {
+        const r = await docs()
+        const full = await check(r, [])
+        const res = await push(r, refLine('refs/heads/main', await commitFiles(r, { 'docs/a.md': 'prose\n', 'src/a.ts': 'v1\n' })))
+        return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'a file moved into an ignored folder runs the tests',
+      async () => {
+        const r = await docs({ 'src/a.ts': 'v1\n' })
+        await commitFiles(r, {})
+        const full = await check(r, [])
+        fs.mkdirSync(path.join(r.dir, 'docs'))
+        await g(r.dir, 'mv', 'src/a.ts', 'docs/a.ts')
+        const res = await push(r, refLine('refs/heads/main', await commitIndex(r.dir, 'move')))
+        return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'a root glob does not cover a folder',
+      async () => {
+        const r = await repoWith({ commands: true, gates: { test_ignore: [{ path: '*', reason: 'the root files' }] } }, { 'src/a.ts': 'v1\n' })
+        const full = await check(r, [])
+        const res = await push(r, refLine('refs/heads/main', await commitFiles(r, { 'src/a.ts': 'v2\n' })))
+        return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'a marker edited in the work tree voids the stamp',
+      async () => {
+        const r = await docs({ 'src/a.ts': 'v1\n' })
+        const full = await check(r, [])
+        const tip = await commitFiles(r, { 'src/a.ts': 'v2\n' })
+        // The list is widened on disk only, to cover the code the commit changed.
+        const marker = path.join(r.dir, '.epikloop', 'project.json')
+        const project = JSON.parse(fs.readFileSync(marker, 'utf8'))
+        project.gates.test_ignore.push({ path: 'src/**', reason: 'not so' })
+        fs.writeFileSync(marker, `${JSON.stringify(project, null, 2)}\n`)
+        const res = await push(r, refLine('refs/heads/main', tip))
+        return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'a test_ignore path that matches the marker fails as config',
+      async () => {
+        const all = await check(await makeRepo({ gates: { test_ignore: [{ path: '**', reason: 'everything' }] } }), ['--fast'])
+        const blank = await check(await makeRepo({ gates: { test_ignore: [{ path: 'docs/**', reason: ' ' }] } }), ['--fast'])
+        return every(blocked(all, "gates.test_ignore[0] matches the marker or the gates' own files"), blocked(blank, 'gates.test_ignore[0] needs a path and its reason'))
+      },
+    ],
+    [
+      'a docs-only commit is stamped at commit, so its push skips lint too',
+      async () => {
+        const r = await docs()
+        const full = await check(r, [])
+        write(r.dir, 'docs/a.md', 'prose\n')
+        await g(r.dir, 'add', '-A')
+        const fast = await check(r, ['--fast'])
+        const res = await push(r, refLine('refs/heads/main', await commitIndex(r.dir, 'docs')))
+        const skipped = (res.out.includes('lint skipped (stamp)') && res.out.includes('test skipped (stamp)')) || `no skip: ${k.brief(res.out)}`
+        const counts = (runs(r, 'lint') === 2 && runs(r, 'test') === 1) || `lint ran ${runs(r, 'lint')} times and test ${runs(r, 'test')}`
+        return every(passes(full), passes(fast), passes(res), skipped, counts)
+      },
+    ],
+    [
+      'what a stamp inherits ends at the next code change',
+      async () => {
+        const r = await docs()
+        const full = await check(r, [])
+        const first = await push(r, refLine('refs/heads/main', await commitFiles(r, { 'docs/a.md': 'prose\n' })))
+        const second = await push(r, refLine('refs/heads/main', await commitFiles(r, { 'src/b.ts': 'v1\n' })))
+        return every(passes(full), passes(first), passes(second), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'one unrelated tip among two runs the tests',
+      async () => {
+        const r = await docs()
+        const full = await check(r, [])
+        const prose = await commitFiles(r, { 'docs/a.md': 'prose\n' })
+        const code = await commitFiles(r, { 'src/a.ts': 'v1\n' })
+        const res = await push(r, refLine('refs/heads/prose', prose) + refLine('refs/heads/main', code))
+        return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      "a stamp whose tree git can't read is no stamp",
+      async () => {
+        const r = await docs()
+        const full = await check(r, [])
+        const file = path.join(r.dir, '.git', 'check-stamp.json')
+        fs.writeFileSync(file, `${JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), tree: 'f'.repeat(40) })}\n`)
+        const res = await push(r, refLine('refs/heads/main', await commitFiles(r, { 'docs/a.md': 'prose\n' })))
+        return every(passes(full), passes(res), runs(r, 'test') === 2 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      '--deep builds on the stamped tree, and tests a docs-only change',
+      async () => {
+        const r = await docs()
+        const full = await check(r, [])
+        const deep = await check(r, ['--deep'])
+        const first = [runs(r, 'lint'), runs(r, 'test'), runs(r, 'build'), runs(r, 'e2e')].join()
+        write(r.dir, 'docs/a.md', 'prose\n')
+        const again = await check(r, ['--deep'])
+        const counts = (first === '1,1,2,1' && runs(r, 'test') === 2) || `lint, test, build and e2e ran ${first} times, then test ${runs(r, 'test')}`
+        return every(passes(full), passes(deep), passes(again), counts)
+      },
+    ],
+    [
+      'gates.cap_minutes must be a whole number from 1 to 60',
+      async () => {
+        const said = 'gates.cap_minutes must be a whole number from 1 to 60'
+        const bad = []
+        for (const cap of [0, 1.5, '10', 61]) bad.push(blocked(await check(await makeRepo({ gates: { cap_minutes: cap } }), ['--fast']), said))
+        return every(...bad, passes(await check(await makeRepo({ gates: { cap_minutes: 25 } }), ['--fast'])))
+      },
+    ],
+    [
+      "the cap is the marker's, and the variable only lowers it",
+      async () => {
+        const caps = [capOf({ gates: {} }, {}), capOf({ gates: { cap_minutes: 25 } }, {}), capOf({ gates: { cap_minutes: 25 } }, { CHECK_TIMEOUT_MS: '1500' }), capOf({ gates: {} }, { CHECK_TIMEOUT_MS: '900000' })]
+        return caps.join() === '600000,1500000,1500,600000' || `the caps are ${caps}`
       },
     ],
     [
@@ -2277,6 +2651,19 @@ function eventCases(k) {
       },
     ],
     [
+      'a gate held back writes no event',
+      async () => {
+        const r = await makeRepo({ commands: true })
+        const home = path.join(r.root, 'home')
+        fs.mkdirSync(path.join(home, '.epikloop'), { recursive: true })
+        k.setState(r, 'lint', 'exit', '1')
+        await check(r, [], { env: { HOME: home, USERPROFILE: home } })
+        const events = path.join(home, '.epikloop', 'events')
+        const states = fs.readdirSync(events).flatMap((day) => fs.readdirSync(path.join(events, day)).map((name) => JSON.parse(fs.readFileSync(path.join(events, day, name), 'utf8')).state))
+        return every(states.includes('lint') || 'no line for lint', (!states.includes('test') && !states.includes('build')) || `a gate held back wrote a line: ${states.join(' ')}`)
+      },
+    ],
+    [
       'no events are written where ~/.epikloop is missing',
       async () => {
         const r = await makeRepo()
@@ -2322,6 +2709,11 @@ function mutations() {
       'the stamp skipping the scan',
       [["await gate('secrets', () => secretsGate(ctx))", "(ctx.stamped !== null ? { name: 'secrets', status: 'ok' } : await gate('secrets', () => secretsGate(ctx)))"]],
       'a key added then removed is blocked at push, even after a stamp',
+    ],
+    [
+      'the stamp skipping the scan through gates.test_ignore',
+      [["await gate('secrets', () => secretsGate(ctx))", "(ctx.stamped !== null ? { name: 'secrets', status: 'ok' } : await gate('secrets', () => secretsGate(ctx)))"]],
+      'a key added then removed under an ignored path is blocked at push',
     ],
     ['the read check removed', [['function unreadable(what) {', 'function unreadable(what) {\n  return']], 'a staged blob missing from the object store fails as unreadable'],
     [

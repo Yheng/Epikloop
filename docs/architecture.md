@@ -273,7 +273,13 @@ How the gates run:
   Rust fills any blanks:
   - one command per gate, never a fallback chain
   - nothing that fetches
-- **Caps.** Every command is capped at 10 minutes and every git call at 60 seconds.
+- **Caps.** Every command is capped at 10 minutes, or at the project's `gates.cap_minutes`, a whole
+  number from 1 to 60, and every git call at 60 seconds
+  ([issue #10](https://github.com/Yheng/Epikloop/issues/10)). The team-mode check's job keeps its
+  own `timeout-minutes`, which limits the whole job and is the project's to raise with the cap.
+- **Order.** The laws, the secret scan and the token gate run first, then lint and typecheck.
+  `test`, `build` and `e2e` don't start once one of those has failed
+  ([issue #10](https://github.com/Yheng/Epikloop/issues/10)).
 - **Exit codes.** The runner fails unless it finishes green: the hooks and the runner set exit code
   1 first.
 - **Output.**
@@ -283,12 +289,25 @@ How the gates run:
     those ship as they are, to be left out of what the command checks.
   - Everything printed is redacted: key formats, URL userinfo, and the values of ignored `.env`
     files.
-- **The stamp.** A green full run stamps the working state. A push whose tips have exactly that
-  tree skips tests and build; the secret scan always runs.
+- **The stamp.** A green run stamps the working state it checked: its tree, with the ignored env
+  files, the runner, Node's version and the marker's gate settings
+  ([issue #10](https://github.com/Yheng/Epikloop/issues/10)).
+  - A run stamps only when it ran lint, typecheck, test and build itself, or when the working state
+    differs from the stamped one only under `gates.test_ignore`.
+  - On the stamped state, a commit and a push skip lint and typecheck, and `--deep` skips those and
+    the tests. `--deep` always builds, since end-to-end tests read the build's output, which no
+    stamp covers.
+  - A push skips tests and build when every pushed tip's tree is the stamped one, or differs from
+    it only under `gates.test_ignore`.
+  - A full run skips nothing, and the secret scan always runs.
+- **`gates.test_ignore`.** Paths whose changes can't change what test and build answer, each with
+  its reason. No path may match the marker or the gates' own files, and a file moved across the
+  line counts as changed on both sides. Full and deep runs never use the list.
 - **The ratchet is held.** No brownfield baselines are enforced until an adoption needs them.
 - **Events.** A run writes `gate.started` before its first gate, and a `gate.passed` or
   `gate.failed` event for each gate when it ends. Every line is in the emitter's format, carries the
-  run's id in `detail.run`, and is written only where `~/.epikloop/` exists.
+  run's id in `detail.run`, and is written only where `~/.epikloop/` exists. A gate held back by
+  an earlier failure writes none.
 
 The secret scan:
 

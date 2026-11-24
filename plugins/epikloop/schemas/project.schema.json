@@ -76,11 +76,30 @@
             }
           }
         },
+        "test_ignore": {
+          "type": "array",
+          "description": "Paths whose changes can't change what the test and build commands answer, each with its reason. At push, a commit that differs from a tree that passed only in these skips both. No path may match the marker or the gates' own files.",
+          "items": {
+            "type": "object",
+            "required": ["path", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string", "minLength": 1, "description": "Glob relative to the repository root." },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
         "allow_workflows": {
           "type": "array",
           "description": "Workflow files that solo mode tolerates; any other workflow fails the gates.",
           "items": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.ya?ml$" },
           "uniqueItems": true
+        },
+        "cap_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60,
+          "description": "The minutes each gate command gets before it is stopped; 10 when absent."
         }
       }
     }
