@@ -107,12 +107,13 @@
   "$defs": {
     "effort_overrides": {
       "type": "object",
-      "description": "Story-worker effort per tier. Precedence: this file, then ~/.epikloop/config.json, then the plugin defaults (T1 medium, T2 high, T3 xhigh).",
+      "description": "Story-worker effort per tier, and the story-reviewer's. Precedence: this file, then ~/.epikloop/config.json, then the plugin defaults (T1 medium, T2 high, T3 xhigh, review high).",
       "additionalProperties": false,
       "properties": {
         "T1": { "$ref": "#/$defs/effort" },
         "T2": { "$ref": "#/$defs/effort" },
-        "T3": { "$ref": "#/$defs/effort" }
+        "T3": { "$ref": "#/$defs/effort" },
+        "review": { "$ref": "#/$defs/effort" }
       }
     },
     "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }

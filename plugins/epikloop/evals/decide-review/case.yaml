@@ -1,0 +1,50 @@
+schema_version: "1.1"
+name: decide-review
+description: /epikloop:decide sends a review's finding to rework, adds the rework story with the story it reworks, records the decision and closes the review.
+tags: [decide, review]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: '/epikloop:decide My answer to Q-001: fix its one finding with a rework story. That is the decision, so record it and commit without asking anything else.'
+  model: claude-sonnet-5-5
+  max_turns: 20
+  timeout_seconds: 300
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: answers-q-001
+    type: regex
+    target: { source: file, path: docs/decisions.md }
+    pattern: '- Answers: Q-001'
+  - name: names-the-story-it-adds
+    type: regex
+    target: { source: file, path: docs/decisions.md }
+    pattern: '\b1\.3\b'
+  - name: closes-the-review
+    type: regex
+    target: { source: file, path: docs/queue.md }
+    pattern: 'Q-001'
+    match: not_contains
+  - name: adds-the-rework-story
+    type: regex
+    target: { source: file, path: docs/stories/1-greeter.md }
+    pattern: '## 1\.3 [^\n]*\n- Tier: T3\n- MVP: yes\n'
+  - name: names-what-it-reworks
+    type: regex
+    target: { source: file, path: docs/stories/1-greeter.md }
+    pattern: '- Reworks: 1\.1\n'
+  - name: keeps-the-delta-form
+    type: regex
+    target: { source: file, path: docs/stories/1-greeter.md }
+    pattern: '\n- none[^\n]'
+    match: not_contains
+  - name: commits
+    type: regex
+    target: { source: file, path: .git/logs/HEAD }
+    pattern: '\tcommit: (?!fixture: |feat\(1\.1\): |review\(1\.1\): )'
+  - name: changes-no-code
+    type: tool_used
+    tool: Write
+    input_match: 'src[/\\]+'
+    min: 0
+    max: 0

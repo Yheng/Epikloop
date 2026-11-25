@@ -79,14 +79,15 @@ const answered = (turnId: string, agentId: string) =>
   ({ answer: 'done', durationMs: 1, isAborted: false, turnId, agentId, reason: 'answer', usage: USAGE }) as const
 
 const WORKER = { tool: 'Agent', subagent_type: 'epikloop:story-worker', prompt: 'p' }
+const REVIEWER = { tool: 'Agent', subagent_type: 'epikloop:story-reviewer', prompt: 'p' }
 // A worker's first turn starts inside its Agent call, which answers at once, as a spawn's does; its
-// turns end after the call has answered.
+// turns end after the call has answered. A reviewer's spawn goes the same way.
 function spawning($: Engine, on: On, first: Record<string, () => Promise<unknown>>) {
   on('tool.call', async (_, e) => {
     await first[e.description]?.()
     return { result: {} }
   })
-  return (description: string) => $.tool.call({ ...WORKER, description })
+  return (description: string, agent = WORKER) => $.tool.call({ ...agent, description })
 }
 
 test('outside a project the project is looked for at the start and at each prompt, and nothing is written', async ($, on) => {
@@ -209,7 +210,30 @@ test("a story-worker gets its tier's effort: the project over the user over the 
   expect(efforts).toEqual(['low', 'max', 'xhigh', 'high', 'high'])
 })
 
-test('a story-worker spawned in the background goes on in the foreground; others are unchanged', async ($, on) => {
+test("a story-reviewer gets the review effort, whatever its story's tier: the project over the user", async ($, on) => {
+  const user = JSON.stringify({ format: 1, effort: { review: 'low', T1: 'low' } })
+  world(on, {
+    [MARKER]: project({ review: 'max' }),
+    '/home/dev/.epikloop/config.json': user,
+    '/Users/dev/.epikloop/config.json': user,
+  })
+  const efforts: unknown[] = []
+  on('tool.call', (_, e) => {
+    if (e.tool === 'Agent') efforts.push(e.effort)
+    return { result: {} }
+  })
+  await start($)
+  const spawn = (subagent_type: string, description: string) =>
+    $.tool.call({ tool: 'Agent', subagent_type, description, prompt: 'p', effort: 'medium' })
+  await spawn('epikloop:story-reviewer', '3.1 T1 sign-up form')
+  await spawn('epikloop:story-reviewer', '3.3 T3 card payments')
+  await spawn('epikloop:story-worker', '3.1 T1 sign-up form')
+  // A description that names no story and tier is no reviewer's spawn the module knows.
+  await spawn('epikloop:story-reviewer', 'Review 3.4')
+  expect(efforts).toEqual(['max', 'max', 'low', 'medium'])
+})
+
+test('a story-worker or a story-reviewer spawned in the background goes on in the foreground; others are unchanged', async ($, on) => {
   world(on, { [MARKER]: project() })
   const spawned: unknown[] = []
   on('agent.spawn', (_, e) => {
@@ -229,9 +253,11 @@ test('a story-worker spawned in the background goes on in the foreground; others
       fork: false,
     })
   await spawn('epikloop:story-worker', 'epikloop')
+  await spawn('epikloop:story-reviewer', 'epikloop')
   await spawn('Explore', 'engine')
   expect(spawned).toEqual([
     ['epikloop:story-worker', false],
+    ['epikloop:story-reviewer', false],
     ['Explore', true],
   ])
 })
@@ -326,6 +352,74 @@ test("a worker's later turn leaves the next worker's spawn alone", async ($, on)
     ['a1', '2.3', 'T2', 'high'],
     ['a1', '2.3', 'T2', 'high'],
     ['a2', '2.4', 'T1', 'medium'],
+  ])
+})
+
+test("a reviewer's turn writes a cost row marked as a review, at the review effort, and its events name no story", async ($, on) => {
+  const w = world(on, { [MARKER]: project() })
+  on('classic.Notification', () => ({}))
+  const spawn = spawning($, on, { '2.3 T2 cart total': () => $.turn.start({ text: 'p', turnId: 't1', agentId: 'r1' }) })
+  await start($)
+  await spawn('2.3 T2 cart total', REVIEWER)
+  // Whatever asks while the reviewer is inside its turn is no story's either.
+  await $.classic.Notification({ message: 'canary message', notification_type: 'permission_prompt' })
+  w.now += 3000
+  w.usd = 0.5
+  await $.turn.complete(answered('t1', 'r1'))
+  await end($)
+  const { rows, events } = split(w.writes)
+  expect(rows).toEqual([
+    {
+      format: 1,
+      ts: new Date(NOW + 3000).toISOString(),
+      story: '2.3',
+      tier: 'T2',
+      agent: 'r1',
+      wall: 3,
+      cost: 0.25,
+      model: 'claude-opus-5-5',
+      effort: 'high',
+      review: true,
+    },
+  ])
+  const named = events.filter((event) => ['tool.pre', 'tool.post', 'subagent.start', 'subagent.stop', 'notification'].includes(event.kind))
+  expect(named.map((event) => [event.kind, event.story ?? null])).toEqual([
+    ['tool.pre', null],
+    ['subagent.start', null],
+    ['tool.post', null],
+    ['notification', null],
+    ['subagent.stop', null],
+  ])
+})
+
+test("a worker's later turn leaves a reviewer's spawn alone, and only the reviewer's row is a review's", async ($, on) => {
+  const w = world(on, { [MARKER]: project() })
+  // 2.3's worker goes on while the reviewer of 2.2 still waits for its own first turn.
+  const spawn = spawning($, on, {
+    '2.3 T2 cart total': () => $.turn.start({ text: 'p', turnId: 't1', agentId: 'a1' }),
+    '2.2 T3 card payments': async () => {
+      await $.turn.start({ text: '', turnId: 't2', agentId: 'a1' })
+      await $.turn.start({ text: 'p', turnId: 't3', agentId: 'r1' })
+    },
+  })
+  await start($)
+  await spawn('2.3 T2 cart total')
+  await $.turn.complete(answered('t1', 'a1'))
+  await spawn('2.2 T3 card payments', REVIEWER)
+  await $.turn.complete(answered('t2', 'a1'))
+  await $.turn.complete(answered('t3', 'r1'))
+  await end($)
+  const { rows, events } = split(w.writes)
+  expect(rows.map((row) => [row.agent, row.story, row.tier, row.effort, row.review ?? null])).toEqual([
+    ['a1', '2.3', 'T2', 'high', null],
+    ['a1', '2.3', 'T2', 'high', null],
+    ['r1', '2.2', 'T3', 'high', true],
+  ])
+  const starts = events.filter((event) => event.kind === 'subagent.start')
+  expect(starts.map((event) => [event.agent, event.story ?? null])).toEqual([
+    ['a1', '2.3'],
+    ['a1', '2.3'],
+    ['r1', null],
   ])
 })
 

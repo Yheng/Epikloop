@@ -35,6 +35,9 @@ Example: [`templates/docs/stories/epic.md`](../plugins/epikloop/templates/docs/s
   - `- MVP: yes` or `no`
   - `- Requirements:` the REQ IDs it cites, comma-separated, or `none`
   - `- After:` the stories it waits for, optional
+  - `- Reworks:` the story it reworks, optional, and last
+- **A rework story,** which `decide` adds, names the story it reworks. The field goes last, since
+  Harbor's build stops reading a story's fields at the first it doesn't know.
 - **Body.** Free text with the acceptance criteria follows the fields.
 - **Spec delta.** Each story ends with a `### Spec delta` section. Each line is
   `- add|change|retire REQ-… [: what]`, or the single line `- none`. Closing the story applies the
@@ -50,9 +53,17 @@ Example: [`templates/docs/queue.md`](../plugins/epikloop/templates/docs/queue.md
   question itself:
   - `- Blocks:` the stories it blocks, or `nothing`
   - `- Default taken:` the conservative default the work went on with
+  - `- Severity: high`, optional and last, on a question that can't wait
+- **Severity.** A finding that can lose money or data, or lets someone see or do what they
+  shouldn't, is never a backlog line: it is fixed now, or parked marked high. `high` is the only
+  value, and the field goes last, for the same reason a story's `Reworks` does. From stage 6 on, a
+  waiting high question puts `decide` first.
 - **"Split me".** A story that outgrows its budget is parked as a question titled `Split N.M`.
-- **Review.** In solo mode a T3 story's commit parks a question titled `Review N.M`, blocking
-  nothing, so the human reads its diff in `decide`.
+- **Review.** A question titled `Review N.M` holds a reviewer's record of that story, blocking
+  nothing, with "landed as built" as its default: each finding as a numbered item that opens with
+  its place, `path:line`, then says what happens and what it goes against, or that the review
+  found nothing. A T3 story always gets one, and a T1 or T2 story only with findings. It is marked
+  high when a finding is.
 - **Numbers.** A question number is never reused: the next one follows the highest in the queue
   and in the decisions' `Answers`, and `state.mjs --ids` prints it. A number listed twice, or one
   a decision already answers, is reported.
@@ -153,6 +164,15 @@ screens.
   its retro. The lowest such epic is named first.
 - **In review.** A story whose `feat(N.M):` commit is on another branch, local or remote, and not
   yet on the default branch is in review.
+- **Since the last retro.** Reviews and rework are read among the commits the default branch
+  reaches and no `phase-N` or `live` tag does. With no such tag, that is the whole branch.
+  - **Reviewed.** A story is reviewed when one of those commits has a subject that starts
+    `review(N.M):`. What follows says what the review found: `no findings`, a count such as
+    `2 findings`, or `not reviewed`.
+  - **Waiting for its review.** In solo mode, a story in `docs/stories/` whose `feat(N.M):` commit
+    is among them, with no review. What landed before the last retro never waits.
+  - **A fix.** A commit there whose subject starts `fix(N.M):` fixes a landed story.
+  - A log git can't give is reported as a problem, and then no story waits.
 
 ## What a batch reads
 
@@ -164,7 +184,9 @@ each tier listed, as in `Worker effort: T2 high, T3 xhigh.`, and the batch passe
   and no parked question blocks it. Before the `mvp` tag only MVP stories are ready; named alone,
   as `N.M`, any story can be.
 - **Which stories.** Without an argument, the current phase's epic, or every epic once all MVP
-  epics are tagged. Nothing is ready before stage 6, or while a phase waits for `retro`.
+  epics are tagged. Nothing is ready before stage 6, or while a phase waits for `retro`. In solo
+  mode, while a closing ceremony waits for a landed story's review, nothing is ready in any epic,
+  since that batch is there for the reviews; a story named alone can still start.
 - **Where a batch starts.** Only from a clean checkout of the default branch that its remote
   neither leads nor trails. Otherwise the list gives the reason, with the git command that fixes
   it when there is one.
@@ -176,24 +198,55 @@ each tier listed, as in `Worker effort: T2 high, T3 xhigh.`, and the batch passe
   remote. In team mode it goes on `story/N.M`, with a pull request titled like the commit, which
   the human merges.
 
+## What a review reads
+
+`state.mjs --reviews` lists the landed stories no reviewer has read, one `N.M Tn Title` line each,
+in plan order. That line is the reviewer's spawn description. A last line gives the reviewer's
+effort, as in `Review effort: high.`, and the batch passes it with the spawn.
+
+- **Solo mode only.** In team mode a story's pull request is its review, and the list says so.
+- **Where a review starts.** From a clean checkout of the default branch that isn't behind its
+  remote. The reviews' own commits wait there: the list reads one that isn't pushed yet as done,
+  and once none waits it names the push that lands them together. Where the remote has gained a
+  commit meanwhile, it names no push, and says the human reconciles the two.
+- **Until a batch runs them.** The state's report and the briefing name the stories that wait,
+  under what needs the human. A closing ceremony's stage names them itself.
+- **The brief.** `state.mjs --review N.M` prints the story, the requirements it cites and the
+  decisions that name it, each verbatim; what its tier asks of its commit; its commits since the
+  last retro, with the `git diff` that shows one; and the record. A story that doesn't wait for a
+  review gets none.
+- **The record.** The `Review N.M` question, under the next question number, or in the question
+  that already asks for this review. A T1 or T2 story with no findings gets no question.
+- **Landing.** One commit whose subject starts `review(N.M):`, holding `docs/queue.md` and nothing
+  else, or nothing at all. The brief gives it as the commands to run, as they stand. The reviewer
+  doesn't push it: the batch pushes its reviews together.
+
 ## What a ceremony reads
 
 `state.mjs --retro` and `state.mjs --release` print the closing ceremonies' briefs. Each starts
 only at its stages, 7 and 8 for a retro, or 10 while an epic waits for one, and 9 for a release,
-and only where a batch would.
+and only where a batch would. In solo mode neither starts while a landed story waits for its
+review, or while the `Review` question of a story landed since the last retro is open: the brief
+names `epic N` or `decide` instead.
 
 - **The retro's brief.** At stage 7: the phase's MVP stories, for the click-through; the evidence,
   which is the deep gates, the gates' self-test, the staging smoke and the click-through; with a
-  complete design, how far the visual compare reaches; the queue and its Δ; this machine's cost
-  rows per tier and effort; the record; and how it lands, as `chore(phase-N): retro`. When the phase is the last MVP epic, the retro is also the MVP
-  sign-off, and the brief says what sign-off needs. At stage 8, the brief is the sign-off's alone,
-  landing as `chore(mvp): sign-off`. After going live, it covers every story of the epic, gives
-  the queue's counts without Δ, and says the retro signs nothing off.
+  complete design, how far the visual compare reaches; the queue and its Δ; the reviews, the
+  rework stories that landed and the fix commits since the last retro, whatever their epic; this
+  machine's cost rows per tier and effort, with the reviews'
+  after them; the record; and how it lands, as `chore(phase-N): retro`. When the phase is the last
+  MVP epic, the retro is also the MVP sign-off, and the brief says what sign-off needs. At stage 8,
+  the brief is the sign-off's alone, landing as `chore(mvp): sign-off`. After going live, it covers
+  every story of the epic, gives the queue's counts without Δ, and says the retro signs nothing
+  off.
 - **The release's brief.** Staging, where the hosting is described, the production smoke, the
   record, and how it lands, as `chore(release): go live`, after which it prints the `live` tag.
   Until a `Go live later` is recorded, it also gives that record, for when production comes later,
   landing as `chore(release): go live later`. Once one is, it says that a release which still
   waits records nothing.
+- **The reviews and the rework.** In solo mode, how many reviews there were at each tier, how
+  many had findings and the findings in all, and any that couldn't be read. Then the epic's rework
+  stories, each with the story it reworks, and the commits that fix a landed story.
 - **Tags.** Once a record is on the default branch, the brief prints only the tags it leaves. It
   prints `mvp` only while queue Δ is at 0 or below.
 - **The staging smoke.** `smoke.mjs` sends one GET to `staging_url`, or to the URL it is given,
@@ -214,6 +267,7 @@ and only where a batch would.
 - **ETA.** The remaining MVP stories' average worker wall time for their tier, from this machine's
   cost rows, divided by `hours_per_day`.
   - A worker writes one row per turn, and its rows add up to one run.
+  - A reviewer's rows, marked `review`, are left out: a review isn't part of building a story.
   - A tier with no rows takes the average of all rows.
   - With no rows, or no `hours_per_day`, the ETA is unknown.
 - **Queue Δ.** The open entries now minus the open entries at the start of the current phase:

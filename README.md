@@ -77,8 +77,8 @@ The pipeline enforces seven principles in product work ([doctrine](docs/doctrine
 |---|---|
 | **Laws, not rules** | Anything mechanically checkable (secrets, hardcoded visual values, lint, types, tests, build) is enforced by a script at commit and push, never by a prompt rule. |
 | **Batch the human** | The build loop never stops to ask. Questions are parked with a conservative default taken, and you answer them in one sitting. |
-| **Route findings by threshold** | Small mechanical fixes happen now, product calls become parked questions, and real but non-MVP issues become one backlog line. Nothing is filed by default. |
-| **Risk-tiered verification** | Most stories need passing gates and acceptance evidence. Auth, money, migrations on live data and untrusted input also get an adversarial pass and your review of the diff. |
+| **Route findings by threshold** | Small mechanical fixes happen now, product calls become parked questions, and real but non-MVP issues become one backlog line. A finding that can lose money or data, or lets someone see or do what they shouldn't, is never a backlog line. Nothing is filed by default. |
+| **Risk-tiered verification** | Most stories need passing gates and acceptance evidence. Auth, money, migrations on live data and untrusted input also get an adversarial pass. In solo mode a reviewer that didn't write a story reads it once it has landed, and you settle what it finds. |
 | **A frozen finish line and a fuel gauge** | The MVP set is frozen at plan time, every status opens with the fuel gauge, and the finish line moves only by a recorded decision. |
 | **All state in files** | State lives in the repository or in files, never in a conversation, so a power outage, a new teammate or a six-week pause recover the same way. |
 | **The immune system** | Every rule cites the failure it fixes. Every retro deletes something from the pipeline or says why nothing qualified, and prompt text has a hard ceiling. |
@@ -108,18 +108,19 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | CI: validation, every script's self-test and the emitter's tests on Linux, macOS and Windows, the gate runner's self-test on Node 22.0.0, the floor, and the mutation check on Linux | **Available** |
 | The path to a frozen plan: `/epikloop`, `discover`, `architect` and `plan`, with full instructions | **Available** |
 | The batch: `epic`, `next`, `story`, the `story-worker`, `decide` and `triage`, with full instructions | **Available** |
+| The review stage: in solo mode a `story-reviewer` reads each landed story, `decide` settles its findings one at a time, and each retro counts the reviews and the rework | **Available** |
 | Closing the loop: `retro`, `release`, `adopt` and `doctor`, with full instructions, the staging smoke, and `init.mjs --refresh` | **Available** |
 | The `web` and `service` lanes: Playwright tests as a web story's UI evidence, the guard allowing the lane's test runner, `doctor`'s lane checks, and the [lane authoring guide](docs/lanes.md) | **Available** |
 | The team-mode workflow, `.github/workflows/check.yml`, which runs the pre-push gates over every commit a pull request adds, and the `CLAUDE.md` template | **Available** |
 | This repository's own law checks in CI (the prompt ceiling, a shell only as a thin shim, no network calls in hook or Harbor code, skill frontmatter, hooks and plugin paths, JSON formats, the plugin layout, a sign-off on every commit, no AI credits), and a mutation check for every self-test | **Available** |
-| The plugin eval suite: fifteen cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
+| The plugin eval suite: seventeen cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
 | `design`: the brief, three directions and your pick, every screen with its tokens, manifest and gallery, and `amend`, `add`, `audit` and `ingest`, with stage 3 | **Available** |
 | The screens as the truth: a screenshot per screen a story touches, read beside its design, and the retro's full visual compare | **Available** |
 | Adopting a production repository: converting an earlier template layout behind a rollback tag, the design it has, and post-MVP mode for a product already live | **Available** |
 | Design tokens extracted from the code of an adopted product with no design | Held until one is adopted |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
 | Harbor: its server, its office view, the `harbor` command and its start-of-session hook | **Available** |
-| The Bridge: review pages on Harbor's server for the design pick, the T3 diff and decide | M4 |
+| The Bridge: review pages on Harbor's server for the design pick, a story's review and decide | M4 |
 
 M1 is done: the loop has built a web app and adopted a production repository, each end to end. The
 core plugin's first release, 0.1.0, came out on 2026-11-08. See the [roadmap](#roadmap).
@@ -269,8 +270,9 @@ carries the spec delta it will apply, and has a tier that sets what its commit m
 |---|---|---|
 | T1, most stories | The gates and acceptance evidence | medium |
 | T2 | T1, plus a test for each quoted business rule | high |
-| T3: auth, money, migrations on live data, untrusted input | T2, plus negative-case tests from an adversarial reading of the change, frozen into the suite, and your review of the diff | xhigh |
+| T3: auth, money, migrations on live data, untrusted input | T2, plus negative-case tests from an adversarial reading of the change, frozen into the suite | xhigh |
 
+In solo mode every story is then read by a reviewer once it has landed; see [Reviews](#reviews).
 You can change the effort for each tier; see [Effort and cost](#effort-and-cost).
 
 ### Batches and parked questions
@@ -283,8 +285,9 @@ You can change the effort for each tier; see [Effort and cost](#effort-and-cost)
 - A story is built, passes its gates and is committed with its spec delta applied in the same
   commit, so there is no separate document-sync step.
 - The commit lands: in solo mode it is pushed to the default branch, and in team mode it goes on
-  its own branch with a pull request that you merge. In solo mode a T3 story also parks a
-  `Review N.M` question, so you read its diff in `decide`.
+  its own branch with a pull request that you merge.
+- In solo mode, once the epic's stories have ended, a reviewer reads each one that landed; see
+  [Reviews](#reviews).
 - Workers run one at a time in one working tree until M3. A batch starts only from a clean
   checkout of the default branch, and it stops when a story doesn't land.
 - The batch never stops to ask. A question is parked in `docs/queue.md` with a conservative default
@@ -302,11 +305,47 @@ threshold router:
 | Needs a product call | A parked question |
 | Real, but not MVP-breaking | One dated backlog line in `docs/queue.md` |
 | Breaks an MVP acceptance criterion | Fixed now, or an explicit scope question |
+| Can lose money or data, or lets someone see or do what they shouldn't | Fixed now, or a parked question marked `Severity: high`; never a backlog line |
 
-Nothing is filed by default. `decide` then takes you through the parked questions in one sitting:
-each arrives with the default the loop took and what it blocks, each answer becomes a
-`DECISION-XXX` entry in `docs/decisions.md`, and any work built on an overturned default goes back
-for rework.
+Nothing is filed by default. `decide` then takes you through the parked questions in one sitting,
+those marked high first: each arrives with the default the loop took and what it blocks, each
+answer becomes a `DECISION-XXX` entry in `docs/decisions.md`, and any work built on an overturned
+default goes back for rework. While a question marked high waits, `/epikloop` recommends `decide`
+before anything else.
+
+### Reviews
+
+In solo mode nobody reviews a pull request, so a reviewer reads every story once it has landed. In
+team mode the pull request is the review.
+
+- **Who.** `story-reviewer`, a second subagent, which never saw how the story was built. Once the
+  stories of `epic N` have ended, the batch starts one for each landed story, one at a time. It
+  runs on your session's model, at the review effort.
+- **What it reads.** The story, the requirements and decisions it cites, what its tier asks of its
+  commit, the change, and the code around it. It fixes nothing.
+- **What a finding is.** Something the change gets wrong against the story, a requirement or a
+  decision, something it broke, or a case its tier's tests leave open. Style isn't one. A finding
+  is high when money or data can be lost, or someone can see or do what they shouldn't.
+- **What reaches you.** A parked question, `Review N.M`, with each finding's file and line, what
+  happens and what it goes against. A T3 story always gets one, which says so when the review
+  found nothing. A T1 or T2 story gets one only with findings.
+- **Settling it.** `decide` puts each finding to you on its own. A finding ends as a rework story
+  or as accepted as built, and one that isn't high may end as a backlog line.
+- **Before a phase closes.** `retro` and `release` wait until every story landed since the last
+  retro is reviewed and its `Review` question is closed, so a rework story never lands in a phase
+  that has closed. Until then `/epikloop` names `epic N`, which then runs the reviews and builds
+  nothing, or `decide`.
+- **What a retro counts.** How many reviews there were at each tier and what they found, the
+  rework stories that landed, and the commits that fixed a landed story.
+
+Each review lands as a commit of its own, and the batch pushes them together once none waits, so
+a host that deploys at each push deploys once. Where `docs/queue.md` is listed under
+`gates.test_ignore`, that push skips the tests and the build.
+
+A story landed with `next` or `story` is read at the end of the next batch, and until then
+`/epikloop` lists it under what needs you. A project that takes this up in the middle of a phase
+has the stories it landed since its last retro read at its next batch, those you already accepted
+among them.
 
 ### The fuel gauge
 
@@ -380,9 +419,11 @@ step is also a command you can run directly.
    citing its requirement IDs. It freezes the MVP set and records solo or team mode, your hours per
    day and the deadline. Epic 1 opens with scaffolding and gates (story 1.1) and staging (1.2).
 6. **Build.** `/epikloop:epic 1` runs the epic as an unattended batch. `/epikloop:next` runs only
-   the next ready story, and `/epikloop:story 2.3` runs one named story.
+   the next ready story, and `/epikloop:story 2.3` runs one named story. In solo mode `epic` ends
+   with a reviewer reading each story that landed.
 7. **Decide.** `/epikloop:decide` takes you through the parked questions in one sitting.
-   `/epikloop` recommends it when a question blocks a story or five or more are waiting.
+   `/epikloop` recommends it when a question blocks a story, when one is marked high, when a
+   review is open before a phase closes, or when five or more are waiting.
 8. **Report what you find.** `/epikloop:triage "<what you found>"` routes your own findings through
    the same threshold router the batch uses.
 9. **Close each phase.** `/epikloop:retro` gathers the phase's evidence:
@@ -392,9 +433,10 @@ step is also a command you can run directly.
 
    In the web lane, the deep gates run the whole Playwright suite. In a project with a design,
    that run renders every designed state at both widths, and the retro compares each one, as
-   built, with its design. Perf budgets wait for a project that needs them. The retro then prunes
-   the queue with you, reviews the cost rows, and deletes something from the pipeline, or records
-   why nothing qualified. It records all this in `docs/decisions.md` and tags the phase.
+   built, with its design. Perf budgets wait for a project that needs them. The retro then counts
+   the phase's reviews and rework, prunes the queue with you, reviews the cost rows, and deletes
+   something from the pipeline, or records why nothing qualified. It records all this in
+   `docs/decisions.md` and tags the phase.
 
    In the final phase, it also takes you through MVP sign-off. Sign-off waits until queue Δ is 0 or
    below and the staging smoke is green.
@@ -487,12 +529,12 @@ The front door is `/epikloop`. Every other command is namespaced as `/epikloop:<
 | `/epikloop:design [amend <screen> "<change>" \| add <screen> \| audit \| ingest]` | Three directions, your pick, then every screen as HTML, with tokens, a manifest and a gallery | high | you or Claude |
 | `/epikloop:architect` | The stack, the schema as code, the API contract, a pre-mortem, `spec/architecture.md` and the lane | max | you or Claude |
 | `/epikloop:plan [--extend]` | Epics and tiered stories with requirement IDs and spec deltas, and the frozen MVP set; `--extend` plans later work | high | you or Claude |
-| `/epikloop:epic <N>` | Runs epic N as an unattended batch, one worker per story | medium | you or Claude |
+| `/epikloop:epic <N>` | Runs epic N as an unattended batch, one worker per story, then one reviewer per landed story | medium | you or Claude |
 | `/epikloop:next` | Runs the next ready story, then stops | medium | you or Claude |
 | `/epikloop:story <X.X>` | Runs one named story, then stops | medium | you or Claude |
-| `/epikloop:decide` | Takes you through the parked questions, records the decisions and unblocks stories | low | you or Claude |
+| `/epikloop:decide` | Takes you through the parked questions, a review's findings one at a time, records the decisions and unblocks stories | low | you or Claude |
 | `/epikloop:triage "<what you found>"` | Routes your finding through the threshold router | low | you only |
-| `/epikloop:retro` | Closes a phase: staging smoke, deep gates, self-test, queue pruning, one pipeline deletion and the tag; MVP sign-off in the final phase | medium | you only |
+| `/epikloop:retro` | Closes a phase: staging smoke, deep gates, self-test, the reviews and the rework counted, queue pruning, one pipeline deletion and the tag; MVP sign-off in the final phase | medium | you only |
 | `/epikloop:release` | The go-live story: production, promotion, a rollback note and a post-launch checklist | high | you only |
 | `/epikloop:harbor on\|off\|open` | Harbor's switch and its view | low | you only |
 
@@ -502,13 +544,16 @@ Every command has its full instructions now.
   a ceremony Claude never starts on its own, and its description stays out of Claude's context.
 - **Effort.** Each command runs at its pinned effort, so a cheap step stays cheap.
 
-Two pieces work behind the commands:
+Three pieces work behind the commands:
 
 - **`spec-delta`** is an internal skill. It applies a story's spec delta to `spec/` in the same
   commit as the story's code.
 - **`story-worker`** is the batch's subagent. It builds one story in isolation, is pinned to Opus
   with a one-hour prompt cache, and runs at the effort for the story's tier. It gains worktree
   isolation once its M3 spike passes.
+- **`story-reviewer`** is the batch's second subagent. In solo mode it reads one landed story
+  against its brief and records what its change gets wrong as a parked question. It pins no model,
+  so it runs on your session's.
 
 More in [Architecture → Skills](docs/architecture.md#skills).
 
@@ -763,7 +808,7 @@ to edit, and `init.mjs --refresh` replaces only the gate files.
 | Path | Holds |
 |---|---|
 | `~/.epikloop/events/YYYY-MM-DD.jsonl` | The event log: one line per event, written only inside an Epikloop project |
-| `~/.epikloop/projects/<id>/cost.jsonl` | One cost row per turn of a story's worker: tier, worker, wall time, cost, model and effort. A worker's rows add up to its run |
+| `~/.epikloop/projects/<id>/cost.jsonl` | One cost row per turn of a story's worker or its reviewer: tier, agent, wall time, cost, model and effort. An agent's rows add up to its run, and a reviewer's are marked `review` |
 | `~/.epikloop/config.json` | Your settings: effort overrides and the Harbor switch |
 | `~/.epikloop/harbor.json` | Where the Harbor plugin is installed, which its start-of-session hook records |
 | `~/.epikloop/gates.lock` | The gate run whose tests, build or end-to-end tests are at work, while they are; the other runs on the machine wait for it |
@@ -843,7 +888,7 @@ you want to change a choice.
 | `lane` | yes | `web`, `service`, `mobile-expo`, `mobile-flutter`, or a community lane |
 | `mode` | yes | `solo` or `team` |
 | `mvp_frozen` | | The date `plan` froze the MVP set; it moves only by a recorded decision |
-| `effort` | | Story-worker effort per tier: `T1`, `T2`, `T3` |
+| `effort` | | Story-worker effort per tier, `T1` to `T3`, and the reviewer's, `review` |
 | `hours_per_day` | | Hours per day you work on the project, an input to the ETA |
 | `deadline` | | The target date, when there is one |
 | `staging_url` | | Where the staging smoke runs |
@@ -863,7 +908,7 @@ you want to change a choice.
   "lane": "web",
   "mode": "solo",
   "mvp_frozen": "2026-11-02",
-  "effort": { "T3": "max" },
+  "effort": { "T3": "max", "review": "xhigh" },
   "hours_per_day": 4,
   "deadline": "2027-01-15",
   "staging_url": "https://staging.example.com",
@@ -891,7 +936,7 @@ you want to change a choice.
 | Field | Required | Meaning |
 |---|---|---|
 | `format` | yes | The file's format version: `1` |
-| `effort` | | Story-worker effort per tier, `T1` to `T3`; a project's own setting wins |
+| `effort` | | Story-worker effort per tier, `T1` to `T3`, and the reviewer's, `review`; a project's own setting wins |
 | `harbor` | | Whether Harbor runs: `false` by default, and off means no Harbor process exists |
 
 ```json
@@ -907,10 +952,13 @@ you want to change a choice.
 - **Worker effort.** Each tier's effort comes from `.epikloop/project.json`, then
   `~/.epikloop/config.json`, then the defaults: T1 medium, T2 high and T3 xhigh. The levels are
   `low`, `medium`, `high`, `xhigh` and `max`.
+- **Reviewer effort.** `effort.review` comes from the same places, and is `high` by default.
 - **Command effort.** Each command pins its own effort (see [Commands](#commands)); the global
   default is medium.
 - **Cost rows.** Each closed story records its model, effort, wall time and, when available,
-  dollars. They are the instrument for tuning effort, and retros review them.
+  dollars. They are the instrument for tuning effort, and retros review them. A reviewer's rows are
+  kept apart: they stay out of the ETA, and show on a line of their own with the models that
+  reviewed.
 - **The prompt cache.** Model, effort and MCP servers don't change mid-batch. Story workers run with
   their own small context and a one-hour cache, and the orchestrator never grows past a few
   thousand tokens. API-key users get the one-hour cache for the main conversation by setting
@@ -943,7 +991,7 @@ files.
 | A landed story | its note ticked, and its worker cheering |
 | Gates running | the QA lead checking at the desk, then a thumbs up or a red cross |
 | A parked question | the team lead on the phone |
-| A T3 story awaiting review | its worker reading at the glass office |
+| A T3 story whose review is open | its worker reading at the glass office |
 | A permission prompt | a worker asking at the copier, while its red light blinks |
 | A retro | the crew gathered in the lounge |
 | The `mvp` tag | launch day |
@@ -957,7 +1005,7 @@ start-of-session hook starts it with each session, and says so only when it can'
 
 The plugin carries Harbor's build: the server in one file, and the page with its source maps and
 its art. Harbor itself is built in a repository of its own. Later, the Bridge adds review pages on
-the same server (the design pick, the T3 diff, decide), and they write back the same repository
+the same server (the design pick, a story's review, decide), and they write back the same repository
 files the CLI writes.
 
 More in [Architecture → Harbor](docs/architecture.md#harbor).
@@ -996,7 +1044,7 @@ This repository is the tool itself: the marketplace, the two plugins and their d
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
 | `plugins/epikloop/skills/` | Sixteen skills, each with its full instructions | now |
-| `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
+| `plugins/epikloop/agents/` | The worker subagent, `story-worker.md`, and the reviewer, `story-reviewer.md` | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | The guard, the emitter, the SessionStart briefing, project setup, the state reader, the staging smoke, `doctor`, the design gallery and Harbor's switch | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
@@ -1085,11 +1133,13 @@ reads, and `node tools/evals.mjs` runs it.
   The first three, and the web page before its design, after the pick and once architected, carry
   a remote nothing has been pushed to, as a new project's GitHub repository is; a push there goes
   to a bare repository inside `.git`. The fixture's self-test runs in CI on every push, at no cost.
-- **What the fifteen cases cover:**
+- **What the seventeen cases cover:**
   - the front door, inside and outside a project
   - a plain question answered from the briefing
   - a story landed by its worker, with its open product call parked
   - `decide` and `triage`
+  - a landed story read by its reviewer, whose record lands as a question with its finding
+  - `decide` sending a review's finding to rework, as a story that names the one it reworks
   - `architect` waiting for confirmation
   - `plan`, `discover` and `adopt`
   - `design`: three directions that wait for the pick, the screens after it, and an audit
@@ -1140,7 +1190,7 @@ Each milestone is usable on its own, and nothing from a later milestone starts e
 | **Harbor, between M1 and M2** | Harbor's build in `epikloop-harbor`, its start-of-session hook, `/epikloop:harbor` and `doctor`'s Harbor check (done) |
 | **M2: Design phase** | Direction variants and the pick, all screens, `amend`, `add`, `audit` and `ingest`, the gallery and design references (done); the screens as the truth at story and retro time (done); adopting a production repository, with an earlier template layout converted and the design it has brought in (done) |
 | **M3: Speed** | Parallel workers where the dependency graph allows, the story-size law, and the `mobile-expo` and `mobile-flutter` lanes |
-| **M4: The Bridge** | Review pages on Harbor's server: the design pick, the T3 diff and decide |
+| **M4: The Bridge** | Review pages on Harbor's server: the design pick, a story's review and decide |
 
 M1 was done when Harbor's own web app had been built with Epikloop end to end, and an existing
 production repository adopted end to end. Both were met by 2026-11-07.

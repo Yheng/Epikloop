@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Yheng/Epikloop/main/plugins/epikloop/schemas/cost-row.schema.json",
   "title": "Epikloop cost row",
-  "description": "One line of ~/.epikloop/projects/<id>/cost.jsonl per turn of a story's worker, holding that turn's share; a worker's lines add up to its run. Written by the emitter, never by the model; the instrument for tuning effort levels.",
+  "description": "One line of ~/.epikloop/projects/<id>/cost.jsonl per turn of a story's worker, or of its reviewer, holding that turn's share; an agent's lines add up to its run. Written by the emitter, never by the model; the instrument for tuning effort levels.",
   "type": "object",
   "required": ["format", "ts", "story", "tier", "wall", "cost", "model", "effort"],
   "additionalProperties": false,
@@ -18,7 +18,7 @@
     "agent": {
       "type": "string",
       "minLength": 1,
-      "description": "The worker's agent id, the same on each of its lines. Absent on lines written before a line named its worker."
+      "description": "The worker's or the reviewer's agent id, the same on each of its lines. Absent on lines written before a line named its worker."
     },
     "wall": {
       "type": "number",
@@ -35,6 +35,10 @@
       "minLength": 1,
       "description": "Model id when reported; null otherwise."
     },
-    "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+    "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] },
+    "review": {
+      "const": true,
+      "description": "Present on a story-reviewer's lines, which stay out of the ETA. A worker's lines have none."
+    }
   }
 }

@@ -216,5 +216,5 @@ With the full lane set in place, the core becomes 1.0.0, and the Node floor (22 
 ## M4 — The Bridge
 
 Harbor shipped between M1 and M2. This milestone delivers the Bridge's review pages on Harbor's
-server: the design pick, the T3 diff and decide. They write back the same repository files the CLI
-writes.
+server: the design pick, a story's review and decide. They write back the same repository files
+the CLI writes.

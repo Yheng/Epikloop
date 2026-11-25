@@ -11,12 +11,13 @@
     "format": { "const": 1, "description": "Format version of this file." },
     "effort": {
       "type": "object",
-      "description": "Story-worker effort per tier. A project's own setting in .epikloop/project.json wins over this one.",
+      "description": "Story-worker effort per tier, and the story-reviewer's. A project's own setting in .epikloop/project.json wins over this one.",
       "additionalProperties": false,
       "properties": {
         "T1": { "$ref": "#/$defs/effort" },
         "T2": { "$ref": "#/$defs/effort" },
-        "T3": { "$ref": "#/$defs/effort" }
+        "T3": { "$ref": "#/$defs/effort" },
+        "review": { "$ref": "#/$defs/effort" }
       }
     },
     "harbor": {

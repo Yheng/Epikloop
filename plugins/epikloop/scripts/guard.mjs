@@ -129,7 +129,7 @@ function gitCall(segment) {
 const PLAIN = { Bash: /^[\w\s.\/:=+,^~%@-]*$/, PowerShell: /^[\w\s.\/:=+,^~%\\-]*$/ }
 // Where one command ends and the next begins, for the allow list.
 const COMMANDS = /&&|\|\||[;\n]/
-const GIT_ALLOWED = new Set(['status', 'diff', 'log', 'fetch', 'add', 'commit', 'push', 'switch', 'tag', 'branch'])
+const GIT_ALLOWED = new Set(['status', 'diff', 'log', 'show', 'fetch', 'add', 'commit', 'push', 'switch', 'tag', 'branch'])
 // Options that run a program or write a file, and URLs or network paths.
 const GIT_UNSAFE = / --(?:upload-pack|receive-pack|exec|output)[ =]|:\/\/|::|[^ @]+@[^ :]+:| (?:\/\/|\\\\)/
 const CHECK_SH = /^(?:(?:ba)?sh )?(?:\.[\/\\])?scripts[\/\\]check\.sh(?: |$)/
@@ -252,6 +252,12 @@ EOF
 )"`],
   ['allow', 'git switch -c feat/1.2'],
   ['allow', 'git branch --show-current'],
+  // A reviewer reads a commit: its change, or the commit as git shows it.
+  ['allow', 'git diff 1a2b3c4~1 1a2b3c4'],
+  ['allow', 'git show 1a2b3c4'],
+  ['allow', 'git show --stat 1a2b3c4', 'PowerShell'],
+  ['pass', 'git show --output=patch.txt 1a2b3c4'],
+  ['pass', 'git -C ../other show 1a2b3c4'],
   ['allow', 'git tag -a v0.1.0 -m "phase 1"'],
   ['allow', 'gh pr view 12 --json state'],
   ['pass', 'git status && rm -rf build'],

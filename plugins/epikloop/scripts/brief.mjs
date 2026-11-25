@@ -36,7 +36,8 @@ export const PROTOCOL = `Epikloop protocol for this project:
 - A finding goes by threshold: mechanical and small is fixed now in its own commit; one that needs
   a product call is a parked question; real but not MVP-breaking is one dated backlog line; one
   that breaks an MVP acceptance criterion is fixed now or parked as an explicit scope question.
-  Nothing is filed by default.`
+  One that can lose money or data, or lets someone see or do what they shouldn't, is never a
+  backlog line: it is fixed now, or parked with "- Severity: high". Nothing is filed by default.`
 
 const failure = (reason) => `Epikloop's briefing couldn't run (${reason}); \`/epikloop\` shows where things stand.`
 

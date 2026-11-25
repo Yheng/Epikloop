@@ -11,6 +11,66 @@ All notable changes to Epikloop are recorded here.
 
 ### Added
 
+- A review stage in solo mode: a reviewer reads each story once it has landed
+  ([issue #12](https://github.com/Yheng/Epikloop/issues/12)).
+  - **The failures, read on 2026-11-24 and 25 from two projects' decisions, queues and
+    histories.** In one, 52 T3 stories landed, each parking a `Review N.M` question so the human
+    could read its diff. Every review was accepted as built, which made 45 of the project's 199
+    decisions, and one defect that passed was fixed the day after. In the other, most batches
+    were followed by a review run by hand from a separate session. Those reviews found defects
+    that had passed every gate: a payment that could be made twice, a report closed on the wrong
+    day, a write that failed after its database commit, and a request-forgery hole in sign-in.
+    Their findings reached the repository only as pasted text, and one `decide` dialog left a
+    finding out.
+  - A second plugin subagent, `story-reviewer`, reads a landed story against its brief:
+    `state.mjs --review N.M` prints the story, what it cites, what its tier asks of its commit and
+    its commits. `epic` starts one for each line of `state.mjs --reviews`, once its stories have
+    ended. The reviewer fixes nothing and runs on the session's model. Its effort is
+    `effort.review`, `high` by default.
+  - Every story is read, whatever its tier. A tier is a judgment made at plan time: an
+    authorization check was built in a T1 story, where a way past it stayed for 11 days, and the
+    fix for the request-forgery hole was planned as T2. Each retro's count by tier is what narrows
+    this later.
+  - The record is a parked question, `Review N.M`, with each finding's place, what happens and
+    what it goes against. A T3 story always gets one, and a T1 or T2 story only with findings.
+    The worker no longer parks it.
+  - The record's commit, `review(N.M): …`, marks the story as reviewed. The batch pushes its
+    reviews together once none waits, since one of the two projects' hosts redeploys staging at
+    every push. The stories that wait are those landed since the last `phase-N` or `live` tag, so
+    a project that takes this up in the middle of a phase has that phase's landed stories read at
+    its next batch. Until a batch runs them, the briefing lists them under what needs the human.
+  - `retro` and `release` wait until every such story is reviewed and its `Review` question is
+    closed: the next step is `epic N`, then `decide`. So a finding's rework story never lands in
+    a phase that has closed. The batch that step names starts no story: it is there for the
+    reviews.
+  - `decide` puts each finding to the human on its own. A finding ends as a rework story or as
+    accepted as built, and one that isn't high may end as a backlog line.
+  - A reviewer's turns write cost rows marked `review`. They stay out of the ETA, and each
+    retro's cost review shows them on a line of their own, with the models that reviewed.
+  - The guard allows `git show`, a read like `git diff` and `git log`, and the reviewer's brief
+    gives its commit as the commands to run, as they stand. In two live runs on 2026-11-25, in
+    sessions with no command approved beforehand, a reviewer's `git show` was refused, so it never
+    saw the change, and its `git add`, chained after a `cd`, was refused, so its record stayed
+    uncommitted.
+  - Doctrine 4 and the constitution's article 9 change with it. T3's "human review of the diff"
+    is now the reviewer's reading, which the human settles. The article still forbids telling a
+    model to verify its own work, and says the review stage is not that.
+- Severity in the finding router (issue #12).
+  - **The failure, read on 2026-11-24 from the same two projects' queues:** a leak of one
+    customer's data to another on a live product, and a defect through which money could be lost
+    for good, were each filed as one backlog line.
+  - A finding that can lose money or data, or lets someone see or do what they shouldn't, is
+    never a backlog line. It is fixed now, or parked as a question with `- Severity: high` as its
+    last field. The worker, `triage`, the session protocol and doctrine 3 say so.
+  - The state reader says which waiting questions are marked high, and from stage 6 on a high
+    question puts `decide` first.
+- A count of rework in each retro's brief (issue #12).
+  - **The failure, read on 2026-11-24 from one project's history:** it grew from 79 planned
+    stories to 98, 14 of its commits fixed a story that had landed, and no retro could say what a
+    review was worth.
+  - A rework story carries `- Reworks: N.M` as its last field, which `decide` writes. The retro's
+    brief counts the rework stories that landed since the last retro, whatever their epic, and
+    the `fix(N.M):` commits, beside the reviews at each tier with their findings.
 - One run's slow gates at a time on a machine
   ([issue #11](https://github.com/Yheng/Epikloop/issues/11)).
   - **The failure, read on 2026-11-24 from three projects' gate events on one machine:** two
@@ -51,6 +111,16 @@ All notable changes to Epikloop are recorded here.
 
 ### Fixed
 
+- An MVP story added to a phase already closed is no longer passed over (issue #12).
+  - **The failure, found on 2026-11-25 by reading the state reader,** and shown by a self-test
+    case that failed before the fix. A decision can add a rework story to an epic that is already
+    tagged. The stage machine looked only at the lowest untagged epic, so it never named that
+    story, and it offered the MVP's sign-off with the story undone.
+  - Before `live`, such a story is now the next step: `epic N`.
+- A story that `decide` writes keeps the stories' form (issue #12).
+  - **The failure, seen on 2026-11-25 in an eval run:** `decide` wrote a rework story whose spec
+    delta was `- none:` followed by a reason, a line the state reader reports as unreadable.
+  - `decide` now says what a story's form is, and an eval case holds it to that.
 - A stamp no longer covers work that no run tested (issue #10).
   - **The failure, found on 2026-11-24 by reading the runner,** and shown by two self-test cases
     that failed before the fix. A push of a stamped commit from a work tree with other edits

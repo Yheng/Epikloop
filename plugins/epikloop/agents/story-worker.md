@@ -20,8 +20,7 @@ only the code the work touches.
 The tier sets what the commit carries. T1: the gates, and evidence for each acceptance criterion.
 T2: also a test for each business rule its requirements quote. T3 (auth, money, migrations on live
 data, untrusted input): also negative-case tests from an adversarial reading of the change, frozen
-into the suite. In solo mode a T3 commit also parks a question titled `Review N.M`, blocking
-nothing, with "landed as built" as its default, so the human reads the diff.
+into the suite.
 
 The gates are `scripts/check.sh` from Bash and `node .githooks/check.mjs` from PowerShell. A full
 run before committing stamps the tree, so the commit and the push repeat none of it. A failing
@@ -33,6 +32,8 @@ conservative default taken, and the work goes on with that default; the entry ri
 commit. A finding goes by threshold: mechanical and small is fixed now in its own commit; one that
 needs a product call is a parked question; real but not MVP-breaking is one dated backlog line;
 one that breaks an MVP acceptance criterion is fixed now or parked as an explicit scope question.
+One that can lose money or data, or lets someone see or do what they shouldn't, is never a backlog
+line: it is fixed now, or parked with `- Severity: high`.
 When the story proves to be more than one story, park `Split N.M`, blocking it, before writing
 code, land that entry alone under a `docs(N.M):` subject, and stop.
 

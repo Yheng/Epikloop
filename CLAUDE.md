@@ -19,16 +19,18 @@ This is the tool, not a product built with it.
   `scripts/check.sh`, `.githooks/`) appear here only as templates and eval fixtures.
 - This repository's own `docs/` is documentation about Epikloop.
 
-Every skill has its body, and so does the worker. The git guard, the emitter, the gate runner, the
-SessionStart briefing, project setup, the state reader, the staging smoke, `doctor`, the design
-gallery, the project file formats, the `web` and `service` lanes, the team-mode workflow, the
-product `CLAUDE.md` template and Harbor's plugin are in place. CI checks this repository's laws,
-lint among them, and the self-tests' mutations, and the eval suite runs on a contributor's machine.
+Every skill has its body, and so do the worker and the reviewer. The git guard, the emitter, the
+gate runner, the SessionStart briefing, project setup, the state reader, the staging smoke,
+`doctor`, the design gallery, the project file formats, the `web` and `service` lanes, the
+team-mode workflow, the product `CLAUDE.md` template and Harbor's plugin are in place. CI checks
+this repository's laws, lint among them, and the self-tests' mutations, and the eval suite runs on
+a contributor's machine.
 M1 is done: Harbor's own web app has been built with Epikloop and an existing production repo
 adopted, each end to end (`docs/roadmap.md`), and the core's first release, 0.1.0, came out on
 2026-11-08. M2's three slices are in: the design skill, the
 screens as the truth at story and retro time, and adopting a production repository, which converts
-an earlier template layout and brings in the design the product has.
+an earlier template layout and brings in the design the product has. Since then, solo mode has a
+review stage: a reviewer reads each story once it has landed, and the human settles what it finds.
 
 ## Map
 
@@ -36,6 +38,8 @@ an earlier template layout and brings in the design the product has.
 - `plugins/epikloop/` — the core:
   - `skills/<name>/SKILL.md` — the skills
   - `agents/story-worker.md` — the worker subagent
+  - `agents/story-reviewer.md` — the reviewer subagent, which reads a landed story and records
+    what its change gets wrong
   - `schemas/` — JSON Schemas, with `examples/`
   - `hooks/hooks.json` — the hook registrations
   - `hooks/emit.js` — the emitter, a hooks module, with its suite in `tests/emit.test.ts`
@@ -48,8 +52,8 @@ an earlier template layout and brings in the design the product has.
     for the session that set the project up; `--refresh` brings a project's gate files up to the
     plugin's
   - `scripts/state.mjs` — reads the project files and git into the stage and the fuel gauge, and
-    prints the briefs a batch, a retro, a release and the design read, with its self-test; the
-    briefing imports it
+    prints the briefs a batch, its reviews, a retro, a release and the design read, with its
+    self-test; the briefing imports it
   - `scripts/smoke.mjs` — the staging smoke that `retro` and `release` run, with its self-test
   - `scripts/doctor.mjs` — the machine check behind `doctor`, which also folds the emitter's
     files, with its self-test
@@ -137,14 +141,15 @@ an earlier template layout and brings in the design the product has.
   - general instructions rather than step lists
   - explicit scope and the full spec up front
   - a calm tone
-  - no instructions to self-verify or to verify via a subagent
+  - no instructions to self-verify or to verify via a subagent; the review stage, where a
+    reviewer reads a change another agent landed, is not one (constitution, article 9)
 - **Skill frontmatter.**
   - The `description` is one sentence, because model-invocable descriptions load on every turn of
     every session.
   - Only the front door sets `name`, because a `name` also registers a bare `/<name>`.
   - `effort` is pinned on every skill a person can invoke. `spec-delta`, which the worker
     preloads, has none, so it keeps the worker's tier effort.
-  - `model` is pinned only on the worker agent.
+  - `model` is pinned only on the worker agent. The reviewer has none, and runs on the session's.
   - Brackets and quotes in YAML values are quoted: a bracket or a double quote anywhere, or a
     single quote that opens the value. An apostrophe inside a word is text.
 - **JSON that Epikloop writes** uses snake_case keys and a `format` version. Its schemas live in
@@ -239,6 +244,22 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
     every story, signs nothing off and then prints its tag. An epic that landed before `live`
     waits for none.
   - It holds every lane file to its format, and checks `--lanes`, `--lane` and an unknown lane.
+  - It lists the landed stories no reviewer has read, at each tier, among the commits since the
+    last `phase-N` or `live` tag. A review commit ends the wait: the list reads one that isn't
+    pushed yet, names the push once none waits, or no push where the remote has moved on, and the
+    stage counts a review once it is pushed. A commit with no story file never waits, and team
+    mode has no reviews. The report names the stories that wait under what needs the human. It
+    prints the reviewer's brief for a T3 story, a T1 story and one whose review a question
+    already asks for.
+  - It holds each closing ceremony for its reviews: `epic N` while a landed story waits and
+    `decide` while a review is open, at a phase's retro, the sign-off, the release and a live
+    epic's retro, with both briefs refusing meanwhile. While a story waits, the ready list starts
+    none in any epic, but for a story named alone. A question marked high puts `decide` first
+    from stage 6 on, and a step only the human starts keeps its mark. An MVP story added to a
+    tagged epic is named before the sign-off. A log git can't give is a problem and holds nothing.
+  - It reads `Severity` and `Reworks`, and reports one that is malformed or not last. The retro's
+    brief counts the reviews by tier and the rework that landed since the last retro, whatever
+    its epic, and a reviewer's cost rows stay out of the ETA and show on a line of their own.
 - **The smoke's self-test** smokes a server on 127.0.0.1: answers, redirects, a timeout, a closed
   port, the marker's URL, and credentials sent but never printed. In throwaway repos, it checks the
   commit staging names against HEAD: HEAD in full and short, a staging behind it, a commit HEAD
@@ -261,6 +282,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - A worker's turns start inside its Agent call and end after the call has answered. The suite
     covers a worker that takes several turns, one whose later turn starts while the next worker's
     spawn waits, a turn that died, and a cost the session's total can't give.
+  - A reviewer gets the review effort whatever its story's tier, goes on in the foreground, and
+    writes rows marked `review`. Its events name no story.
 - **The fold's self-test** folds sample files in a temporary folder. It covers the lock free,
   held, left stale and freed by a fold that throws, a folder that's gone, and four processes
   folding one folder at once.
@@ -285,7 +308,9 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
 - **The fixture's self-test** builds every eval fixture in a temporary folder with a home of its
   own. It reads each fixture's stage as the briefing does, the web page's from stage 3 to 5, runs
   `existing`'s tests and the gates on `planned`, commits through `earlier`'s armed hook, pushes to
-  `architected`'s remote, and checks that each case's scaffold names a fixture.
+  `architected`'s remote, and checks that each case's scaffold names a fixture. It reads `landed`,
+  a T3 story that landed without what it promised, as waiting for its review, and `reviewed` as
+  waiting for `decide`.
 - **The eval runner's self-test** loads every case, holds its YAML reader and graders to samples,
   and runs whole cases against a stand-in for `claude`. Those runs cover the fixture, the prompt,
   the tools granted, a session's environment, a timeout, the cost cap and the cleaned events. It
@@ -344,7 +369,8 @@ node tools/evals.mjs story plan   # the named cases
   - the hooks or the project file templates
   - the evals
 - **Each case sets its own run.**
-  - `runs: 1` and `model: claude-sonnet-5-5`; the worker keeps its pinned Opus.
+  - `runs: 1` and `model: claude-sonnet-5-5`; the worker keeps its pinned Opus, and the reviewer
+    runs on the case's model.
   - Its graders are deterministic: `regex`, `tool_used` and `file_exists`, with no LLM judge.
   - A `regex` grader's file target may be a glob, such as `spec/*.md`, which reads every file it
     matches, so the grader checks what was written whichever tool wrote it.

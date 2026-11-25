@@ -14,6 +14,16 @@ Should people be able to pay without an account? 3.2 is built with sign-in requi
 
 Saved carts touch the cart, the session store and a cleanup job; they need more than one story.
 
+### Q-009 Review 3.2 (2026-10-30)
+- Blocks: nothing
+- Default taken: landed as built
+- Severity: high
+
+The review of 3.2 found one thing:
+
+1. `src/checkout/payment.ts:41` (high): a signed-out request reaches the payment step by its
+   address, though 3.2 says the server refuses it. No test sends that request.
+
 ## Backlog
 
 - 2026-10-28 The settings page loads slowly on mobile (seen in 2.3)

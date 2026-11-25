@@ -6,6 +6,8 @@
 //   node state.mjs                                          the state of the project here
 //   node state.mjs --ready [N | N.M]                        the stories a batch may start and their workers' effort, or why none
 //   node state.mjs --story N.M                              a story-worker's brief
+//   node state.mjs --reviews                                the landed stories no reviewer has read and the reviewer's effort, or why none
+//   node state.mjs --review N.M                             a story-reviewer's brief
 //   node state.mjs --ids                                    the next question, decision and epic numbers
 //   node state.mjs --retro                                  the retro's brief, or the tags it leaves
 //   node state.mjs --release                                the release's brief, or the tag it leaves
@@ -105,7 +107,7 @@ function readSpec(root, problems) {
 }
 
 // docs/stories/<N>-<slug>.md: `# Epic N: Title`, then `## N.M Title` stories, each with its fields
-// and a `### Spec delta`.
+// and a `### Spec delta`. A rework story names the story it reworks in a last field, Reworks.
 function readStories(root, problems) {
   const stories = new Map()
   for (const name of markdownFiles(root, 'docs/stories')) {
@@ -129,7 +131,11 @@ function readStories(root, problems) {
         if (story.fields[field] === undefined) problems.push(`${rel}:${story.line}: ${story.id} has no ${field}`)
       }
       if (!story.delta) problems.push(`${rel}:${story.line}: ${story.id} has no "### Spec delta"`)
-      const { Tier: tier, MVP: mvp, Requirements: cited, After: after } = story.fields
+      const { Tier: tier, MVP: mvp, Requirements: cited, After: after, Reworks: reworks } = story.fields
+      // Reworks goes last: Harbor's build stops reading a story's fields at the first it doesn't know.
+      if (reworks !== undefined && Object.keys(story.fields).at(-1) !== 'Reworks') problems.push(`${rel}:${story.line}: ${story.id}'s Reworks is not its last field`)
+      if (reworks !== undefined && (!STORY.test(reworks) || reworks === story.id)) problems.push(`${rel}:${story.line}: ${story.id}'s Reworks is not another story's ID`)
+      story.reworks = reworks !== undefined && STORY.test(reworks) && reworks !== story.id ? reworks : null
       if (tier !== undefined && !/^T[123]$/.test(tier)) problems.push(`${rel}:${story.line}: ${story.id}'s Tier is not T1, T2 or T3`)
       if (mvp !== undefined && mvp !== 'yes' && mvp !== 'no') problems.push(`${rel}:${story.line}: ${story.id}'s MVP is not yes or no`)
       const requirements = cited === undefined || cited === 'none' ? [] : list(cited)
@@ -153,7 +159,7 @@ function readStories(root, problems) {
           problems.push(`${rel}:${i + 1}: ${id} is already in ${stories.get(id).file}`)
         } else {
           story = { id, epic, epicTitle, title: line.slice(`## ${id} `.length).trim(), file: rel, line: i + 1, text: sectionAt(lines, i), fields: {}, delta: false }
-          i = readFields(lines, i + 1, ['Tier', 'MVP', 'Requirements', 'After'], story.fields, (at, what) =>
+          i = readFields(lines, i + 1, ['Tier', 'MVP', 'Requirements', 'After', 'Reworks'], story.fields, (at, what) =>
             problems.push(`${rel}:${at}: ${id} ${what}`),
           ) - 1
           delta = false
@@ -176,12 +182,15 @@ function readStories(root, problems) {
     for (const id of story.after) {
       if (STORY.test(id) && !stories.has(id)) problems.push(`${story.file}:${story.line}: ${story.id} comes after ${id}, which is not a story`)
     }
+    if (story.reworks !== null && !stories.has(story.reworks)) problems.push(`${story.file}:${story.line}: ${story.id} reworks ${story.reworks}, which is not a story`)
   }
   return stories
 }
 
 // docs/queue.md: `## Questions`, each `### Q-NNN Title (date)` with Blocks and Default taken, and
-// `## Backlog`, one dated line each. With `problems` null it only counts, for an earlier version.
+// `## Backlog`, one dated line each. A question that can't wait carries a last field,
+// `Severity: high`, and one titled `Review N.M` holds that story's review. With `problems` null it
+// only counts, for an earlier version.
 function readQueue(text, problems, stories) {
   const rel = 'docs/queue.md'
   const report = (line, what) => problems?.push(`${rel}:${line}: ${what}`)
@@ -207,15 +216,19 @@ function readQueue(text, problems, stories) {
       if (asked.has(heading[1])) report(at, `${heading[1]} is already a question`)
       asked.add(heading[1])
       const fields = {}
-      i = readFields(lines, i + 1, ['Blocks', 'Default taken'], fields, (at, what) => report(at, `${heading[1]} ${what}`)) - 1
+      i = readFields(lines, i + 1, ['Blocks', 'Default taken', 'Severity'], fields, (at, what) => report(at, `${heading[1]} ${what}`)) - 1
       for (const field of ['Blocks', 'Default taken']) {
         if (fields[field] === undefined) report(i + 1, `${heading[1]} has no ${field}`)
       }
+      // Severity goes last: Harbor's build stops reading a question's fields at the first it doesn't know.
+      if (fields.Severity !== undefined && fields.Severity !== 'high') report(i + 1, `${heading[1]}'s Severity is not high`)
+      if (fields.Severity !== undefined && Object.keys(fields).at(-1) !== 'Severity') report(i + 1, `${heading[1]}'s Severity is not its last field`)
       const blocks = fields.Blocks === undefined || fields.Blocks === 'nothing' ? [] : list(fields.Blocks)
       for (const id of blocks) {
         if (!STORY.test(id) || (stories !== null && !stories.has(id))) report(i + 1, `${heading[1]} blocks ${id}, which is not a story`)
       }
-      questions.push({ id: heading[1], title: heading[2], date: heading[3], blocks, line: at })
+      const review = /^Review (\d+\.\d+)$/.exec(heading[2])?.[1] ?? null
+      questions.push({ id: heading[1], title: heading[2], date: heading[3], blocks, line: at, severity: fields.Severity === 'high' ? 'high' : null, review })
     } else if (section === 'backlog' && line.startsWith('- ')) {
       if (new RegExp(`^- ${DATE} \\S`).test(line)) backlog += 1
       else report(i + 1, 'a backlog line does not start with its date, "- YYYY-MM-DD"')
@@ -528,9 +541,38 @@ function landedAfterLive(git, branch, tags) {
   return after
 }
 
+// The feat, review and fix commits that name a story, asked of git as the feat commits are.
+const STORY_LOG = ['--basic-regexp', ...['feat', 'review', 'fix'].map((kind) => `--grep=^${kind}([0-9][0-9]*\\.[0-9][0-9]*):`)]
+
+// What landed since the last retro: for each story, its feat and fix commits, oldest first, and
+// what its review commit says, among the commits the default branch reaches and no phase-N or live
+// tag does. `unread` is set when git couldn't say.
+function readScope(git, branch, tags, done) {
+  const scope = { commits: new Map(), reviews: new Map(), fixes: 0, unread: false }
+  // With no story landed there is nothing to ask git, as in a repository with no commit yet.
+  if (branch === null || done.size === 0) return scope
+  const closed = [...tags].filter((tag) => tag === 'live' || /^phase-\d+$/.test(tag)).map((tag) => `refs/tags/${tag}`)
+  const log = git(['log', ...STORY_LOG, '--format=%h%x09%s', branch, ...(closed.length > 0 ? ['--not', ...closed] : [])])
+  if (log === null) return { ...scope, unread: true }
+  for (const line of log.split('\n').reverse()) {
+    const [sha, subject = ''] = line.split('\t')
+    const named = /^(feat|review|fix)\((\d+\.\d+)\):(.*)$/.exec(subject)
+    if (named === null) continue
+    const [, kind, id, said] = named
+    if (kind === 'review') scope.reviews.set(id, said.trim())
+    else scope.commits.set(id, [...(scope.commits.get(id) ?? []), { sha, subject, feat: kind === 'feat' }])
+    if (kind === 'fix') scope.fixes += 1
+  }
+  return scope
+}
+
+// Whether a story's feat commit landed since the last retro.
+const inScope = (scope, id) => scope.commits.get(id)?.some((commit) => commit.feat) === true
+
 // The cost rows the emitter wrote for this project on this machine, folded or not, as one row per
 // run. A story-worker writes a row at each of its turns' ends, naming itself as `agent`, and those
-// add up to its run; a row that names no agent is a run of its own.
+// add up to its run; a row that names no agent is a run of its own. A story-reviewer's rows carry
+// `review`, and add up the same way.
 function costRows(home, id) {
   const dir = path.join(home, '.epikloop', 'projects', id)
   const rows = []
@@ -573,7 +615,8 @@ function fuelGauge(project, mvp, done, delta, { now, home }) {
   const days = Number.isNaN(frozen) ? WINDOW : Math.min(WINDOW, Math.max(1, Math.floor((now - frozen) / DAY)))
   const recent = closed.filter((story) => done.get(story.id) <= now && now - done.get(story.id) <= days * DAY).length
   const parts = [`MVP ${closed.length}/${mvp.length}`, `${(recent / days).toFixed(1)} stories/day`]
-  const rows = costRows(home, project.id)
+  // A review isn't a story's build, so its rows are no part of what a story left to build takes.
+  const rows = costRows(home, project.id).filter((row) => row.review !== true)
   const hours = typeof project.hours_per_day === 'number' && project.hours_per_day > 0 ? project.hours_per_day : null
   if (rows.length === 0 || hours === null) parts.push('ETA unknown')
   else {
@@ -597,9 +640,50 @@ const signed = (delta) => (delta > 0 ? `+${delta}` : String(delta))
 // Why sign-off can't happen yet by the queue, or null when queue Δ allows it.
 const queueWait = (delta) => (delta === null ? 'queue Δ is unknown' : delta > 0 ? `queue Δ is ${signed(delta)}` : null)
 
+// The landed stories no reviewer has read, in plan order: the stories in docs/stories/ whose feat
+// commit landed since the last retro, with no review(N.M) commit there. None in team mode, where a
+// story's pull request is its review. With `facts`, as a batch's list reads it, a review committed
+// here and not pushed yet counts too.
+function reviewsWaiting(s, project, facts = null) {
+  if (project.mode !== 'solo') return []
+  return planOrder(s.stories).filter((story) => story.tier !== null && inScope(s.scope, story.id) && !s.scope.reviews.has(story.id) && !facts?.reviewed.has(story.id))
+}
+
+// A few IDs as prose, and the rest counted.
+const some = (ids, shown = 3) => (ids.length <= shown ? prose(ids) : `${ids.slice(0, shown).join(', ')} and ${ids.length - shown} more`)
+// Stories that wait for a review, as a clause: "1.2 waits for its review".
+const awaitReview = (ids) => `${some(ids)} ${ids.length === 1 ? 'waits for its review' : 'wait for their reviews'}`
+
+// What a closing ceremony waits for in solo mode: the landed stories no reviewer has read, and then
+// the reviews whose questions are still open. Null when nothing holds it.
+function reviewHold(s, project) {
+  const waiting = reviewsWaiting(s, project).map((story) => story.id)
+  if (waiting.length > 0) {
+    return { why: awaitReview(waiting), next: `/epikloop:epic ${waiting[0].split('.')[0]}` }
+  }
+  const open = project.mode === 'solo' ? s.questions.filter((q) => q.review !== null && inScope(s.scope, q.review)).map((q) => q.id) : []
+  if (open.length === 0) return null
+  return { why: `${some(open)} ${open.length === 1 ? 'holds a review that is' : 'hold reviews that are'} open`, next: '/epikloop:decide' }
+}
+
+// A closing ceremony's stage, held while a review waits or is open: a phase closes only once its
+// reviews are settled.
+function ceremony(stage, s, project) {
+  const hold = reviewHold(s, project)
+  return hold === null ? stage : { ...stage, held: true, why: `${stage.why}, and ${hold.why}`, next: hold.next }
+}
+
+// A question marked high comes before whatever is next, from the batch on.
+function highFirst(stage, questions) {
+  const high = questions.filter((q) => q.severity === 'high')
+  if (stage.n < 6 || high.length === 0 || stage.next.startsWith('/epikloop:decide')) return stage
+  const more = high.length > 1 ? ` and ${plural(high.length - 1, 'more question')}` : ''
+  return { ...stage, why: `${stage.why}, and ${high[0].id}${more} ${high.length > 1 ? 'are' : 'is'} marked high`, next: `/epikloop:decide, then ${stage.next}` }
+}
+
 // Post-MVP mode: the backlog is visible, and planned work runs epic by epic. Each epic that lands
 // after the live tag is a phase too, closed by its retro before the next.
-function liveStage(s) {
+function liveStage(s, project) {
   const epics = [...new Set(planOrder(s.stories).map((story) => story.epic))]
   const closing = epics.find((epic) => {
     const stories = [...s.stories.values()].filter((story) => story.epic === epic)
@@ -609,7 +693,7 @@ function liveStage(s) {
     const why = recorded(s, `Phase ${closing} retro`)
       ? `the product is live; epic ${closing}'s retro is recorded, and phase-${closing} isn't tagged yet`
       : `the product is live, and epic ${closing}'s stories are done with no phase-${closing} tag`
-    return { n: 10, epic: closing, retro: true, why, next: '/epikloop:retro' }
+    return ceremony({ n: 10, epic: closing, retro: true, why, next: '/epikloop:retro' }, s, project)
   }
   const work = planOrder(s.stories).find((story) => !s.done.has(story.id))
   const why = `the product is live${s.backlog > 0 ? `, and docs/queue.md holds ${plural(s.backlog, 'backlog line')}` : ''}`
@@ -632,45 +716,57 @@ function stageOf(root, project, s, delta) {
   if (!has('spec', 'architecture.md')) return { n: 4, why: 'spec/architecture.md is missing', next: '/epikloop:architect' }
   const mvp = [...s.stories.values()].filter((story) => story.mvp)
   // A product adopted while already in production is tagged live, and goes on without an MVP set.
-  if (s.tags.has('live') && mvp.length === 0) return liveStage(s)
+  if (s.tags.has('live') && mvp.length === 0) return liveStage(s, project)
   if (s.stories.size === 0) return { n: 5, why: 'docs/stories/ holds no stories yet', next: '/epikloop:plan' }
   if (!project.mvp_frozen) return { n: 5, why: "the MVP set isn't frozen", next: '/epikloop:plan' }
   if (mvp.length === 0) return { n: 5, why: 'no story is in the MVP set', next: '/epikloop:plan' }
+  // Stage 6 for `epic`, whose stories `left` are still to build: decide comes first while a question
+  // blocks one of them, or five or more wait.
+  const building = (epic, left, why) => {
+    const blocking = s.questions.filter((q) => q.blocks.some((id) => left.some((story) => story.id === id)))
+    if (blocking.length > 0) {
+      const first = blocking[0]
+      const blocked = first.blocks.filter((id) => left.some((story) => story.id === id))
+      const more = blocking.length > 1 ? ` and ${plural(blocking.length - 1, 'more question')}` : ''
+      return { n: 6, epic, why: `${why}, and ${first.id}${more} ${blocking.length > 1 ? 'block' : 'blocks'} ${blocked.join(', ')}`, next: `/epikloop:decide, then /epikloop:epic ${epic}` }
+    }
+    if (s.questions.length >= MANY_QUESTIONS) return { n: 6, epic, why: `${why}, and ${s.questions.length} questions wait`, next: `/epikloop:decide, then /epikloop:epic ${epic}` }
+    return { n: 6, epic, why, next: `/epikloop:epic ${epic}` }
+  }
+  // An MVP story a decision added to a phase already closed is built before anything else closes:
+  // no later test here would name it. Once the product is live, the planned work names it.
+  const reopened = s.tags.has('live') ? undefined : planOrder(s.stories).find((story) => story.mvp && s.tags.has(`phase-${story.epic}`) && !s.done.has(story.id))
+  if (reopened !== undefined) {
+    const left = mvp.filter((story) => story.epic === reopened.epic && !s.done.has(story.id))
+    const added = planOrder(new Map(left.map((story) => [story.id, story]))).map((story) => story.id)
+    return building(reopened.epic, left, `epic ${reopened.epic} is closed, and ${some(added)} ${added.length === 1 ? 'was' : 'were'} added to it since`)
+  }
   const epics = [...new Set(mvp.map((story) => story.epic))].sort((a, b) => a - b)
   const epic = epics.find((n) => !s.tags.has(`phase-${n}`))
   if (epic === undefined && !s.tags.has('mvp')) {
     const wait = queueWait(delta)
     if (recorded(s, 'MVP sign-off')) {
       const why = wait === null ? "the MVP sign-off is recorded, and mvp isn't tagged yet" : `the MVP sign-off is recorded, but ${wait}, so mvp isn't tagged`
-      return { n: 8, why, next: '/epikloop:retro' }
+      return ceremony({ n: 8, why, next: '/epikloop:retro' }, s, project)
     }
-    return { n: 8, why: `every MVP epic is tagged, and the MVP isn't signed off${wait === null ? '' : `; sign-off waits while ${wait}`}`, next: '/epikloop:retro' }
+    return ceremony({ n: 8, why: `every MVP epic is tagged, and the MVP isn't signed off${wait === null ? '' : `; sign-off waits while ${wait}`}`, next: '/epikloop:retro' }, s, project)
   }
   if (epic === undefined && !s.tags.has('live')) {
-    if (recorded(s, 'Go live')) return { n: 9, why: "the go-live is recorded, and live isn't tagged yet", next: '/epikloop:release' }
+    if (recorded(s, 'Go live')) return ceremony({ n: 9, why: "the go-live is recorded, and live isn't tagged yet", next: '/epikloop:release' }, s, project)
     // While a recorded decision puts going live off, the planned work runs first, epic by epic.
     const later = recorded(s, 'Go live later')
-    if (later === undefined) return { n: 9, why: 'the MVP is signed off, and nothing is live yet', next: '/epikloop:release' }
+    if (later === undefined) return ceremony({ n: 9, why: 'the MVP is signed off, and nothing is live yet', next: '/epikloop:release' }, s, project)
     const work = planOrder(s.stories).find((story) => !s.done.has(story.id))
-    if (work === undefined) return { n: 9, why: `the MVP is signed off, going live waits, as ${later.id} records, and nothing planned is left`, next: '/epikloop:release' }
+    if (work === undefined) return ceremony({ n: 9, why: `the MVP is signed off, going live waits, as ${later.id} records, and nothing planned is left`, next: '/epikloop:release' }, s, project)
     return { n: 9, epic: work.epic, why: `the MVP is signed off, and going live waits, as ${later.id} records`, next: `/epikloop:epic ${work.epic}` }
   }
-  if (epic === undefined) return liveStage(s)
+  if (epic === undefined) return liveStage(s, project)
   const left = mvp.filter((story) => story.epic === epic && !s.done.has(story.id))
   if (left.length === 0) {
     const why = recorded(s, `Phase ${epic} retro`) ? `epic ${epic}'s retro is recorded, and phase-${epic} isn't tagged yet` : `epic ${epic}'s MVP stories are done, and it has no phase-${epic} tag`
-    return { n: 7, epic, why, next: '/epikloop:retro' }
+    return ceremony({ n: 7, epic, why, next: '/epikloop:retro' }, s, project)
   }
-  const why = `epic ${epic} has ${plural(left.length, 'MVP story', 'MVP stories')} left`
-  const blocking = s.questions.filter((q) => q.blocks.some((id) => left.some((story) => story.id === id)))
-  if (blocking.length > 0) {
-    const first = blocking[0]
-    const blocked = first.blocks.filter((id) => left.some((story) => story.id === id))
-    const more = blocking.length > 1 ? ` and ${plural(blocking.length - 1, 'more question')}` : ''
-    return { n: 6, epic, why: `${why}, and ${first.id}${more} ${blocking.length > 1 ? 'block' : 'blocks'} ${blocked.join(', ')}`, next: `/epikloop:decide, then /epikloop:epic ${epic}` }
-  }
-  if (s.questions.length >= MANY_QUESTIONS) return { n: 6, epic, why: `${why}, and ${s.questions.length} questions wait`, next: `/epikloop:decide, then /epikloop:epic ${epic}` }
-  return { n: 6, epic, why, next: `/epikloop:epic ${epic}` }
+  return building(epic, left, `epic ${epic} has ${plural(left.length, 'MVP story', 'MVP stories')} left`)
 }
 
 // What is wrong with the project marker, by the fields its schema requires, or null.
@@ -702,10 +798,10 @@ export function openProject(dir) {
 
 const SKILLS = path.join(import.meta.dirname, '..', 'skills')
 
-// Whether only the human starts the command `next` begins with: its skill's frontmatter keeps the
-// model from invoking it.
+// Whether only the human starts the command `next` ends with, as in "decide, then retro": its
+// skill's frontmatter keeps the model from invoking it.
 function humanStarts(next) {
-  const name = /^\/epikloop:([a-z-]+)/.exec(next)?.[1]
+  const name = [...next.matchAll(/\/epikloop:([a-z-]+)/g)].at(-1)?.[1]
   if (name === undefined) return false
   try {
     const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(fs.readFileSync(path.join(SKILLS, name, 'SKILL.md'), 'utf8'))?.[1] ?? ''
@@ -727,7 +823,12 @@ export function summary(opened, state) {
     `Stage ${n} of 10: ${why}. Next: ${next}${humanStarts(next) ? ', which only the human starts' : ''}.`,
   ]
   const waiting = state.questions.length
-  const needs = waiting > 0 ? [`${waiting} ${waiting === 1 ? 'question waits' : 'questions wait'} in docs/queue.md`] : []
+  const high = state.questions.filter((q) => q.severity === 'high').length
+  const needs = waiting > 0 ? [`${waiting} ${waiting === 1 ? 'question waits' : 'questions wait'} in docs/queue.md${high > 0 ? `, ${high} marked high` : ''}`] : []
+  // The landed stories no reviewer has read, which no question stands for any more. A closing
+  // ceremony's stage names them itself.
+  const unread = state.stage.held ? [] : reviewsWaiting(state, project).map((story) => story.id)
+  if (unread.length > 0) needs.push(`${awaitReview(unread)}, which the next /epikloop:epic batch runs`)
   return { parts, needs }
 }
 
@@ -755,7 +856,10 @@ export function readState(root, project, { now = Date.now(), home = os.homedir()
   const { branch, tags } = refsOf(git)
   const done = doneTimes(git, branch)
   const afterLive = landedAfterLive(git, branch, tags)
-  const s = { requirements, stories, questions, backlog, decisions, problems, done, afterLive, tags, design }
+  const scope = readScope(git, branch, tags, done)
+  // A scope git couldn't give is said, and holds nothing: no project waits on a failed read.
+  if (scope.unread) problems.push("git log: the commits since the last retro can't be read, so no review is listed")
+  const s = { requirements, stories, questions, backlog, decisions, problems, done, afterLive, tags, design, scope }
 
   // Queue Δ: the open entries now minus those at the start of the current phase. Until the `mvp`
   // tag, the current phase is the lowest untagged MVP epic, else the last one, so sign-off weighs
@@ -775,7 +879,7 @@ export function readState(root, project, { now = Date.now(), home = os.homedir()
     }
     gauge = fuelGauge(project, mvp, done, delta, { now, home })
   }
-  return { ...s, lane, stage: stageOf(root, project, s, delta), gauge, delta, base }
+  return { ...s, lane, stage: highFirst(stageOf(root, project, s, delta), questions), gauge, delta, base }
 }
 
 // ---- What a batch reads
@@ -785,8 +889,9 @@ const planOrder = (stories) => [...stories.values()].sort((a, b) => a.epic - b.e
 
 // What a batch needs from git beyond the state, or null without a commit to start from: the
 // default branch's name, the remote it lands on and how far apart the two are, whether the
-// checkout is clean and on that branch, and the stories in review, whose feat commit is on another
-// branch and not yet on the default one.
+// checkout is clean and on that branch, the stories in review, whose feat commit is on another
+// branch and not yet on the default one, and the stories reviewed here whose review commit isn't
+// pushed yet.
 export function batchFacts(root) {
   const git = gitReader(root)
   const { branch } = refsOf(git)
@@ -810,7 +915,16 @@ export function batchFacts(root) {
     const feat = /^feat\((\d+\.\d+)\):/.exec(subject)
     if (feat !== null) review.add(feat[1])
   }
-  return { name, current, remote, upstream, ahead, behind, clean: status !== null && status.trim() === '', review }
+  // A batch pushes its reviews together, so until then their commits are only here. On a clone,
+  // where the default branch is the remote's, the state doesn't read them yet.
+  const reviewed = new Set()
+  if (upstream !== null && ahead > 0) {
+    for (const subject of (git(['log', ...STORY_LOG, '--format=%s', `refs/remotes/${upstream}..refs/heads/${name}`]) ?? '').split('\n')) {
+      const named = /^review\((\d+\.\d+)\):/.exec(subject)
+      if (named !== null) reviewed.add(named[1])
+    }
+  }
+  return { name, current, remote, upstream, ahead, behind, clean: status !== null && status.trim() === '', review, reviewed }
 }
 
 // Why a story that isn't done can't start now, or null when it can.
@@ -871,6 +985,9 @@ export function readyList(state, project, facts, select) {
     const why = hold(story, state, facts)
     return why === null ? { lines: [line(story)] } : say(`${select} ${why}, so it is not ready.`)
   }
+  // While a closing ceremony waits for a landed story's review, a batch builds nothing, whatever
+  // epic it names: the stage sent it here for the reviews. One named story may still start.
+  if (stage.held && reviewsWaiting(state, project).length > 0) return say(`Nothing is ready: ${stage.why}. Next: ${stage.next}.`)
   if (select === undefined && (stage.n === 7 || stage.retro)) return say(`Nothing is ready: ${stage.why}. Next: ${stage.next}.`)
   const epic = select !== undefined ? Number(select) : stage.n === 6 ? stage.epic : null
   // A product adopted live has no mvp tag, and its planned work runs as after a sign-off.
@@ -912,11 +1029,13 @@ const nextDecision = (state) => `DECISION-${following(state.decisions.map((d) =>
 // so a repository whose history already used those numbers never has a story done before it starts.
 const nextEpic = (state) => Math.max(0, ...[...state.stories.values()].map((story) => story.epic), ...[...state.done.keys()].map((id) => Number(id.split('.')[0]))) + 1
 
+// The next question's number, never one a decision answered.
+const nextQuestion = (state) => `Q-${following([...state.questions.map((q) => q.id), ...state.decisions.map((d) => d.answers).filter(Boolean)])}`
+
 export function nextIds(state, now) {
-  const question = following([...state.questions.map((q) => q.id), ...state.decisions.map((d) => d.answers).filter(Boolean)])
   const today = ymd(now)
   return [
-    `A parked question goes under "## Questions" in docs/queue.md as "### Q-${question} Title (${today})", numbered on from there, then "- Blocks:" with the stories it blocks or "nothing", "- Default taken:" with the default the work goes on with, and the question itself.`,
+    `A parked question goes under "## Questions" in docs/queue.md as "### ${nextQuestion(state)} Title (${today})", numbered on from there, then "- Blocks:" with the stories it blocks or "nothing", "- Default taken:" with the default the work goes on with, "- Severity: high" as a last field when money or data can be lost or someone can see or do what they shouldn't, and the question itself.`,
     `A backlog line goes under "## Backlog" as "- ${today} what was found".`,
     `The next decision in docs/decisions.md is ${nextDecision(state)}.`,
   ]
@@ -928,7 +1047,18 @@ export function nextIds(state, now) {
 export function storyBrief(state, project, facts, id, now) {
   const story = state.stories.get(id)
   if (story === undefined) return null
-  const out = [`Story ${id}, from ${story.file}:`, '', story.text, '']
+  const out = storyLines(state, story, `Story ${id}, from ${story.file}:`)
+  out.push(...screensSection(state, story))
+  out.push(...laneSection(state, 'Story'))
+  const commit = `one commit whose subject starts "feat(${id}): ", holding the code, its tests and the spec delta`
+  return [...out, landing(project, facts, commit, `story/${id}`), '', ...nextIds(state, now)]
+}
+
+// A story with what it stands on, as brief lines under `opening`: the story, the requirements it
+// cites and the decisions that name it, each verbatim.
+function storyLines(state, story, opening) {
+  const { id } = story
+  const out = [opening, '', story.text, '']
   if (story.requirements.length > 0) out.push('The requirements it cites:', '')
   for (const req of story.requirements) {
     const r = state.requirements.get(req)
@@ -939,10 +1069,77 @@ export function storyBrief(state, project, facts, id, now) {
   const decisions = state.decisions.filter((d) => named.has(d.id) || own.test(d.text))
   if (decisions.length > 0) out.push('The decisions that name it, from docs/decisions.md:', '')
   for (const d of decisions) out.push(d.text, '')
-  out.push(...screensSection(state, story))
-  out.push(...laneSection(state, 'Story'))
-  const commit = `one commit whose subject starts "feat(${id}): ", holding the code, its tests and the spec delta`
-  return [...out, landing(project, facts, commit, `story/${id}`), '', ...nextIds(state, now)]
+  return out
+}
+
+// ---- What a review reads
+
+// The landed stories a batch's reviewers read next, as the ready list prints stories, the line a
+// reviewer's spawn description starts with; the CLI adds the reviewer's effort as a last line.
+// When none can start, `text` says why, and `fails` is set when the checkout has to change first.
+export function reviewList(state, project, facts) {
+  const say = (text, fails = false) => ({ lines: [], text, fails })
+  if (project.mode !== 'solo') return say("No review waits: in team mode a story's pull request is its review.")
+  if (state.scope.unread) return say("No review is listed: git couldn't read the commits since the last retro.", true)
+  const waiting = reviewsWaiting(state, project, facts)
+  if (facts !== null && waiting.length > 0) {
+    // A review starts from a clean tree on the default branch, as a batch does. The reviews' own
+    // commits wait there meanwhile: the batch pushes them together, so a host that deploys at each
+    // push deploys once.
+    if (!facts.clean) return say("The working tree has changes that aren't committed, and a review starts from a clean tree.", true)
+    const branch = branchProblem(facts, 'a review')
+    if (branch !== null) return say(branch, true)
+  }
+  if (facts !== null && waiting.length === 0 && facts.ahead > 0) {
+    // A push lands nothing while the remote holds commits this branch lacks, so none is named.
+    if (facts.behind > 0) return say(`No review waits, but ${facts.name} and ${facts.upstream} have diverged, and the human reconciles them before anything is pushed.`, true)
+    return say(`No review waits, and ${facts.name} has ${plural(facts.ahead, 'commit')} that ${facts.upstream} lacks; \`git push ${facts.remote} ${facts.name}\` lands ${facts.ahead === 1 ? 'it' : 'them'}.`, true)
+  }
+  return waiting.length > 0 ? { lines: waiting.map((story) => `${story.id} ${story.tier} ${story.title}`) } : say('No review waits.')
+}
+
+// What each tier asks of a story's commit, as the worker is told it.
+const TIER_ASKS = {
+  T1: 'the gates, and evidence for each acceptance criterion',
+  T2: 'the gates, evidence for each acceptance criterion, and a test for each business rule its requirements quote',
+  T3: 'the gates, evidence for each acceptance criterion, a test for each business rule its requirements quote, and negative-case tests from an adversarial reading of the change',
+}
+
+// A story-reviewer's brief: the story with what it stands on, what its tier asks of its commit, its
+// commits since the last retro and how to read one, then the record and how it lands. A T3 story
+// always gets its question, as does one whose review a question already asks for; a T1 or T2
+// story gets one only with findings. `fails` is set for a story that doesn't wait for a review.
+export function reviewBrief(state, project, facts, id, now) {
+  const story = state.stories.get(id)
+  if (story === undefined) return { text: `${id} is not a story.`, fails: true }
+  if (!reviewsWaiting(state, project, facts).includes(story)) return { text: `${id} doesn't wait for a review.`, fails: true }
+  const commits = state.scope.commits.get(id)
+  const out = storyLines(state, story, `Review of story ${id}, from ${story.file}:`)
+  out.push(`What ${story.tier} asks of its commit: ${TIER_ASKS[story.tier]}.`, '')
+  out.push(commits.length === 1 ? 'Its commit:' : 'Its commits, oldest first:', ...commits.map((commit) => `- ${commit.sha} ${commit.subject}`))
+  out.push(`\`git diff ${commits[0].sha}~1 ${commits[0].sha}\` shows what a commit changed, and the files stand as they are now.`, '')
+  const open = state.questions.find((q) => q.review === id)
+  const fields = '"- Blocks: nothing", "- Default taken: landed as built", and "- Severity: high" as a last field when a finding is high'
+  const findings = 'the findings as a numbered list, each opening with its place as `path:line`, then what happens and what it goes against'
+  const question =
+    open === undefined
+      ? `a question under "## Questions" in docs/queue.md, "### ${nextQuestion(state)} Review ${id} (${ymd(now)})", then ${fields}`
+      : `docs/queue.md already holds ${open.id}, which asks for this review, and its fields and its text are replaced: ${fields}`
+  // A T3 story's review always leaves its question, and so does one a question already asks for.
+  const always = story.tier === 'T3' || open !== undefined
+  out.push(
+    always ? `The record: ${question}; then ${findings}, or "The review found nothing."` : `The record: with findings, ${question}; then ${findings}. With none, nothing is written.`,
+    `A change that can't be read gets the question all the same, saying why, under the subject "review(${id}): not reviewed".`,
+  )
+  // The landing is given as its commands, to run as they stand: one chained after a cd, or given a
+  // folder with git -C, is a command no session has approved beforehand, and it is refused.
+  const found = `\`git add docs/queue.md\`, then \`git commit -m "review(${id}): 2 findings"\` with the findings' own count`
+  const commit = always
+    ? `${found}, or with "review(${id}): no findings"`
+    : `with findings, ${found}; with none, \`git commit --allow-empty -m "review(${id}): no findings"\``
+  const where = `The commit holds docs/queue.md and nothing else${always ? '' : ', or nothing at all'}, on ${facts?.name ?? 'the default branch'}. Each command runs as it stands: the shell is already in the project's folder, so no \`cd\` and no \`git -C\`.`
+  const pushed = facts?.remote == null ? 'There is no remote, so nothing is pushed.' : "It isn't pushed here: the batch pushes its reviews together, once none waits."
+  return { text: [...out, `Landing: ${commit}. ${where} ${pushed}`].join('\n') }
 }
 
 // The screens in the manifest that show a story's requirements, with their states and files, as
@@ -983,8 +1180,9 @@ function tagging(facts, tags) {
 }
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
-// A story-worker's effort per tier, beneath ~/.epikloop/config.json and .epikloop/project.json.
-const WORKER_EFFORT = { T1: 'medium', T2: 'high', T3: 'xhigh' }
+// A story-worker's effort per tier, and a story-reviewer's, beneath ~/.epikloop/config.json and
+// .epikloop/project.json.
+const WORKER_EFFORT = { T1: 'medium', T2: 'high', T3: 'xhigh', review: 'high' }
 
 // Each tier's worker effort, as the emitter sets it: the project's over the user's over the
 // default. A value that is no level is passed over, and so is a config that doesn't parse.
@@ -1008,23 +1206,55 @@ function workerLine(lines, project, home) {
   return `Worker effort: ${tiers.map((tier) => `${tier} ${effort[tier]}`).join(', ')}.`
 }
 
-// The cost rows on this machine, per tier and effort: how many runs, and their mean wall time and
-// cost.
+// The reviews' list's last line: the reviewer's effort, which the batch passes with its spawn.
+const reviewLine = (project, home) => `Review effort: ${workerEffort(project, home).review}.`
+
+// The cost rows on this machine, per tier and effort, and the reviews after them, per effort, with
+// the models that reviewed: how many runs, and their mean wall time and cost.
 function costLines(project, home) {
   const groups = new Map()
   for (const row of costRows(home, project.id)) {
-    const key = `${row.tier} at ${EFFORTS.includes(row.effort) ? row.effort : 'an unknown effort'}`
+    const key = `${row.review === true ? 'reviews' : row.tier} at ${EFFORTS.includes(row.effort) ? row.effort : 'an unknown effort'}`
     groups.set(key, [...(groups.get(key) ?? []), row])
   }
   if (groups.size === 0) return ['There are no cost rows on this machine yet.']
-  const order = (key) => Number(key[1]) * 10 + (EFFORTS.indexOf(key.split(' at ')[1]) + 1)
+  const order = (key) => (key.startsWith('reviews') ? 40 : Number(key[1]) * 10) + (EFFORTS.indexOf(key.split(' at ')[1]) + 1)
   const lines = [...groups].sort(([a], [b]) => order(a) - order(b)).map(([key, rows]) => {
     const wall = (rows.reduce((sum, row) => sum + row.wall, 0) / rows.length / 60).toFixed(1)
     const costs = rows.map((row) => row.cost).filter(Number.isFinite)
     const cost = costs.length === 0 ? '' : ` and $${(costs.reduce((sum, c) => sum + c, 0) / costs.length).toFixed(2)}`
-    return `- ${key}: ${plural(rows.length, 'run')}, ${wall} min${cost} each on average`
+    const models = key.startsWith('reviews') ? [...new Set(rows.map((row) => row.model).filter((model) => typeof model === 'string'))].sort() : []
+    return `- ${key}: ${plural(rows.length, 'run')}, ${wall} min${cost} each on average${models.length > 0 ? `, on ${prose(models)}` : ''}`
   })
   return ['The cost rows on this machine:', ...lines]
+}
+
+// The reviews since the last retro, for its brief: how many there were at each tier, how many had
+// findings, and the findings in all. Nothing in team mode, which has no review stage.
+function reviewLines(state, project) {
+  if (project.mode !== 'solo') return []
+  const reviews = [...state.scope.reviews]
+    .map(([id, said]) => ({ tier: state.stories.get(id)?.tier ?? null, findings: Number(/^(\d+) findings?$/.exec(said)?.[1] ?? 0), unread: said === 'not reviewed' }))
+    .filter((review) => review.tier !== null)
+  if (reviews.length === 0) return ['Reviews since the last retro: none.']
+  const byTier = (some) => Object.keys(TIER_ASKS).map((tier) => [tier, some.filter((review) => review.tier === tier).length]).filter(([, n]) => n > 0).map(([tier, n]) => `${tier} ${n}`).join(', ')
+  const found = reviews.filter((review) => review.findings > 0)
+  const total = found.reduce((sum, review) => sum + review.findings, 0)
+  const unread = reviews.filter((review) => review.unread).length
+  const findings = found.length === 0 ? 'none had findings' : `${found.length} had findings (${byTier(found)}), ${plural(total, 'finding')} in all`
+  return [`Reviews since the last retro: ${reviews.length} (${byTier(reviews)}); ${findings}${unread > 0 ? `; ${unread} could not be read` : ''}.`]
+}
+
+// The rework since the last retro, for its brief: the rework stories that landed, whatever their
+// epic, as the reviews are counted, and the commits that fix a landed story.
+function reworkLine(state) {
+  const stories = planOrder(state.stories).filter((story) => story.reworks !== null && inScope(state.scope, story.id)).map((story) => `${story.id} for ${story.reworks}`)
+  const { fixes } = state.scope
+  const parts = [
+    ...(stories.length > 0 ? [`${plural(stories.length, 'rework story', 'rework stories')} landed (${stories.join(', ')})`] : []),
+    ...(fixes > 0 ? [`${plural(fixes, 'commit')} that ${fixes === 1 ? 'fixes' : 'fix'} a landed story`] : []),
+  ]
+  return `Rework since the last retro: ${parts.length === 0 ? 'none' : parts.join(', and ')}.`
 }
 
 // The queue as a ceremony weighs it: its open entries, and queue Δ with its base, which only the
@@ -1060,7 +1290,7 @@ function compareLine(state) {
 export function retroBrief(state, project, facts, { home = os.homedir() } = {}) {
   const { stage } = state
   const closing = stage.n === 7 || stage.retro === true
-  if (!closing && stage.n !== 8) return refuse(`A retro waits: ${stage.why}. Next: ${stage.next}.`)
+  if ((!closing && stage.n !== 8) || stage.held) return refuse(`A retro waits: ${stage.why}. Next: ${stage.next}.`)
   if (facts === null) return refuse('A retro needs a commit to start from.')
   const problem = startProblem(project, facts, 'a retro')
   if (problem !== null) return refuse(problem)
@@ -1094,6 +1324,8 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
       ...(state.lane?.sections.Retro ? [`The ${state.lane.name} lane: ${state.lane.sections.Retro.replace(/\s*\n\s*/g, ' ')}`] : []),
       ...compareLine(state),
       queueLine(state),
+      ...reviewLines(state, project),
+      reworkLine(state),
       ...costLines(project, home),
     )
   } else {
@@ -1131,7 +1363,7 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
 // the default branch, only the tag.
 export function releaseBrief(state, project, facts) {
   const { stage } = state
-  if (stage.n !== 9) return refuse(`A release waits: ${stage.why}. Next: ${stage.next}.`)
+  if (stage.n !== 9 || stage.held) return refuse(`A release waits: ${stage.why}. Next: ${stage.next}.`)
   if (facts === null) return refuse('A release needs a commit to start from.')
   const problem = startProblem(project, facts, 'a release')
   if (problem !== null) return refuse(problem)
@@ -1212,12 +1444,14 @@ const EXAMPLES = {
   manifest: 'design/manifest.md',
 }
 const USAGE =
-  'usage: node state.mjs [--ready [N | N.M] | --story N.M | --ids | --retro | --release | --design | --lane plan|story|retro | --lanes | --example spec|stories|queue|decisions|manifest]'
+  'usage: node state.mjs [--ready [N | N.M] | --story N.M | --reviews | --review N.M | --ids | --retro | --release | --design | --lane plan|story|retro | --lanes | --example spec|stories|queue|decisions|manifest]'
 // The flags that read a project for a batch, a ceremony, the design or a lane, each with a test of
 // its argument.
 const FLAGS = {
   '--ready': (arg) => arg === undefined || /^\d+(?:\.\d+)?$/.test(arg),
   '--story': (arg) => STORY.test(arg ?? ''),
+  '--reviews': (arg) => arg === undefined,
+  '--review': (arg) => STORY.test(arg ?? ''),
   '--ids': (arg) => arg === undefined,
   '--retro': (arg) => arg === undefined,
   '--release': (arg) => arg === undefined,
@@ -1279,6 +1513,16 @@ function cli(argv) {
       if (brief === null) process.exitCode = 1
       return console.log(brief === null ? `${name} is not a story.` : brief.join('\n'))
     }
+    if (flag === '--reviews') {
+      const reviews = reviewList(state, opened.project, facts)
+      if (reviews.fails) process.exitCode = 1
+      return console.log(reviews.lines.length === 0 ? reviews.text : [...reviews.lines, reviewLine(opened.project, os.homedir())].join('\n'))
+    }
+    if (flag === '--review') {
+      const brief = reviewBrief(state, opened.project, facts, name, now)
+      if (brief.fails) process.exitCode = 1
+      return console.log(brief.text)
+    }
     const ready = readyList(state, opened.project, facts, name)
     if (ready.fails) process.exitCode = 1
     if (ready.lines.length === 0) return console.log(ready.text)
@@ -1290,7 +1534,7 @@ function cli(argv) {
   if (needs.length > 0) lines.push(`Needs the human: ${needs.join('; ')}.`)
   if (state?.questions.length > 0) {
     lines.push('Waiting questions:')
-    for (const q of state.questions) lines.push(`- ${q.id} ${q.title} (${q.date}), blocks ${q.blocks.length > 0 ? q.blocks.join(', ') : 'nothing'}`)
+    for (const q of state.questions) lines.push(`- ${q.id} ${q.title} (${q.date}), ${q.severity === 'high' ? 'marked high, ' : ''}blocks ${q.blocks.length > 0 ? q.blocks.join(', ') : 'nothing'}`)
   }
   if (state?.problems.length > 0) {
     lines.push('Unreadable lines:')
@@ -1304,16 +1548,32 @@ function cli(argv) {
 const NOW = Date.UTC(2026, 10, 15, 12)
 const MARKER = { format: 1, id: '000000000000', lane: 'web', mode: 'solo' }
 
-// A stories file for epic `n`: each story is [m, tier, mvp, after?].
+// A stories file for epic `n`: each story is [m, tier, mvp, after?, reworks?].
 function epicFile(n, stories) {
-  const body = stories.map(([m, tier, mvp, after]) =>
-    [`## ${n}.${m} Story ${n}.${m}`, `- Tier: ${tier}`, `- MVP: ${mvp ? 'yes' : 'no'}`, '- Requirements: REQ-APP-001', ...(after ? [`- After: ${after}`] : []), '', 'Body.', '', '### Spec delta', '- none', ''].join('\n'),
+  const body = stories.map(([m, tier, mvp, after, reworks]) =>
+    [
+      `## ${n}.${m} Story ${n}.${m}`,
+      `- Tier: ${tier}`,
+      `- MVP: ${mvp ? 'yes' : 'no'}`,
+      '- Requirements: REQ-APP-001',
+      ...(after ? [`- After: ${after}`] : []),
+      ...(reworks ? [`- Reworks: ${reworks}`] : []),
+      '',
+      'Body.',
+      '',
+      '### Spec delta',
+      '- none',
+      '',
+    ].join('\n'),
   )
   return `# Epic ${n}: Epic ${n}\n\n${body.join('\n')}`
 }
 
+// A queue file: each question is [id, blocks, title?, severity?].
 function queueFile({ questions = [], backlog = 0 } = {}) {
-  const asked = questions.map(([id, blocks]) => `### ${id} Question (2026-11-01)\n- Blocks: ${blocks}\n- Default taken: the safe one\n\nWhy.\n`)
+  const asked = questions.map(
+    ([id, blocks, title = 'Question', severity]) => `### ${id} ${title} (2026-11-01)\n- Blocks: ${blocks}\n- Default taken: the safe one\n${severity ? `- Severity: ${severity}\n` : ''}\nWhy.\n`,
+  )
   const lines = Array.from({ length: backlog }, (_, i) => `- 2026-11-0${(i % 9) + 1} Backlog item ${i + 1}`)
   return `# Queue\n\n## Questions\n\n${asked.join('\n')}\n## Backlog\n\n${lines.join('\n')}\n`
 }
@@ -1366,7 +1626,8 @@ const CASES = [
         [[...s.stories.keys()].join(' '), '3.1 3.2 3.3'],
         [`${story('3.1').tier} ${story('3.2').tier} ${story('3.3').tier}`, 'T1 T3 T2'],
         [`${story('3.1').mvp} ${story('3.3').mvp} ${story('3.2').after}`, 'true false 3.1'],
-        [s.questions.map((q) => `${q.id}>${q.blocks}`).join(' '), 'Q-007>3.2 Q-008>3.3'],
+        [s.questions.map((q) => `${q.id}>${q.blocks}`).join(' '), 'Q-007>3.2 Q-008>3.3 Q-009>'],
+        [s.questions.map((q) => `${q.severity} ${q.review}`).join(', '), 'null null, null null, high 3.2'],
         [s.backlog, 2],
         [s.decisions.map((d) => `${d.id}>${d.answers}`).join(' '), 'DECISION-001>null DECISION-002>Q-006'],
         [`${s.stage.n} ${s.stage.next}`, '2 /epikloop:adopt'],
@@ -1668,6 +1929,7 @@ const CASES = [
     (k) => {
       const dir = k.repo(planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', true]] }))
       k.commit(dir, 'feat(1.1): one', 1)
+      k.reviewed(dir, '1.1')
       return k.stage(dir, "7 epic 1's MVP stories are done, and it has no phase-1 tag → /epikloop:retro")
     },
   ],
@@ -1677,6 +1939,7 @@ const CASES = [
       const dir = k.repo(planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', true]] }))
       k.write(dir, 'docs/decisions.md', decisionsFile(['Phase 1 retro']))
       k.commit(dir, 'feat(1.1): one', 1)
+      k.reviewed(dir, '1.1')
       return k.stage(dir, "7 epic 1's retro is recorded, and phase-1 isn't tagged yet → /epikloop:retro")
     },
   ],
@@ -1738,7 +2001,14 @@ const CASES = [
       ]
       k.commit(dir, 'feat(2.1): two', 0)
       k.commit(dir, 'feat(2.2): three', 0)
-      got.push(k.stage(dir, '9 the MVP is signed off, going live waits, as DECISION-003 records, and nothing planned is left → /epikloop:release'))
+      // The release waits for the reviews of what landed since the last retro.
+      const left = 'the MVP is signed off, going live waits, as DECISION-003 records, and nothing planned is left'
+      got.push(
+        k.stage(dir, `9 ${left}, and 2.1 and 2.2 wait for their reviews → /epikloop:epic 2`),
+        k.expect([[k.run(dir, '--release'), `1 A release waits: ${left}, and 2.1 and 2.2 wait for their reviews. Next: /epikloop:epic 2.\n`]]),
+      )
+      k.reviewed(dir, '2.1', '2.2')
+      got.push(k.stage(dir, `9 ${left} → /epikloop:release`))
       k.write(dir, 'docs/decisions.md', decisionsFile(['Phase 1 retro', 'MVP sign-off', 'Go live later', 'Go live']))
       k.commit(dir, 'chore(release): go live', 0)
       got.push(k.stage(dir, "9 the go-live is recorded, and live isn't tagged yet → /epikloop:release"))
@@ -1769,8 +2039,16 @@ const CASES = [
       k.commit(dir, 'feat(12.1): one', 0)
       const got = [k.stage(dir, '10 the product is live, and docs/queue.md holds 1 backlog line → /epikloop:epic 12')]
       k.commit(dir, 'feat(12.2): two', 0)
-      k.remote(dir)
       const closing = "the product is live, and epic 12's stories are done with no phase-12 tag"
+      // Once live, an epic's retro waits for its reviews too, and then for a review that is open.
+      got.push(k.stage(dir, `10 ${closing}, and 12.1 and 12.2 wait for their reviews → /epikloop:epic 12`))
+      k.reviewed(dir, '12.1')
+      k.write(dir, 'docs/queue.md', queueFile({ questions: [['Q-001', 'nothing', 'Review 12.2']], backlog: 1 }))
+      k.commit(dir, 'review(12.2): 1 finding', 0)
+      got.push(k.stage(dir, `10 ${closing}, and Q-001 holds a review that is open → /epikloop:decide`))
+      k.write(dir, 'docs/queue.md', queueFile({ backlog: 1 }))
+      k.commit(dir, 'docs(decide): the review of 12.2', 0)
+      k.remote(dir)
       got.push(k.stage(dir, `10 ${closing} → /epikloop:retro`))
       const brief = [
         '0 Retro for phase 12: epic 12, Epic 12.',
@@ -1781,6 +2059,8 @@ const CASES = [
         `The web lane: ${readLane('web').sections.Retro.replace(/\s*\n\s*/g, ' ')}`,
         'The visual compare covers 1 screen in design/manifest.md, 1 state in all, each at 390 and 1280 pixels.',
         'The queue: 0 questions and 1 backlog line.',
+        'Reviews since the last retro: 2 (T1 1, T2 1); 1 had findings (T2 1), 1 finding in all.',
+        'Rework since the last retro: none.',
         'There are no cost rows on this machine yet.',
         'The product is live, so this retro closes epic 12 and signs nothing off.',
         'The record, in docs/decisions.md: a decision titled "Phase 12 retro", DECISION-001.',
@@ -1818,6 +2098,455 @@ const CASES = [
       k.commit(dir, 'feat(5.1): planned while going live waited', 0)
       k.git(dir, 'tag', 'live')
       return k.stage(dir, '10 the product is live → /epikloop:plan --extend')
+    },
+  ],
+  [
+    'a closing ceremony waits for the reviews, then for their questions',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T3', true], [2, 'T1', true]], 2: [[1, 'T1', true]] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 1)
+      k.commit(dir, 'feat(1.2): two', 1)
+      const done = "epic 1's MVP stories are done, and it has no phase-1 tag"
+      const got = [k.stage(dir, `7 ${done}, and 1.1 and 1.2 wait for their reviews → /epikloop:epic 1`)]
+      k.write(dir, 'docs/queue.md', queueFile({ questions: [['Q-001', 'nothing', 'Review 1.1']] }))
+      k.commit(dir, 'review(1.1): 2 findings', 0)
+      // Meanwhile a batch builds nothing, whatever epic it names: the stage sent it here for the
+      // reviews, which it names once. A story named on its own may still start.
+      const held = `0 Nothing is ready: ${done}, and 1.2 waits for its review. Next: /epikloop:epic 1.\n`
+      got.push(
+        k.stage(dir, `7 ${done}, and 1.2 waits for its review → /epikloop:epic 1`),
+        k.expect([
+          [k.ready(dir, '1'), held],
+          [k.ready(dir, '2'), held],
+          [k.ready(dir, '2.1'), '0 2.1 T1 Story 2.1\nWorker effort: T1 medium.\n'],
+          [k.cli(dir).stdout.includes('batch runs'), false],
+        ]),
+      )
+      k.commit(dir, 'review(1.2): no findings', 0)
+      const open = `${done}, and Q-001 holds a review that is open`
+      got.push(
+        k.stage(dir, `7 ${open} → /epikloop:decide`),
+        k.expect([
+          [k.run(dir, '--retro'), `1 A retro waits: ${open}. Next: /epikloop:decide.\n`],
+          [k.ready(dir), `0 Nothing is ready: ${open}. Next: /epikloop:decide.\n`],
+          // A question that is open holds the ceremony, and not a batch the human names.
+          [k.ready(dir, '2'), '0 2.1 T1 Story 2.1\nWorker effort: T1 medium.\n'],
+        ]),
+      )
+      // The decision closes the review, and the retro is next.
+      k.write(dir, 'docs/queue.md', queueFile())
+      k.commit(dir, 'docs(decide): the review of 1.1', 0)
+      got.push(k.stage(dir, `7 ${done} → /epikloop:retro`))
+      return got.flat()
+    },
+  ],
+  [
+    'a story added to a closed phase is built before the sign-off',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', true]] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 2)
+      k.git(dir, 'tag', 'phase-1')
+      k.commit(dir, 'feat(2.1): two', 1)
+      k.git(dir, 'tag', 'phase-2')
+      // A decision adds 1.2, a rework of 1.1, to phase 1, which is closed.
+      k.write(dir, 'docs/stories/1-epic.md', epicFile(1, [[1, 'T1', true], [2, 'T1', true, '1.1', '1.1']]))
+      k.commit(dir, 'docs(decide): rework 1.1', 0)
+      const added = 'epic 1 is closed, and 1.2 was added to it since'
+      const got = [
+        k.stage(dir, `6 ${added} → /epikloop:epic 1`),
+        k.expect([
+          [k.ready(dir), '0 1.2 T1 Story 1.2\nWorker effort: T1 medium.\n'],
+          [k.run(dir, '--retro'), `1 A retro waits: ${added}. Next: /epikloop:epic 1.\n`],
+        ]),
+      ]
+      k.commit(dir, 'feat(1.2): the rework', 0)
+      const signing = "8 every MVP epic is tagged, and the MVP isn't signed off"
+      got.push(k.stage(dir, `${signing}, and 1.2 waits for its review → /epikloop:epic 1`))
+      k.reviewed(dir, '1.2')
+      got.push(k.stage(dir, `${signing} → /epikloop:retro`))
+      // Once the product is live its planned work names such a story, as it names any other.
+      const live = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true]] }), { freeze: true })
+      k.commit(live, 'feat(1.1): one', 0)
+      for (const tag of ['phase-1', 'mvp', 'live']) k.git(live, 'tag', tag)
+      got.push(k.stage(live, '10 the product is live → /epikloop:epic 1'))
+      return got.flat()
+    },
+  ],
+  [
+    'a sign-off that is recorded, and a release, wait for a review too',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', false], [3, 'T1', false]] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 0)
+      k.git(dir, 'tag', 'phase-1')
+      // 1.2 is outside the MVP set, and `story 1.2` landed it after the phase closed.
+      k.commit(dir, 'feat(1.2): outside the MVP', 0)
+      k.write(dir, 'docs/decisions.md', decisionsFile(['Phase 1 retro', 'MVP sign-off']))
+      k.commit(dir, 'chore(mvp): sign-off', 0)
+      const waits = 'and 1.2 waits for its review → /epikloop:epic 1'
+      const got = [k.stage(dir, `8 the MVP sign-off is recorded, and mvp isn't tagged yet, ${waits}`)]
+      k.git(dir, 'tag', 'mvp')
+      // The batch the stage names runs that review, and doesn't build 1.3, which nobody asked for.
+      const next = '0 1.3 T1 Story 1.3\nWorker effort: T1 medium.\n'
+      got.push(
+        k.stage(dir, `9 the MVP is signed off, and nothing is live yet, ${waits}`),
+        k.expect([
+          [k.ready(dir, '1'), '0 Nothing is ready: the MVP is signed off, and nothing is live yet, and 1.2 waits for its review. Next: /epikloop:epic 1.\n'],
+          [k.ready(dir, '1.3'), next],
+        ]),
+      )
+      k.write(dir, 'docs/decisions.md', decisionsFile(['Phase 1 retro', 'MVP sign-off', 'Go live']))
+      k.commit(dir, 'chore(release): go live', 0)
+      got.push(k.stage(dir, `9 the go-live is recorded, and live isn't tagged yet, ${waits}`))
+      k.reviewed(dir, '1.2')
+      got.push(k.stage(dir, "9 the go-live is recorded, and live isn't tagged yet → /epikloop:release"), k.expect([[k.ready(dir, '1'), next]]))
+      return got.flat()
+    },
+  ],
+  [
+    'a landed story waits for its review, at any tier, until a review commit names it',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T2', true], [3, 'T3', true], [4, 'T1', true]] }), { freeze: true })
+      const none = k.run(dir, '--reviews')
+      for (const m of [1, 2, 3]) k.commit(dir, `feat(1.${m}): story`, 0)
+      const all = k.run(dir, '--reviews')
+      k.commit(dir, 'review(1.2): 3 findings', 0)
+      k.reviewed(dir, '1.1')
+      return k.expect([
+        [none, '0 No review waits.\n'],
+        [all, '0 1.1 T1 Story 1.1\n1.2 T2 Story 1.2\n1.3 T3 Story 1.3\nReview effort: high.\n'],
+        [k.run(dir, '--reviews'), '0 1.3 T3 Story 1.3\nReview effort: high.\n'],
+        // No question stands for a landed story any more, so the report says which wait.
+        [k.cli(dir).stdout.split('\n').find((line) => line.startsWith('Needs the human')), 'Needs the human: 1.3 waits for its review, which the next /epikloop:epic batch runs.'],
+        [k.run(dir, '--reviews', '1'), `1 ${USAGE}\n`],
+      ])
+    },
+  ],
+  [
+    "the reviews end with the reviewer's effort: the project over the user over the default",
+    (k) => {
+      const epics = { 1: [[1, 'T1', true], [2, 'T1', true]] }
+      const project = k.repo(planned(epics), { freeze: true, marker: { effort: { review: 'max' } } })
+      k.commit(project, 'feat(1.1): one', 0)
+      k.config(JSON.stringify({ format: 1, effort: { review: 'low' } }))
+      const over = k.run(project, '--reviews')
+      // A marker's value that is no level is passed over, so the user's shows.
+      const user = k.repo(planned(epics), { freeze: true, marker: { effort: { review: 'ultra' } } })
+      k.commit(user, 'feat(1.1): one', 0)
+      k.config(JSON.stringify({ format: 1, effort: { review: 'low' } }))
+      return k.expect([
+        [over, '0 1.1 T1 Story 1.1\nReview effort: max.\n'],
+        [k.run(user, '--reviews'), '0 1.1 T1 Story 1.1\nReview effort: low.\n'],
+      ])
+    },
+  ],
+  [
+    'reviews wait only since the last retro, and only for stories in docs/stories',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T3', true]], 2: [[1, 'T3', true], [2, 'T1', true]] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 3)
+      k.git(dir, 'tag', 'phase-1')
+      k.commit(dir, 'feat(2.1): two', 1)
+      k.commit(dir, 'feat(9.9): a story no file holds', 1)
+      const tagged = [k.run(dir, '--reviews'), k.run(dir, '--review', '1.1'), k.run(dir, '--review', '2.2'), k.run(dir, '--review', '9.9')]
+      // An open review of 1.1, whose phase is closed, holds nothing once phase 2's own are settled.
+      k.write(dir, 'docs/queue.md', queueFile({ questions: [['Q-001', 'nothing', 'Review 1.1']] }))
+      k.commit(dir, 'feat(2.2): three', 0)
+      k.reviewed(dir, '2.1', '2.2')
+      const closed = k.stage(dir, "7 epic 2's MVP stories are done, and it has no phase-2 tag → /epikloop:retro")
+      // A product adopted while live: what landed before the live tag is closed too.
+      const live = k.repo({ 'spec/app.md': APP_SPEC, 'spec/architecture.md': '# Architecture\n', ...DESIGNED, 'docs/stories/12-next.md': epicFile(12, [[1, 'T3', false], [2, 'T1', false]]) })
+      k.commit(live, 'feat(12.1): before going live', 2)
+      k.git(live, 'tag', 'live')
+      k.commit(live, 'feat(12.2): after', 0)
+      return [
+        ...closed,
+        ...k.expect([
+          [tagged[0], '0 2.1 T3 Story 2.1\nReview effort: high.\n'],
+          [tagged[1], "1 1.1 doesn't wait for a review.\n"],
+          [tagged[2], "1 2.2 doesn't wait for a review.\n"],
+          [tagged[3], '1 9.9 is not a story.\n'],
+          [k.run(live, '--reviews'), '0 12.2 T1 Story 12.2\nReview effort: high.\n'],
+        ]),
+      ]
+    },
+  ],
+  [
+    'a batch pushes its reviews together: its list reads one committed here, and the stage counts it once pushed',
+    (k) => {
+      const batch = (clone) => {
+        const dir = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true]], 2: [[1, 'T1', true]] }), { freeze: true })
+        k.commit(dir, 'feat(1.1): one', 0)
+        k.commit(dir, 'feat(1.2): two', 0)
+        k.remote(dir)
+        // On a clone the default branch is the remote's, which a commit reaches only once pushed.
+        if (clone) k.git(dir, 'remote', 'set-head', 'origin', 'main')
+        k.reviewed(dir, '1.1')
+        const got = [k.run(dir, '--reviews'), k.run(dir, '--review', '1.1')]
+        k.reviewed(dir, '1.2')
+        got.push(k.run(dir, '--reviews'), k.read(dir).stage.next)
+        k.git(dir, 'push', '-q', 'origin', 'main')
+        return [...got, k.run(dir, '--reviews'), k.read(dir).stage.next]
+      }
+      const wanted = (clone) => [
+        '0 1.2 T1 Story 1.2\nReview effort: high.\n',
+        "1 1.1 doesn't wait for a review.\n",
+        '1 No review waits, and main has 2 commits that origin/main lacks; `git push origin main` lands them.\n',
+        // Until the push, a clone's default branch holds neither review, so its retro still waits.
+        clone ? '/epikloop:epic 1' : '/epikloop:retro',
+        '0 No review waits.\n',
+        '/epikloop:retro',
+      ]
+      return [true, false].flatMap((clone) => k.expect(batch(clone).map((got, i) => [got, wanted(clone)[i]])))
+    },
+  ],
+  [
+    'reviews start where a batch starts, and never in team mode',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true]] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 0)
+      k.remote(dir)
+      k.write(dir, 'notes.txt', 'untracked')
+      const dirty = k.run(dir, '--reviews')
+      fs.rmSync(path.join(dir, 'notes.txt'))
+      k.git(dir, 'switch', '-q', '-c', 'side')
+      const side = k.run(dir, '--reviews')
+      // A review waits here to be pushed, and the remote has a commit from elsewhere: no push is
+      // named, since git would refuse it.
+      const apart = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true]] }), { freeze: true })
+      k.commit(apart, 'feat(1.1): one', 0)
+      k.remote(apart)
+      k.commit(apart, 'docs: from another machine', 0)
+      k.git(apart, 'push', '-q', 'origin', 'main')
+      k.git(apart, 'reset', '-q', '--hard', 'HEAD~1')
+      k.reviewed(apart, '1.1')
+      const diverged = k.run(apart, '--reviews')
+      const team = k.repo(planned({ 1: [[1, 'T3', true]], 2: [[1, 'T1', true]] }), { freeze: true, marker: { mode: 'team' } })
+      k.commit(team, 'feat(1.1): one', 0)
+      return [
+        ...k.expect([
+          [dirty, "1 The working tree has changes that aren't committed, and a review starts from a clean tree.\n"],
+          [side, '1 A review starts on main, and this checkout is on side.\n'],
+          [diverged, '1 No review waits, but main and origin/main have diverged, and the human reconciles them before anything is pushed.\n'],
+          [k.run(team, '--reviews'), "0 No review waits: in team mode a story's pull request is its review.\n"],
+          [k.run(team, '--review', '1.1'), "1 1.1 doesn't wait for a review.\n"],
+        ]),
+        // And in team mode no ceremony waits for one.
+        ...k.stage(team, "7 epic 1's MVP stories are done, and it has no phase-1 tag → /epikloop:retro"),
+      ]
+    },
+  ],
+  [
+    "the reviewer's brief: the story, what its tier asks, its commits and the record",
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T3', true], [2, 'T1', true]] }, { questions: [['Q-004', 'nothing']] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 0)
+      k.commit(dir, 'fix(1.1): a slip', 0)
+      k.commit(dir, 'feat(1.2): two', 0)
+      k.remote(dir)
+      const sha = (subject) => k.git(dir, 'log', '--format=%h', '-F', `--grep=${subject}`).trim()
+      const [feat, fix, other] = [sha('feat(1.1)'), sha('fix(1.1)'), sha('feat(1.2)')]
+      const today = ymd(Date.now())
+      const fields = '"- Blocks: nothing", "- Default taken: landed as built", and "- Severity: high" as a last field when a finding is high'
+      const findings = 'the findings as a numbered list, each opening with its place as `path:line`, then what happens and what it goes against'
+      const t3 = k.run(dir, '--review', '1.1')
+      const t1 = k.run(dir, '--review', '1.2')
+      // A question that already asks for 1.2's review is the one its record goes into.
+      k.write(dir, 'docs/queue.md', queueFile({ questions: [['Q-004', 'nothing'], ['Q-005', 'nothing', 'Review 1.2']] }))
+      k.commit(dir, 'docs: an earlier review question', 0)
+      k.git(dir, 'push', '-q', 'origin', 'main')
+      return [
+        ...k.has(
+          t3,
+          '0 Review of story 1.1, from docs/stories/1-epic.md:\n\n## 1.1 Story 1.1\n- Tier: T3\n',
+          'The requirements it cites:\n\nFrom spec/app.md:\n\n## REQ-APP-001 It works\n',
+          'What T3 asks of its commit: the gates, evidence for each acceptance criterion, a test for each business rule its requirements quote, and negative-case tests from an adversarial reading of the change.\n',
+          `Its commits, oldest first:\n- ${feat} feat(1.1): one\n- ${fix} fix(1.1): a slip\n\`git diff ${feat}~1 ${feat}\` shows what a commit changed, and the files stand as they are now.\n`,
+          `The record: a question under "## Questions" in docs/queue.md, "### Q-005 Review 1.1 (${today})", then ${fields}; then ${findings}, or "The review found nothing."\n`,
+          'A change that can\'t be read gets the question all the same, saying why, under the subject "review(1.1): not reviewed".\n',
+          'Landing: `git add docs/queue.md`, then `git commit -m "review(1.1): 2 findings"` with the findings\' own count, or with "review(1.1): no findings". The commit holds docs/queue.md and nothing else, on main. Each command runs as it stands: the shell is already in the project\'s folder, so no `cd` and no `git -C`. It isn\'t pushed here: the batch pushes its reviews together, once none waits.\n',
+        ),
+        ...k.has(
+          t1,
+          'What T1 asks of its commit: the gates, and evidence for each acceptance criterion.\n',
+          `Its commit:\n- ${other} feat(1.2): two\n`,
+          `The record: with findings, a question under "## Questions" in docs/queue.md, "### Q-005 Review 1.2 (${today})", then ${fields}; then ${findings}. With none, nothing is written.\n`,
+          'Landing: with findings, `git add docs/queue.md`, then `git commit -m "review(1.2): 2 findings"` with the findings\' own count; with none, `git commit --allow-empty -m "review(1.2): no findings"`. The commit holds docs/queue.md and nothing else, or nothing at all, on main. Each',
+        ),
+        ...k.has(k.run(dir, '--review', '1.2'), `The record: docs/queue.md already holds Q-005, which asks for this review, and its fields and its text are replaced: ${fields}; then ${findings}, or "The review found nothing."\n`),
+      ]
+    },
+  ],
+  [
+    'a question marked high comes first, from the batch on',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true]] }, { questions: [['Q-001', 'nothing', 'A leak', 'high'], ['Q-002', 'nothing']] }), { freeze: true })
+      const batch = k.stage(dir, '6 epic 1 has 2 MVP stories left, and Q-001 is marked high → /epikloop:decide, then /epikloop:epic 1')
+      k.commit(dir, 'feat(1.1): one', 0)
+      k.commit(dir, 'feat(1.2): two', 0)
+      k.reviewed(dir, '1.1', '1.2')
+      // Where decide is next already, nothing is added.
+      const blocked = k.repo(planned({ 1: [[1, 'T1', true]] }, { questions: [['Q-001', '1.1', 'A leak', 'high']] }), { freeze: true })
+      // Before the batch there is nothing to put it before.
+      const early = k.repo(planned({ 1: [[1, 'T1', false]] }, { questions: [['Q-001', 'nothing', 'A leak', 'high']] }))
+      return [
+        ...batch,
+        ...k.stage(blocked, '6 epic 1 has 1 MVP story left, and Q-001 blocks 1.1 → /epikloop:decide, then /epikloop:epic 1'),
+        ...k.expect([[k.read(early).stage.next, '/epikloop:plan']]),
+        ...k.has(k.cli(dir).stdout,
+          // The mark is for the step the line ends with, which is still the human's to start.
+          "Stage 7 of 10: epic 1's MVP stories are done, and it has no phase-1 tag, and Q-001 is marked high. Next: /epikloop:decide, then /epikloop:retro, which only the human starts.\n",
+          'Needs the human: 2 questions wait in docs/queue.md, 1 marked high.\n',
+          '- Q-001 A leak (2026-11-01), marked high, blocks nothing\n',
+          '- Q-002 Question (2026-11-01), blocks nothing\n',
+        ),
+        // It puts decide first and holds nothing: the retro's brief still prints.
+        ...k.has(k.run(dir, '--retro'), '0 Retro for phase 1'),
+      ]
+    },
+  ],
+  [
+    'Severity and Reworks are read, and refused when malformed or not last',
+    (k) => {
+      const story = (m, title, ...fields) => [`## 1.${m} ${title}`, ...fields, '### Spec delta', '- none']
+      const dir = k.folder({
+        'docs/stories/1-one.md': [
+          '# Epic 1: One',
+          ...story(1, 'First', '- Tier: T1', '- MVP: yes', '- Requirements: none'),
+          ...story(2, 'A rework', '- Tier: T1', '- MVP: yes', '- Requirements: none', '- After: 1.1', '- Reworks: 1.1'),
+          ...story(3, 'Misplaced', '- Tier: T1', '- Reworks: 1.1', '- MVP: yes', '- Requirements: none'),
+          ...story(4, 'Itself', '- Tier: T1', '- MVP: yes', '- Requirements: none', '- Reworks: 1.4'),
+          ...story(5, 'No such story', '- Tier: T1', '- MVP: yes', '- Requirements: none', '- Reworks: 9.9'),
+          ...story(6, 'No ID', '- Tier: T1', '- MVP: yes', '- Requirements: none', '- Reworks: the first one'),
+          '',
+        ].join('\n'),
+        'docs/queue.md': [
+          '# Queue',
+          '## Questions',
+          '### Q-001 High (2026-11-01)',
+          '- Blocks: nothing',
+          '- Default taken: a',
+          '- Severity: high',
+          '### Q-002 Loud (2026-11-01)',
+          '- Blocks: nothing',
+          '- Default taken: a',
+          '- Severity: urgent',
+          '### Q-003 Early (2026-11-01)',
+          '- Severity: high',
+          '- Blocks: nothing',
+          '- Default taken: a',
+          '### Q-004 Review 1.2 (2026-11-01)',
+          '- Blocks: nothing',
+          '- Default taken: landed as built',
+          '## Backlog',
+          '',
+        ].join('\n'),
+      })
+      const s = k.read(dir)
+      return [
+        ...k.expect([
+          [[...s.stories.values()].map((each) => `${each.id}>${each.reworks}`).join(' '), '1.1>null 1.2>1.1 1.3>1.1 1.4>null 1.5>9.9 1.6>null'],
+          // A field out of place is said, and the story's other fields are still read.
+          [`${s.stories.get('1.3').tier} ${s.stories.get('1.3').mvp}`, 'T1 true'],
+          [s.questions.map((q) => `${q.id}>${q.severity}>${q.review}`).join(' '), 'Q-001>high>null Q-002>null>null Q-003>high>null Q-004>null>1.2'],
+          [s.problems.length, 6],
+        ]),
+        ...k.contains(s.problems, [
+          "docs/stories/1-one.md:16: 1.3's Reworks is not its last field",
+          "docs/stories/1-one.md:23: 1.4's Reworks is not another story's ID",
+          'docs/stories/1-one.md:30: 1.5 reworks 9.9, which is not a story',
+          "docs/stories/1-one.md:37: 1.6's Reworks is not another story's ID",
+          "docs/queue.md:10: Q-002's Severity is not high",
+          "docs/queue.md:14: Q-003's Severity is not its last field",
+        ]),
+      ]
+    },
+  ],
+  [
+    "the retro's brief counts the reviews and the rework since the last retro",
+    (k) => {
+      const epics = { 1: [[1, 'T1', true], [2, 'T2', true], [3, 'T3', true], [4, 'T3', true], [5, 'T1', true, '1.3', '1.3']], 2: [[1, 'T1', true], [2, 'T1', true, '1.1', '1.1']] }
+      const dir = k.repo(planned(epics), { freeze: true })
+      for (const m of [1, 2, 3, 4, 5]) k.commit(dir, `feat(1.${m}): story`, 0)
+      k.commit(dir, 'fix(1.2): a slip', 0)
+      k.commit(dir, 'fix(1.2): another', 0)
+      k.commit(dir, 'fix(tests): no story', 0)
+      k.reviewed(dir, '1.1', '1.5')
+      k.commit(dir, 'review(1.2): 1 finding', 0)
+      k.commit(dir, 'review(1.3): 3 findings', 0)
+      k.commit(dir, 'review(1.4): not reviewed', 0)
+      // A rework story counts once, at the retro after it lands, whatever its epic: 1.2 landed
+      // before phase 1 closed, and 1.3 was added to that closed phase and landed after.
+      const later = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true, '1.1', '1.1'], [3, 'T1', true, '1.1', '1.1']], 2: [[1, 'T1', true]] }), { freeze: true })
+      k.commit(later, 'feat(1.1): one', 3)
+      k.commit(later, 'feat(1.2): a rework', 2)
+      k.git(later, 'tag', 'phase-1')
+      k.commit(later, 'feat(1.3): a rework of the closed phase', 1)
+      k.commit(later, 'feat(2.1): two', 1)
+      k.reviewed(later, '1.3', '2.1')
+      const laterBrief = k.run(later, '--retro')
+      // Team mode has no review stage, and still counts its rework.
+      const team = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true, '1.1', '1.1']], 2: [[1, 'T1', true]] }), { freeze: true, marker: { mode: 'team' } })
+      k.commit(team, 'feat(1.1): one', 0)
+      k.commit(team, 'feat(1.2): two', 0)
+      k.commit(team, 'fix(1.1): a slip', 0)
+      const teamBrief = k.run(team, '--retro')
+      return [
+        ...k.has(
+          k.run(dir, '--retro'),
+          'Reviews since the last retro: 5 (T1 2, T2 1, T3 2); 2 had findings (T2 1, T3 1), 4 findings in all; 1 could not be read.\n',
+          // 2.2 reworks 1.1 too, and hasn't landed.
+          'Rework since the last retro: 1 rework story landed (1.5 for 1.3), and 2 commits that fix a landed story.\n',
+        ),
+        ...k.has(laterBrief, '0 Retro for phase 2:', 'Rework since the last retro: 1 rework story landed (1.3 for 1.1).\n'),
+        ...k.has(teamBrief, 'Rework since the last retro: 1 rework story landed (1.2 for 1.1), and 1 commit that fixes a landed story.\n'),
+        ...(teamBrief.includes('Reviews since') ? [`team mode counted reviews: ${JSON.stringify(teamBrief)}`] : []),
+      ]
+    },
+  ],
+  [
+    "a reviewer's rows stay out of the ETA, and show apart with the models that reviewed",
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true], [3, 'T1', true]], 2: [[1, 'T1', true]] }), { freeze: true, frozenAgo: 3 })
+      // One worker's run of an hour, and two reviews of ten minutes each, one of them in two turns.
+      k.costs({
+        'cost.jsonl': [
+          ['T1', 3600, 'medium', 0.4, 'w1'],
+          ['T1', 300, 'high', 0.1, 'r1', true, 'claude-opus-5-5'],
+          ['T1', 300, 'high', 0.1, 'r1', true, 'claude-opus-5-5'],
+          ['T3', 600, 'high', 0.3, 'r2', true, 'claude-fable-5-2'],
+        ],
+      })
+      // Four stories at an hour each, at an hour a day: four days. Were the reviews runs of T1, a
+      // story would take 35 minutes, and the four of them three days.
+      const gauge = k.gauge(dir, `MVP 0/4 · 0.0 stories/day · ETA ${ymd(NOW + 4 * DAY)} · queue Δ 0`, { hours_per_day: 1 })
+      for (const m of [1, 2, 3]) k.commit(dir, `feat(1.${m}): story`, 0)
+      k.reviewed(dir, '1.1', '1.2', '1.3')
+      return [
+        ...gauge,
+        ...k.has(
+          k.run(dir, '--retro'),
+          'The cost rows on this machine:\n- T1 at medium: 1 run, 60.0 min and $0.40 each on average\n- reviews at high: 2 runs, 10.0 min and $0.25 each on average, on claude-fable-5-2 and claude-opus-5-5\n',
+        ),
+      ]
+    },
+  ],
+  [
+    "a scope git can't list is a problem, and holds nothing",
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', true]] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 0)
+      // 600 fixes of 1.1 with 2,000-character subjects: their log runs past the 1 MB Node keeps of a
+      // child's output, so git's answer is lost.
+      k.noise(dir, 'main', 600, 'fix(1.1):')
+      const s = k.read(dir)
+      return [
+        ...k.contains(s.problems, ["git log: the commits since the last retro can't be read, so no review is listed"]),
+        ...k.expect([
+          [s.problems.length, 1],
+          [`${s.stage.n} ${s.stage.next}`, '7 /epikloop:retro'],
+          [k.run(dir, '--reviews'), "1 No review is listed: git couldn't read the commits since the last retro.\n"],
+        ]),
+      ]
     },
   ],
   [
@@ -1936,6 +2665,7 @@ const CASES = [
       // T1 runs take 0.5 h and 1 h, so the three left take 2.25 h, at 2 h a day: 2 days.
       const problems = k.gauge(dir, `MVP 0/3 · 0.0 stories/day · ETA ${ymd(NOW + 2 * DAY)} · queue Δ 0`, { hours_per_day: 2 })
       for (const m of [1, 2, 3]) k.commit(dir, `feat(1.${m}): story`, 0)
+      k.reviewed(dir, '1.1', '1.2', '1.3')
       const retro = k.run(dir, '--retro')
       return [...problems, ...k.has(retro, '- T1 at medium: 2 runs, 45.0 min and $0.35 each on average\n', '- T2 at high: 1 run, 90.0 min each on average\n')]
     },
@@ -2055,6 +2785,7 @@ const CASES = [
       const blocked = k.repo(planned({ 1: [[1, 'T1', true], [2, 'T1', true, '1.1']] }, { questions: [['Q-001', '1.1']] }), { freeze: true })
       const retro = k.repo(planned({ 1: [[1, 'T1', true]] }), { freeze: true })
       k.commit(retro, 'feat(1.1): one', 0)
+      k.reviewed(retro, '1.1')
       const unfrozen = k.repo(planned({ 1: [[1, 'T1', true]] }))
       return k.expect([
         [k.ready(blocked), '0 Nothing is ready in epic 1: 1.1 is blocked by Q-001; 1.2 waits for 1.1.\n'],
@@ -2144,7 +2875,7 @@ const CASES = [
       })
       const today = ymd(Date.now())
       const ids = [
-        `A parked question goes under "## Questions" in docs/queue.md as "### Q-012 Title (${today})", numbered on from there, then "- Blocks:" with the stories it blocks or "nothing", "- Default taken:" with the default the work goes on with, and the question itself.`,
+        `A parked question goes under "## Questions" in docs/queue.md as "### Q-012 Title (${today})", numbered on from there, then "- Blocks:" with the stories it blocks or "nothing", "- Default taken:" with the default the work goes on with, "- Severity: high" as a last field when money or data can be lost or someone can see or do what they shouldn't, and the question itself.`,
         `A backlog line goes under "## Backlog" as "- ${today} what was found".`,
         'The next decision in docs/decisions.md is DECISION-005.',
       ]
@@ -2237,6 +2968,7 @@ const CASES = [
       const dir = k.repo(files, { freeze: true, marker: { staging_url: 'https://user:secret@staging.example.com/' } })
       k.commit(dir, 'feat(1.1): one', 0)
       k.commit(dir, 'feat(1.2): two', 0)
+      k.reviewed(dir, '1.1', '1.2')
       k.remote(dir)
       k.costs({ 'cost.jsonl': [['T1', 1800, 'medium', 0.2], ['T1', 3600, 'medium', 0.4], ['T2', 3600, 'high']], 'cost/1-x-1.json': [['T1', 600, 'low', 0.1]] })
       const brief = [
@@ -2248,6 +2980,8 @@ const CASES = [
         `The web lane: ${readLane('web').sections.Retro.replace(/\s*\n\s*/g, ' ')}`,
         'The visual compare covers 1 screen in design/manifest.md, 1 state in all, each at 390 and 1280 pixels.',
         'The queue: 1 question and 2 backlog lines; queue Δ 0 since the MVP set was frozen.',
+        'Reviews since the last retro: 2 (T1 1, T2 1); none had findings.',
+        'Rework since the last retro: none.',
         'The cost rows on this machine:',
         '- T1 at low: 1 run, 10.0 min and $0.10 each on average',
         '- T1 at medium: 2 runs, 45.0 min and $0.30 each on average',
@@ -2267,6 +3001,7 @@ const CASES = [
       for (const file of Object.keys(DESIGNED)) delete files[file]
       const dir = k.repo(files, { freeze: true })
       k.commit(dir, 'feat(1.1): one', 0)
+      k.reviewed(dir, '1.1')
       const brief = k.run(dir, '--retro')
       return [...k.has(brief, '0 Retro for phase 1'), ...(brief.includes('The visual compare covers') ? [`gave ${JSON.stringify(brief)}`] : [])]
     },
@@ -2276,6 +3011,7 @@ const CASES = [
     (k) => {
       const dir = k.repo(planned({ 1: [[1, 'T1', true]] }, { backlog: 1 }), { freeze: true })
       k.commit(dir, 'feat(1.1): one', 0)
+      k.reviewed(dir, '1.1')
       k.remote(dir)
       const brief = k.run(dir, '--retro')
       k.write(dir, 'docs/decisions.md', decisionsFile(['Phase 1 retro', 'MVP sign-off']))
@@ -2470,6 +3206,7 @@ const CASES = [
     (k) => {
       const ceremony = k.repo(planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', true]] }), { freeze: true })
       k.commit(ceremony, 'feat(1.1): one', 0)
+      k.reviewed(ceremony, '1.1')
       const batch = k.repo(planned({ 1: [[1, 'T1', true]] }), { freeze: true })
       const stageLine = (dir) => k.cli(dir).stdout.split('\n').find((line) => line.startsWith('Stage '))
       const userOnly = fs.readdirSync(SKILLS).filter((name) => humanStarts(`/epikloop:${name}`)).join(' ')
@@ -2552,14 +3289,18 @@ async function selfTest() {
       })
       if (run.status !== 0) throw new Error(`commit ${subject}: ${run.stderr.trim()}`)
     },
-    // `count` empty commits on `branch`, each with a 2,000-character subject, made at once by
-    // fast-import: enough to take a log of the whole history past Node's 1 MB.
-    noise(dir, branch, count) {
+    // A review commit for each story, as a reviewer that found nothing in a T1 or T2 story leaves.
+    reviewed(dir, ...ids) {
+      for (const id of ids) k.commit(dir, `review(${id}): no findings`, 0)
+    },
+    // `count` empty commits on `branch`, each with a 2,000-character subject that starts with
+    // `prefix`, made at once by fast-import: enough to take a log of them past Node's 1 MB.
+    noise(dir, branch, count, prefix = 'chore:') {
       const tip = k.git(dir, 'rev-parse', branch).trim()
       const when = Math.floor((NOW - DAY) / 1000)
       let stream = ''
       for (let n = 1; n <= count; n += 1) {
-        const message = `chore: ${'n'.repeat(2000)} ${n}\n`
+        const message = `${prefix} ${'n'.repeat(2000)} ${n}\n`
         stream += `commit refs/heads/${branch}\ncommitter Self Test <self-test@example.com> ${when} +0000\ndata ${message.length}\n${message}${n === 1 ? `from ${tip}\n` : ''}\n`
       }
       const run = spawnSync('git', ['fast-import', '--quiet'], { cwd: dir, env, input: stream, encoding: 'utf8', windowsHide: true })
@@ -2587,7 +3328,8 @@ async function selfTest() {
     costs(files) {
       const dir = path.join(home, '.epikloop', 'projects', MARKER.id)
       for (const [file, rows] of Object.entries(files)) {
-        k.write(dir, file, rows.map(([tier, wall, effort = 'medium', cost = null, agent]) => JSON.stringify({ format: 1, story: '9.9', tier, agent, wall, cost, model: null, effort })).join('\n') + '\n')
+        const line = ([tier, wall, effort = 'medium', cost = null, agent, review, model = null]) => JSON.stringify({ format: 1, story: '9.9', tier, agent, wall, cost, model, effort, ...(review ? { review: true } : {}) })
+        k.write(dir, file, rows.map(line).join('\n') + '\n')
       }
     },
     // The user's settings in this case's home, as text.

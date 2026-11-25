@@ -102,6 +102,8 @@ Nothing else, ever.
       protected.
   - Solo mode creates no workflow, and `check.sh` fails if a workflow appears that
     `gates.allow_workflows` doesn't list.
+  - In team mode a story's pull request is its review. Solo mode has no pull request, so there
+    [the reviewer](#skills) reads each landed story.
 
 ## Hooks
 
@@ -147,7 +149,7 @@ What each event does:
     `git switch -f/--discard-changes`, hooks-path overrides, `git clean -f`, `git checkout -- .`
     and `git restore .`.
   - It then allows the pipeline's own ceremony: the gate runner,
-    `git status/diff/log/fetch/add/commit/push/switch/tag/branch`, `gh issue/pr`, and the active
+    `git status/diff/log/show/fetch/add/commit/push/switch/tag/branch`, `gh issue/pr`, and the active
     lane's UI test tool. Merging and deleting are left out: `gh pr merge/close`,
     `git branch -d/-D` and `git tag -d`.
   - The gate runner is `scripts/check.sh` from Bash, and `node .githooks/check.mjs` from
@@ -212,6 +214,11 @@ macOS and Windows, and reads session cost.
   - Each row is written as a file too, and folded into `projects/<id>/cost.jsonl` the same way.
   - The rows assume sequential workers, as in M1. With parallel workers a turn's rise is shared,
     so a row's `cost` is an upper bound until M3 settles it.
+  - A story-reviewer's turns write rows the same way, marked `review`
+    ([issue #12](https://github.com/Yheng/Epikloop/issues/12)). Its events name no story: its
+    story has landed, and Harbor draws a worker at the desk of each story an agent's events name.
+    Its rows keep their story, so Harbor's build, which adds up a story's rows whatever wrote
+    them, shows a story's time and cost with its review's.
 
 The module has these limits:
 
@@ -240,10 +247,11 @@ The gates' self-test measures two targets:
     `permission.requested`, `notification`, `stop`, `story.started|committed`,
     `gate.started|passed|failed`, `question.parked`, `decision.recorded` and `phase.tagged`.
   - Events say where, never what: no tool output, prompts, file contents or secret values.
-- **`~/.epikloop/projects/<id>/cost.jsonl`** has one row per turn of a story's worker
-  ([schema](../plugins/epikloop/schemas/cost-row.schema.json)): `ts`, `story`, `tier`, `agent`,
-  `wall`, `cost`, `model` and `effort`. A worker's rows add up to its run, and the runs are the
-  instrument for tuning effort.
+- **`~/.epikloop/projects/<id>/cost.jsonl`** has one row per turn of a story's worker, or of its
+  reviewer ([schema](../plugins/epikloop/schemas/cost-row.schema.json)): `ts`, `story`, `tier`,
+  `agent`, `wall`, `cost`, `model` and `effort`, and `review` on a reviewer's. An agent's rows add
+  up to its run, and the runs are the instrument for tuning effort. A reviewer's stay out of the
+  ETA.
 - **`~/.epikloop/config.json`** ([schema](../plugins/epikloop/schemas/config.schema.json)) holds the
   user's effort overrides and the Harbor switch.
 - **`~/.epikloop/harbor.json`** ([schema](../plugins/epikloop/schemas/harbor.schema.json)) records
@@ -375,8 +383,9 @@ only layers 2 and 3 gate them.
   options, trade-offs and an implementation note.
 - **`docs/stories/<epic>.md`** holds the stories. Each one cites requirement IDs and carries a spec
   delta. Closing a story applies its delta in the same commit as the code, so there is no separate
-  document-sync step.
-- **`docs/queue.md`** holds parked questions and backlog lines, each dated.
+  document-sync step. A rework story names the story it reworks.
+- **`docs/queue.md`** holds parked questions and backlog lines, each dated. A question that can't
+  wait is marked `Severity: high`, and one titled `Review N.M` holds a reviewer's record.
 - **Formats.** Each file's format is in [formats](formats.md), with an example in the core
   plugin's `templates/`. `scripts/state.mjs` reads them, and the briefing's stage and fuel gauge
   come from it.
@@ -438,10 +447,10 @@ Native iOS and Android are community lanes. Contributors add lanes without touch
 | `/epikloop:design` | Three directions → pick → every screen as HTML, tokens, manifest, gallery; `amend`, `add`, `audit`, `ingest`. | high | user, Claude |
 | `/epikloop:architect` | Stack, schema as code, API contract, pre-mortem, `spec/architecture.md`, lane confirmation. | max | user, Claude |
 | `/epikloop:plan` | Epics, tiered stories with requirement IDs and spec deltas, the frozen MVP set; `--extend` for later work. | high | user, Claude |
-| `/epikloop:epic N`, `:next`, `:story X.X` | The batch: one story-worker per story, in isolation. | medium | user, Claude |
-| `/epikloop:decide` | Batch-answer parked questions, record decisions, unblock. | low | user, Claude |
+| `/epikloop:epic N`, `:next`, `:story X.X` | The batch: one story-worker per story, in isolation. `epic` then has one story-reviewer read each landed story. | medium | user, Claude |
+| `/epikloop:decide` | Batch-answer parked questions, record decisions, unblock; a review's findings one at a time. | low | user, Claude |
 | `/epikloop:triage "<what you found>"` | Human intake through the same router. | low | user only |
-| `/epikloop:retro` | Phase gate: staging smoke, deep gates, self-test, queue pruning, pipeline deletion, tag; MVP sign-off in the final phase; after go-live, each epic's close. | medium | user only |
+| `/epikloop:retro` | Phase gate: staging smoke, deep gates, self-test, the reviews and the rework counted, queue pruning, pipeline deletion, tag; MVP sign-off in the final phase; after go-live, each epic's close. | medium | user only |
 | `/epikloop:release` | The go-live story: production, promotion, rollback note, post-launch checklist. | high | user only |
 | `/epikloop:harbor on\|off\|open` | Harbor's switch and its view. | low | user only |
 
@@ -472,15 +481,41 @@ the model through the state reader's briefs instead (see [Lanes](#lanes)).
 - Until M3, workers run one at a time in one working tree. A batch starts only from a clean,
   landed default branch, and it stops when a story it ran is still ready, because it didn't land.
 - A story lands as one `feat(N.M):` commit: pushed to the default branch in solo mode, or on
-  `story/N.M` with a pull request the human merges in team mode. In solo mode a T3 story also
-  parks a `Review N.M` question, so the human reads its diff in `decide`.
+  `story/N.M` with a pull request the human merges in team mode.
+
+**The reviewer.** In solo mode every landed story is read by a second plugin subagent,
+`story-reviewer`, which didn't write it ([issue #12](https://github.com/Yheng/Epikloop/issues/12)):
+
+- At the end of `epic`, once its stories have ended, the batch starts one reviewer for each line of
+  `state.mjs --reviews`, one at a time. The line is the spawn's description, the last line gives the
+  effort, and the prompt names only the story. The reviewer prints its own brief with
+  `state.mjs --review N.M`. `next` and `story` run no reviews: until a batch does, the state's
+  report and the briefing name the stories that wait, under what needs the human.
+- A story waits for its review when it is in `docs/stories/`, its `feat(N.M):` commit is among
+  those the default branch reaches and no `phase-N` or `live` tag does, and no `review(N.M):`
+  commit is there. What landed before the last retro is closed.
+- The reviewer fixes nothing. A finding is something the change gets wrong against the story, a
+  requirement or a decision, something it broke, or a case its tier's tests leave open. It is high
+  when money or data can be lost, or someone can see or do what they shouldn't.
+- Its record is a parked question, `Review N.M`: each finding with its place, what happens and what
+  it goes against, marked `Severity: high` when a finding is. A T3 story always gets one, which
+  says so when the review found nothing. A T1 or T2 story gets one only with findings.
+- The record lands as one commit, `review(N.M): …`, which holds `docs/queue.md` alone, or
+  nothing. The batch pushes its reviews together once none waits, so a host that deploys at each
+  push deploys once. Its list reads a review that is committed and not pushed yet, and the stage
+  counts it once it is on the default branch.
+- It has no pinned model, so it runs on the session's. Its effort is `effort.review`, `high` by
+  default, layered and passed as a worker's is.
+- `decide` puts each finding to the human on its own. A finding ends as a rework story, which
+  carries `Reworks: N.M`, or as accepted as built, and one that isn't high may end as a backlog
+  line.
 
 **Frontmatter conventions:**
 
 - `effort` is pinned on every skill a person can invoke. `spec-delta`, which the worker preloads,
   has none, so it keeps the worker's tier effort.
 - `model` is pinned only on the worker. A skill whose model differs from the session's makes that
-  turn re-read the whole conversation uncached.
+  turn re-read the whole conversation uncached. The reviewer pins none.
 - User-only ceremonies set `disable-model-invocation: true`, which also keeps their descriptions out
   of context.
 - Only the front door sets `name`, because a `name` also registers a bare command.
@@ -530,6 +565,19 @@ next step is the first one that fails, so the answer is the same after lunch or 
       no `phase-N` tag → `retro`, before the next epic
       ([issue #8](https://github.com/Yheng/Epikloop/issues/8))
 
+Three rules hold from stage 6 on ([issue #12](https://github.com/Yheng/Epikloop/issues/12)):
+
+- **A phase closes only once its reviews are settled.** In solo mode, where `retro` or `release`
+  would be next, a landed story that waits for its review makes the next step `epic N`, which runs
+  the reviews. That batch starts no story, whatever epic it names, though a story named alone can
+  still start. After that, the open `Review` of a story landed since the last retro makes it
+  `decide`. Both ceremonies' briefs refuse meanwhile, so a finding's rework story never lands in a
+  phase that has closed. A log git can't give is reported as a problem and holds nothing.
+- **A question marked high comes first.** While one waits, the next step is `decide`, then
+  whatever it was, and a step only the human starts is still marked so.
+- **A reopened phase.** Before `live`, an MVP story that isn't done, in an epic already tagged, is
+  the next step: `epic N`. A decision can add one, and no other test here would name it.
+
 Each closing ceremony writes a record, a decision with a fixed title, and tags the default branch
 once the record has landed there: in team mode, after the human merges it. A `Go live later`
 record leaves no tag. `state.mjs --retro` and `--release` print what each ceremony covers, and
@@ -545,6 +593,8 @@ then the tags, so placing a tag is the script's call, not the model's.
   - Every model switch costs a full cache miss.
 - Story workers run with their own small context and a one-hour cache. The orchestrator never grows
   past a few thousand tokens.
+- A reviewer has a small context of its own too: the story's brief, the change, and the code
+  around it.
 - API-key users get the one-hour main-conversation cache by setting `promptCacheTtl`, and `doctor`
   says so.
 - `check.sh` prints failures and a one-line summary, never full logs.
@@ -556,7 +606,8 @@ then the tags, so placing a tag is the script's call, not the model's.
 - The design gallery is written by a script from the manifest, so the model never writes or
   rewrites it.
 - Cost rows per story are the tuning instrument: model, effort, wall time and, when available,
-  dollars. The first retro of each dogfood project reviews them.
+  dollars. The first retro of each dogfood project reviews them. A reviewer's rows show on a line
+  of their own, with the models that reviewed, beside each retro's count of what the reviews found.
 
 ## Harbor
 
@@ -588,7 +639,7 @@ The visual vocabulary:
 | A landed story | its note ticked, and its worker cheering |
 | Gates running | the QA lead checking at the desk, then a thumbs up or a red cross |
 | A parked question | the team lead on the phone |
-| A T3 story awaiting review | its worker reading at the glass office |
+| A T3 story whose review is open | its worker reading at the glass office |
 | A permission prompt | a worker asking at the copier, while its red light blinks |
 | A retro | the crew gathered in the lounge |
 | The `mvp` tag | launch day |
@@ -611,9 +662,9 @@ How it ships ([issue #5](https://github.com/Yheng/Epikloop/issues/5)):
   127.0.0.1 through `node:http`, and the page opens its event stream at `/events`. The laws refuse
   any other.
 
-Later, the Bridge adds review pages on the same server (design pick, T3 diff, decide), and they
-write back the same repo files the CLI writes. Office imagery belongs to Harbor alone; the tool's
-name and docs don't use it.
+Later, the Bridge adds review pages on the same server (design pick, a story's review, decide),
+and they write back the same repo files the CLI writes. Office imagery belongs to Harbor alone;
+the tool's name and docs don't use it.
 
 ## Repository layout
 
@@ -622,7 +673,7 @@ name and docs don't use it.
 | `.claude-plugin/marketplace.json` | The marketplace, listing both plugins | now |
 | `plugins/epikloop/.claude-plugin/plugin.json` | The core manifest | now |
 | `plugins/epikloop/skills/` | Sixteen skills, each with its body | now |
-| `plugins/epikloop/agents/story-worker.md` | The worker subagent | now |
+| `plugins/epikloop/agents/` | The worker subagent, `story-worker.md`, and the reviewer, `story-reviewer.md` | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
 | `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke, doctor, the design gallery and Harbor's switch | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |

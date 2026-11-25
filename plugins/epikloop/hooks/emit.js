@@ -1,12 +1,13 @@
 // Epikloop's emitter, a hooks module: it runs inside Claude Code and reaches everything through
 // `$`. It injects no text and never holds a call back. Inside an Epikloop project it writes one
 // JSON file per event under ~/.epikloop/events/YYYY-MM-DD/ and one cost row per turn of a
-// story-worker under ~/.epikloop/projects/<id>/cost/, which scripts/fold.mjs folds into .jsonl
-// files. It also sets each story-worker's effort from its story's tier and asks for the worker in
-// the foreground.
+// story-worker or a story-reviewer under ~/.epikloop/projects/<id>/cost/, which scripts/fold.mjs
+// folds into .jsonl files. It also sets each story-worker's effort from its story's tier, and a
+// reviewer's from the review effort, and asks for both in the foreground.
 //
-// The batch spawns epikloop:story-worker with a description that starts with the story and its
-// tier, `3.2 T2 login form`: that is how the tier is known at spawn time.
+// The batch spawns epikloop:story-worker, and then epikloop:story-reviewer, with a description
+// that starts with the story and its tier, `3.2 T2 login form`: that is how the story and the tier
+// are known at spawn time.
 //
 // Limits:
 // - No module loads under --bare or --safe-mode, under a managed policy that turns mods off, or
@@ -15,9 +16,11 @@
 //   don't run, so task.created, task.completed and notification are not written.
 
 const WORKER = 'epikloop:story-worker'
+const REVIEWER = 'epikloop:story-reviewer'
 const SPAWN = /^(\d+\.\d+) (T[123])\b/
-// Story-worker effort per tier, beneath ~/.epikloop/config.json and .epikloop/project.json.
-const EFFORT = { T1: 'medium', T2: 'high', T3: 'xhigh' }
+// Story-worker effort per tier, and the story-reviewer's, beneath ~/.epikloop/config.json and
+// .epikloop/project.json.
+const EFFORT = { T1: 'medium', T2: 'high', T3: 'xhigh', review: 'high' }
 const LEVELS = ['low', 'medium', 'high', 'xhigh', 'max']
 
 // Set inside an Epikloop project: at session.start, and at a prompt when none is open yet or the
@@ -42,7 +45,7 @@ export function register(on) {
     const spawn = workerSpawn(s, e)
     if (spawn !== null) s.spawning = spawn
     const ran = next(spawn === null ? e : { ...e, effort: spawn.effort })
-    const fields = { story: spawn?.story ?? s.workers.get(e.agentId)?.story, tool: e.tool, agent: e.agentId }
+    const fields = { story: storyOf(spawn ?? s.workers.get(e.agentId)), tool: e.tool, agent: e.agentId }
     emit($, 'tool.pre', { ...fields, detail: { tool_use_id: e.tool_use_id } })
     ran.then(
       (result) => {
@@ -54,9 +57,10 @@ export function register(on) {
     return ran
   })
 
-  // A story-worker is asked for in the foreground.
+  // A story-worker is asked for in the foreground, and so is a story-reviewer: the batch reads its
+  // list again only once the one it started has reported.
   on('agent.spawn', ($, e, next) =>
-    session !== null && e.subagentType === WORKER && e.background ? next({ ...e, background: false }) : next(e),
+    session !== null && (e.subagentType === WORKER || e.subagentType === REVIEWER) && e.background ? next({ ...e, background: false }) : next(e),
   )
 
   // A worker may take several turns: it ends one while a command of its own runs in the
@@ -65,7 +69,7 @@ export function register(on) {
   // it ended, so the wait counts unless that turn died. The rows assume sequential workers, as in
   // M1: the first agent turn to start after a spawn is its worker's, and a worker already known
   // never takes the next one's. With parallel workers a turn's rise is shared, and `cost` is an
-  // upper bound.
+  // upper bound. A reviewer's turns write rows the same way, marked `review`.
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
       // The session that sets a project up began outside it, and a /clear goes on under a new
@@ -90,7 +94,7 @@ export function register(on) {
       worker.usd = now.usd
       worker.at ??= now.at
     }
-    emit($, 'subagent.start', { story: worker?.story, agent: e.agentId })
+    emit($, 'subagent.start', { story: storyOf(worker), agent: e.agentId })
     return next(e)
   })
 
@@ -102,7 +106,7 @@ export function register(on) {
       return next(e)
     }
     const worker = s.workers.get(e.agentId)
-    emit($, 'subagent.stop', { story: worker?.story, agent: e.agentId, detail: { reason: e.reason } })
+    emit($, 'subagent.stop', { story: storyOf(worker), agent: e.agentId, detail: { reason: e.reason } })
     if (worker !== undefined) {
       worker.active = false
       const end = await reading($)
@@ -115,6 +119,7 @@ export function register(on) {
         cost: rise(worker.usd, end.usd),
         model: e.usage?.model ?? null,
         effort: worker.effort,
+        ...(worker.review ? { review: true } : {}),
       }
       worker.usd = end.usd
       worker.at = e.reason === 'answer' ? end.at : undefined
@@ -139,7 +144,7 @@ export function register(on) {
     const s = session
     if (s !== null) {
       const busy = [...s.workers.values()].filter((worker) => worker.active)
-      const story = busy.length === 1 ? busy[0].story : undefined
+      const story = busy.length === 1 ? storyOf(busy[0]) : undefined
       emit($, 'notification', { story, detail: { notification_type: e.notification_type } })
     }
     return next(e)
@@ -197,11 +202,18 @@ async function projectRoot($, cwd, sep) {
   return null
 }
 
-// A story-worker spawn's story, tier and effort, or null for any other call.
+// A story-worker's or a story-reviewer's spawn: its story, its tier and its effort, or null for
+// any other call. A reviewer runs at the review effort, whatever its story's tier.
 function workerSpawn(s, e) {
-  const match = e.tool === 'Agent' && e.subagent_type === WORKER ? SPAWN.exec(e.description) : null
-  return match === null ? null : { story: match[1], tier: match[2], effort: s.effort[match[2]] }
+  const review = e.subagent_type === REVIEWER
+  const match = e.tool === 'Agent' && (review || e.subagent_type === WORKER) ? SPAWN.exec(e.description) : null
+  if (match === null) return null
+  return { story: match[1], tier: match[2], effort: s.effort[review ? 'review' : match[2]], ...(review ? { review: true } : {}) }
 }
+
+// The story an event names: a worker's. A reviewer's events name none, since its story has landed
+// and Harbor draws a worker at the desk of each story an agent's events name.
+const storyOf = (agent) => (agent?.review ? undefined : agent?.story)
 
 // Each tier's effort from the layers given, the lowest first. A value that is no level is passed
 // over, so the layer beneath shows.

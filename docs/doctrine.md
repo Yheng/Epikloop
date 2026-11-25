@@ -10,11 +10,14 @@ for changing Epikloop itself are in the [constitution](../CONSTITUTION.md).
    with a conservative default taken; the human answers them in one sitting.
 3. **Route findings by threshold.** Mechanical and small → fixed now in a separate commit. Needs a
    product call → parked question. Real but not MVP-breaking → one backlog line. Breaks an MVP
-   acceptance criterion → fix now or an explicit scope question. Nothing is filed by default; a
-   policy without a threshold is bottomless.
+   acceptance criterion → fix now or an explicit scope question. Can lose money or data, or lets
+   someone see or do what they shouldn't → never a backlog line: fix now, or a parked question
+   marked high. Nothing is filed by default; a policy without a threshold is bottomless.
 4. **Risk-tiered verification.** T1 (most stories): gates + acceptance evidence. T2: plus a test per
    quoted business rule. T3 (auth, money, migrations on live data, untrusted input): plus an
-   adversarial pass with negative-case tests frozen into the suite, and human review of the diff.
+   adversarial pass with negative-case tests frozen into the suite. In solo mode every story is
+   then read, once it has landed, by a reviewer that didn't write it; the human settles what it
+   finds, and closes every T3 review. In team mode the pull request is the review.
 5. **A frozen finish line and a fuel gauge.** The MVP set is frozen at plan time. Every status opens
    with `MVP done/total · velocity · ETA · queue Δ`. If the queue delta is positive the ETA is
    declared fiction, out loud. The denominator moves only by a recorded decision.

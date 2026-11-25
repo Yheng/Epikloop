@@ -12,8 +12,9 @@ Outcome: a finding the human reports lands where the threshold router sends it, 
 Mechanical and small: fixed now, in its own commit. Needs a product call: a question parked in
 `docs/queue.md` with the conservative default and what it blocks. Real but not MVP-breaking: one
 dated backlog line in `docs/queue.md`. Breaks an MVP acceptance criterion: fixed now, or parked as
-an explicit scope question. Nothing is filed by default. Scope: routing; fixes beyond the small
-mechanical case happen in planned stories.
+an explicit scope question. Can lose money or data, or lets someone see or do what they shouldn't:
+never a backlog line; fixed now, or parked with `- Severity: high`. Nothing is filed by default.
+Scope: routing; fixes beyond the small mechanical case happen in planned stories.
 
 A parked question or backlog line takes its number and form from
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --ids`. Commit what the routing writes, and land it.

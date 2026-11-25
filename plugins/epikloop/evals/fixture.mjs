@@ -3,7 +3,8 @@
 // `node fixture.mjs <name> [dir]` builds fixture <name> in dir, the current folder by default, which
 // must be empty. A case's scaffold.sh runs it in the case's workspace, before Claude starts. Each
 // fixture is the greeter at one stage of its life, or the empty repository before it, and its
-// commits start `fixture: `, so a grader can tell them from the commits made during the run.
+// commits start `fixture: `, so a grader can tell them from the commits made during the run. A
+// story's own commit and its review's keep the subjects the state reader looks for.
 //
 // `node fixture.mjs --self-test` builds every fixture in a temporary folder, reads each one as the
 // briefing does, pushes to the remote the fixtures before a batch carry, and checks that every
@@ -218,6 +219,59 @@ const PLAN = {
   marker: { mvp_frozen: '2026-10-31', hours_per_day: 2, deadline: null },
 }
 const PARK = { subject: 'park a question', date: '2026-10-31', files: { 'docs/queue.md': PARKED } }
+
+// The greeter planned with 1.1 as a T3 story, since the name it greets is untrusted input.
+const RISKY_STORIES = STORIES.replace(
+  /## 1\.1 Greet by name[\s\S]*?(?=## 1\.2 )/,
+  `## 1.1 Greet by name
+- Tier: T3
+- MVP: yes
+- Requirements: REQ-GREET-001
+
+\`src/greet.mjs\` exports \`greet(name)\`, which returns "Hello, <name>!". The name comes from whoever
+runs the tool, so it is untrusted input: the greeting is pasted into a web page as it is, and a
+name that holds \`<\` or \`>\` is refused with an error. Done when tests show that \`greet("Ada")\`
+returns "Hello, Ada!" and that \`greet("<b>Ada</b>")\` throws.
+
+### Spec delta
+- change REQ-GREET-001: the greeting ends with an exclamation mark, and a name with markup is refused
+
+`,
+)
+
+const LANDED_SPEC = SPEC.replace(
+  'The tool greets a person by name.\n',
+  'The tool greets a person by name, and the greeting ends with an exclamation mark. A name that holds\n`<` or `>` is refused with an error.\n',
+)
+
+const REVIEWED = `# Queue
+
+## Questions
+
+### Q-001 Review 1.1 (2026-11-02)
+- Blocks: nothing
+- Default taken: landed as built
+- Severity: high
+
+The review of 1.1 found one thing:
+
+1. \`src/greet.mjs:2\` (high): a name with markup is greeted as it is, though 1.1 says a name that
+   holds \`<\` or \`>\` is refused with an error. \`greet("<b>Ada</b>")\` returns the markup, and no
+   test sends such a name.
+
+## Backlog
+`
+
+const PLAN_RISKY = { ...PLAN, files: { 'docs/stories/1-greeter.md': RISKY_STORIES, 'docs/queue.md': QUEUE } }
+// 1.1 as a worker landed it: the greeting and its test, with the spec's delta applied, but no
+// refusal of a name with markup and no test of one. `raw` keeps a subject as it is.
+const LAND = {
+  subject: 'feat(1.1): greet by name',
+  raw: true,
+  date: '2026-11-01',
+  files: { 'src/greet.mjs': CODE['src/greet.mjs'], 'test/greet.test.mjs': CODE['test/greet.test.mjs'], 'spec/greet.md': LANDED_SPEC },
+}
+const REVIEW = { subject: 'review(1.1): 1 finding', raw: true, date: '2026-11-02', files: { 'docs/queue.md': REVIEWED } }
 const WEB_SPECIFY = { subject: 'spec the greeter page', date: '2026-11-04', init: 'web', files: { 'spec/greet.md': WEB_SPEC } }
 const PICK = {
   subject: 'pick a direction',
@@ -384,6 +438,9 @@ export const FIXTURES = {
   architected: [SPECIFY, ARCHITECT],
   planned: [SPECIFY, ARCHITECT, PLAN],
   parked: [SPECIFY, ARCHITECT, PLAN, PARK],
+  // A T3 story that landed without what it promised, before its review and after it.
+  landed: [SPECIFY, ARCHITECT, PLAN_RISKY, LAND],
+  reviewed: [SPECIFY, ARCHITECT, PLAN_RISKY, LAND, REVIEW],
   // The greeter page at stage 3: before its design, after the pick, and drawn but for one state.
   'web-specified': [WEB_SPECIFY],
   'web-picked': [WEB_SPECIFY, PICK],
@@ -399,6 +456,9 @@ export const FIXTURES = {
 // goes to a bare repository inside .git, where git never looks, so nothing leaves the machine. The
 // other fixtures have no remote, so the skills that run `git fetch` never reach the network.
 const REMOTE = new Set(['empty', 'specified', 'architected', 'web-specified', 'web-picked', 'web-architected'])
+// A fixture a batch has pushed from carries that remote with its commits on it. There a fetch goes
+// to the bare repository too, so `git fetch` answers at once, and without the network.
+const PUSHED = new Set(['landed'])
 
 // ---- Building one
 
@@ -433,12 +493,12 @@ export function build(name, dir) {
   // The repository carries its own identity, so its commits, and the run's, work in any home.
   for (const [key, value] of [['user.name', 'Eval'], ['user.email', 'eval@example.invalid'], ['commit.gpgsign', 'false']]) git(dir, ['config', key, value])
   // Before the commits, so init reads the id from the remote. The random part keeps runs apart.
-  if (REMOTE.has(name)) {
+  if (REMOTE.has(name) || PUSHED.has(name)) {
     const bare = path.join(dir, '.git', 'origin.git').split(path.sep).join('/')
     const url = `https://example.invalid/greeter-${crypto.randomBytes(4).toString('hex')}.git`
     git(dir, ['init', '-q', '--bare', bare])
     git(dir, ['remote', 'add', 'origin', url])
-    git(dir, ['config', `url.${bare}.pushInsteadOf`, url])
+    git(dir, ['config', `url.${bare}.${PUSHED.has(name) ? 'insteadOf' : 'pushInsteadOf'}`, url])
   }
   for (const commit of commits) {
     if (commit.init) run(dir, process.execPath, [INIT, '--lane', commit.init, '--mode', 'solo'])
@@ -452,10 +512,11 @@ export function build(name, dir) {
     }
     const when = `${commit.date}T10:00:00Z`
     // The fixture's history is set, not gated; the run's own commits are the ones that matter.
-    git(dir, ['commit', '-q', '--no-verify', '-m', `fixture: ${commit.subject}`], { GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when })
+    git(dir, ['commit', '-q', '--no-verify', '-m', commit.raw ? commit.subject : `fixture: ${commit.subject}`], { GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when })
     // Armed as the earlier template's install step armed it.
     if (commit.armed) git(dir, ['config', 'core.hooksPath', '.githooks'])
   }
+  if (PUSHED.has(name)) git(dir, ['push', '-q', '--no-verify', 'origin', 'main'])
 }
 
 // ---- The scaffolds
@@ -585,6 +646,36 @@ async function selfTest() {
       },
     ],
     ['parked is at stage 6, with its question first', () => stage('parked', 6, '/epikloop:decide, then /epikloop:epic 1')],
+    [
+      'landed is at stage 7, held until 1.1 is reviewed, and its tests and its gates pass as it stands',
+      () => {
+        const problems = stage('landed', 7, '/epikloop:epic 1')
+        const dir = path.join(temp, 'landed')
+        const state = readState(dir, openProject(dir).project, { home })
+        const why = "epic 1's MVP stories are done, and it has no phase-1 tag, and 1.1 waits for its review"
+        return [
+          ...problems,
+          ...(state.stage.why === why ? [] : [`landed waits because ${state.stage.why}`]),
+          // T3, so its review parks a question whatever it finds.
+          ...(state.stories.get('1.1')?.tier === 'T3' ? [] : ["landed's 1.1 isn't T3"]),
+          // Its remote holds what landed, so a review's commit is the one thing left to push.
+          ...(spawnSync('git', ['rev-list', '--count', 'refs/remotes/origin/main..HEAD'], { cwd: dir, encoding: 'utf8', windowsHide: true }).stdout.trim() === '0' ? [] : ["landed's remote doesn't hold its commits"]),
+          ...(spawnSync('git', ['fetch'], { cwd: dir, encoding: 'utf8', windowsHide: true }).status === 0 ? [] : ["landed's fetch doesn't reach its remote"]),
+          ...passes(dir, ['--test'], "landed's node --test"),
+          ...passes(dir, [path.join('.githooks', 'check.mjs')], "landed's gates"),
+        ]
+      },
+    ],
+    [
+      'reviewed is at stage 7, held until the review of 1.1 is closed, with its high question first',
+      () => {
+        const problems = stage('reviewed', 7, '/epikloop:decide')
+        const dir = path.join(temp, 'reviewed')
+        const state = readState(dir, openProject(dir).project, { home })
+        const asked = state.questions.map((q) => `${q.id} ${q.review} ${q.severity}`).join(', ')
+        return asked === 'Q-001 1.1 high' ? problems : [...problems, `reviewed asks ${asked}`]
+      },
+    ],
     ['web-specified is at stage 3, before its design', () => stage('web-specified', 3, '/epikloop:design')],
     [
       'web-picked is at stage 3, with its direction picked',
@@ -634,7 +725,7 @@ async function selfTest() {
       'the other fixtures have no remote',
       () =>
         Object.keys(FIXTURES)
-          .filter((name) => !REMOTE.has(name))
+          .filter((name) => !REMOTE.has(name) && !PUSHED.has(name))
           .flatMap((name) => {
             const dir = path.join(temp, `local-${name}`)
             build(name, dir)

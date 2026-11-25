@@ -44,7 +44,8 @@ they ship, and this repository. The principles the pipeline enforces in product 
 
 9. **Write for Opus 5 and later.** Model-facing text gives general instructions rather than step
    lists, states its scope, puts the full spec up front, keeps a calm tone, and never tells the
-   model to verify its own work or to use a subagent to verify it.
+   model to verify its own work or to use a subagent to verify it. The review stage is not such an
+   instruction: a reviewer that didn't write a change reads it once it has landed (doctrine 4).
 
 10. **Measure before tuning.** Effort levels and process changes are justified by the cost rows the
     emitter writes, never by feel.

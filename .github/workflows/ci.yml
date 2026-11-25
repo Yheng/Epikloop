@@ -59,7 +59,8 @@ jobs:
   mutations:
     name: mutations
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Each mutation runs a whole self-test, four at a time, and the state reader's are the most.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

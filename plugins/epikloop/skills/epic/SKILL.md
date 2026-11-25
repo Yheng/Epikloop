@@ -1,5 +1,5 @@
 ---
-description: Run epic N as an unattended batch, one isolated worker per story, through hard gates, with questions parked instead of asked.
+description: Run epic N as an unattended batch, one isolated worker per story, through hard gates, then one reviewer per landed story, with questions parked instead of asked.
 argument-hint: "<N>"
 effort: medium
 allowed-tools:
@@ -9,21 +9,31 @@ allowed-tools:
   - 'PowerShell(git pull --ff-only *)'
 ---
 
-Outcome: every ready story in epic N has landed, each built by its own `story-worker`, without
-interrupting the human, and the batch ends with the fuel gauge and what needs the human. Scope:
-running the batch. This conversation keeps only each worker's one-line report, and builds, fixes
-and tidies nothing itself; a change of scope goes to the queue.
+Outcome: every ready story in epic N has landed, each built by its own `story-worker` and then
+read by a `story-reviewer`, without interrupting the human, and the batch ends with the fuel gauge
+and what needs the human. Scope: running the batch. This conversation keeps only each worker's and
+each reviewer's one-line report, and builds, fixes and tidies nothing itself; a change of scope goes
+to the queue.
 
 Which stories are ready comes from a script, never from reading the project files. Run `git fetch`
 on its own, then `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --ready $ARGUMENTS`, also on its
 own. It prints one line per ready story in plan order, such as `3.2 T2 Login form`, then each tier's
 worker effort, or one line saying why nothing can start. When that line names a git command, run it
-on its own and read the list again; any other reason ends the batch before it starts.
+on its own and read the list again; any other reason means no story runs.
 
 Spawn `epikloop:story-worker` for the first line, in the foreground, with that line exactly as the
 description, its tier's effort as `effort`, and `Story N.M.` as the whole prompt; the worker reads
-its own brief. When it reports, read the list again and go on with its first line. The batch ends
+its own brief. When it reports, read the list again and go on with its first line. The stories end
 when nothing is ready, or when the story just run is still listed, because then it didn't land.
 
+Then the reviews, however the stories ended.
+`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --reviews`, on its own, prints the landed stories
+no reviewer has read, in the same form, then the reviewer's effort, or one line saying why none can
+start; a git command it names is run the same way. Spawn `epikloop:story-reviewer` for the first
+line, in the foreground, with that line exactly as the description, that effort as `effort`, and
+`Review N.M.` as the whole prompt. When it reports, read the list again; the reviews end when none
+waits, or when the story just reviewed is still listed.
+
 Close with `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs"`: the fuel gauge, then the stories that
-landed, the one that stopped and why, the questions parked, and what needs the human.
+landed, the one that stopped and why, what each review found, the questions parked, and what needs
+the human.
