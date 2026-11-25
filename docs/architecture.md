@@ -262,7 +262,7 @@ arguments, and the git hooks run it with `--fast` before a commit and `--push` b
 | full | per story | the above plus tests and build, with secrets in the working state, untracked files included |
 | `--push <remote> <url>` | pre-push | full, with secrets in every outgoing commit |
 | `--deep` | retro | full plus end-to-end tests |
-| `--self-test` | every retro, and CI | known-bad and known-good samples for each gate, and mutations of the secret scan, so a gate that fails open is noticed |
+| `--self-test` | every retro, and CI | known-bad and known-good samples for each gate, and mutations of the secret scan and of the wait between runs, so a rule that fails open is noticed |
 
 One more flag, `--arm`, is the install step's entry. It sets `core.hooksPath` to `.githooks`. It
 never fails an install, and it leaves alone anything another tool owns.
@@ -280,6 +280,23 @@ How the gates run:
 - **Order.** The laws, the secret scan and the token gate run first, then lint and typecheck.
   `test`, `build` and `e2e` don't start once one of those has failed
   ([issue #10](https://github.com/Yheng/Epikloop/issues/10)).
+- **One run's slow gates at a time.** On one machine, a run takes `~/.epikloop/gates.lock` before
+  its first slow gate that runs a command, and gives it back after its last
+  ([issue #11](https://github.com/Yheng/Epikloop/issues/11)).
+  - A run that finds the lock held says whose gates it waits for, looks again every second, and
+    goes on by itself. The wait is outside every cap and every gate's own time.
+  - The lock names its run's process, and the time it may be held until: the cap and a minute for
+    each slow gate the run will run. A waiting run takes over a lock whose process is gone or
+    whose time has passed, so no killed or stuck run holds a machine up.
+  - No problem with the lock fails a run or hangs one. After eight looks in a row that get nowhere,
+    the run says so in one line and goes on without the lock. The worst a race can do is let two
+    runs overlap, as a dead run's own commands can with the run that follows it.
+  - A gate command is told the run it is inside, as `CHECK_INSIDE`, and a run it starts doesn't
+    wait for that run.
+  - Nothing waits in CI, where `~/.epikloop/` is missing, or with `CHECK_NO_WAIT` set. The eval
+    runner sets it, since its sessions are timed and run under the machine's own home.
+  - Waiting runs have no order among them, and one checkout has no lock of its own: in 1,310 runs
+    on one machine, two runs of one project never overlapped.
 - **Exit codes.** The runner fails unless it finishes green: the hooks and the runner set exit code
   1 first.
 - **Output.**
@@ -308,7 +325,8 @@ How the gates run:
 - **Events.** A run writes `gate.started` before its first gate, and a `gate.passed` or
   `gate.failed` event for each gate when it ends. Every line is in the emitter's format, carries the
   run's id in `detail.run`, and is written only where `~/.epikloop/` exists. A gate held back by
-  an earlier failure writes none.
+  an earlier failure writes none. The first slow gate of a run that waited for another run's
+  carries the wait, in milliseconds, as `detail.waited`.
 
 The secret scan:
 

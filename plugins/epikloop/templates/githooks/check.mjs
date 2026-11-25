@@ -12,7 +12,8 @@
 //
 // The slow gates, test, build and e2e, don't start once a quick one has failed. A green run stamps
 // the working state it checked, and a commit, a push or a deep run of that state skips what the
-// stamp covers; a full run skips nothing.
+// stamp covers; a full run skips nothing. One run's slow gates are at work at a time on a machine:
+// a run that finds another's at work waits for them, and goes on by itself.
 //
 // It prints failures and one summary line, and never a secret's value. It fails unless it ends
 // green: the hooks set exit code 1 before they load it, and so does its first statement.
@@ -37,8 +38,20 @@ const GIT_CAP = 60_000
 // timeout. CHECK_TIMEOUT_MS only lowers it, for the self-test.
 const capOf = (config, env = process.env) => Math.min((config.gates.cap_minutes ?? 10) * 60_000, Number(env.CHECK_TIMEOUT_MS) || Infinity)
 let CAP = 600_000
+// One run's slow gates at a time on a machine. The run at work names itself in this file under
+// ~/.epikloop, and the others wait for it: a waiting run looks again every LOOK, a look that got
+// nowhere is tried again after RETRY, and GIVE_UP of those in a row end the waiting.
+const LOCK = 'gates.lock'
+const LOOK = 1000
+const RETRY = 250
+const GIVE_UP = 8
+// The longest a lock can say it is held: three slow gates at the largest cap, and a minute each.
+const LONGEST = 3 * 61 * 60_000
+// The run whose lock this process holds, which its gate commands are told.
+let INSIDE = null
 const ZERO = /^0+$/
 const POSIX = process.platform !== 'win32'
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 // Runs a program to its end or its cap, keeping all of its output. It settles once the program has
 // exited and its pipes have closed; a shell command gets two seconds after its exit, in case a
@@ -844,6 +857,7 @@ async function commandGate(name, spec) {
     if (/^GIT_(?:DIR|INDEX_FILE|WORK_TREE|PREFIX|COMMON_DIR|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES)$/i.test(key)) delete env[key]
   }
   if (spec.auto) Object.assign(env, { COREPACK_ENABLE_NETWORK: '0', UV_OFFLINE: '1', GOPROXY: 'off', RUSTUP_AUTO_INSTALL: '0' })
+  if (INSIDE !== null) env.CHECK_INSIDE = INSIDE
   const r = await run(spec.command, [], { env, timeout: CAP, shell: true })
   if (!r.error && !r.timedOut && r.code === 0) return { status: 'ok' }
   const output = redact(r.all.toString('utf8').replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''))
@@ -1106,12 +1120,149 @@ function writeEvents(ctx, results) {
     for (const r of results) {
       if (r.status === 'none' || r.status === 'off' || r.status === 'held') continue
       const detail = { ms: Math.round(r.ms ?? 0) }
+      if (r.waited) detail.waited = Math.round(r.waited)
       if (r.skipped) detail.skipped = r.skipped
       if (r.first?.file) detail.file = r.first.file.slice(0, 512)
       if (r.first?.line) detail.line = r.first.line
       seq += 1
       writeEvent(ctx, seq, r.status === 'fail' ? 'gate.failed' : 'gate.passed', r.name, detail)
     }
+  } catch {}
+}
+
+// ---- One run's slow gates at a time
+
+// Whether a process is there. Only "no such process" says it is gone: one this user may not signal
+// answers EPERM, and is there.
+function alive(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error.code === 'EPERM'
+  }
+}
+
+// The lock's record, or null for anything else. A record is judged by its fields, so runners of
+// different versions read each other's: a run id, a process id, and a time to hold the lock until
+// that a run could have set.
+function lockRecord(text) {
+  try {
+    const record = JSON.parse(text)
+    const until = Date.parse(record.until)
+    const whole = typeof record.run === 'string' && record.run !== '' && Number.isInteger(record.pid) && record.pid > 0 && record.pid < 2 ** 31
+    return whole && Number.isFinite(until) && until - Date.now() <= LONGEST ? { ...record, until } : null
+  } catch {
+    return null
+  }
+}
+
+// What a waiting run says of the run ahead. The record is another process's words, so the folder is
+// cut short, and quoted when it holds a control character; the mode is one of the runner's own; and
+// the time is read from a date.
+function waitingLine(record) {
+  const cwd = typeof record.cwd === 'string' ? record.cwd.slice(0, 200) : '?'
+  const folder = /[\u0000-\u001f\u007f]/.test(cwd) ? JSON.stringify(cwd) : cwd
+  const mode = ['fast', 'full', 'push', 'deep'].includes(record.mode) ? record.mode : '?'
+  const since = new Date(record.since)
+  const clock = Number.isNaN(since.getTime()) ? '?' : `${String(since.getHours()).padStart(2, '0')}:${String(since.getMinutes()).padStart(2, '0')}`
+  return `check: waiting for the gates of ${folder} (${mode}, since ${clock}); this run goes on by itself when they end`
+}
+
+// One look at the lock. It answers 'held' once this run's record is in place; 'none' where there is
+// no folder to keep it in; 'inside' when the run that holds it is the one this run was started by;
+// the holder's record while that run is at work; or { stuck }, why the look got nowhere. Reading,
+// judging and removing happen in one stretch, with nothing awaited between them. `tries` is how
+// many looks in a row have got nowhere.
+function look(file, mine, tries) {
+  let fd
+  try {
+    fd = fs.openSync(file, 'wx')
+  } catch (error) {
+    if (error.code === 'ENOENT') return 'none'
+    if (error.code !== 'EEXIST') return { stuck: error.code ?? 'error' }
+  }
+  if (fd !== undefined) {
+    try {
+      fs.writeSync(fd, `${JSON.stringify(mine)}\n`)
+      fs.closeSync(fd)
+      return 'held'
+    } catch (error) {
+      // A lock this run couldn't write is not left for the others to wait on.
+      try {
+        fs.closeSync(fd)
+      } catch {}
+      try {
+        fs.rmSync(file, { force: true })
+      } catch {}
+      return { stuck: error.code ?? 'error' }
+    }
+  }
+  try {
+    const record = lockRecord(fs.readFileSync(file, 'utf8'))
+    if (record === null) {
+      // A file that is still no record on the fourth look in a row is no run's lock.
+      if (tries >= 3) fs.rmSync(file, { force: true })
+      return { stuck: 'not a record' }
+    }
+    if (record.run === process.env.CHECK_INSIDE) return 'inside'
+    if (record.until >= Date.now() && alive(record.pid)) return record
+    // A lock past its time, or one whose process is gone, is a dead run's.
+    fs.rmSync(file, { force: true })
+    return { stuck: 'a dead run' }
+  } catch (error) {
+    return { stuck: error.code ?? 'error' }
+  }
+}
+
+// Takes the lock for this run's slow gates, waiting while another run's are at work. `gates` is how
+// many of them the run will run, which sets how long the lock may be held: a waiting run takes over
+// a lock whose time has passed, so no stuck run holds every project up. It answers whether the lock
+// is held and how long the run waited. Nothing here ends a run: a lock that can't be used is said
+// once, and the run goes on without it.
+async function takeLock(ctx, gates) {
+  const none = { held: false, waited: 0 }
+  try {
+    const dir = path.join(os.homedir(), '.epikloop')
+    if (process.env.CI || process.env.CHECK_NO_WAIT || !fs.existsSync(dir)) return none
+    const file = path.join(dir, LOCK)
+    const began = performance.now()
+    const said = new Set()
+    for (let tries = 0; ; ) {
+      const now = Date.now()
+      const until = new Date(now + gates * (CAP + 60_000)).toISOString()
+      const mine = { format: 1, run: ctx.run, pid: process.pid, cwd: ctx.top, mode: ctx.mode, since: new Date(now).toISOString(), until }
+      const seen = look(file, mine, tries)
+      if (seen === 'held') {
+        INSIDE = ctx.run
+        return { held: true, waited: said.size > 0 ? performance.now() - began : 0 }
+      }
+      if (seen === 'none' || seen === 'inside') return none
+      if (seen.stuck === undefined) {
+        tries = 0
+        if (!said.has(seen.run)) console.log(redact(waitingLine(seen)))
+        said.add(seen.run)
+        await sleep(LOOK)
+      } else {
+        tries += 1
+        if (tries >= GIVE_UP) {
+          console.log(`check: not waiting for other gates: ~/.epikloop/${LOCK} can't be used (${seen.stuck})`)
+          return none
+        }
+        await sleep(RETRY)
+      }
+    }
+  } catch {
+    return none
+  }
+}
+
+// Gives the lock back, by removing the file only while it still names this run.
+function releaseLock(ctx) {
+  INSIDE = null
+  try {
+    const file = path.join(os.homedir(), '.epikloop', LOCK)
+    if (JSON.parse(fs.readFileSync(file, 'utf8'))?.run === ctx.run) fs.rmSync(file, { force: true })
   } catch {}
 }
 
@@ -1178,14 +1329,24 @@ async function main(argv) {
     results.push(await gate('secrets', () => secretsGate(ctx)))
     results.push(await gate('tokens', () => tokensGate(ctx)))
     const names = ['lint', 'typecheck', ...(mode === 'fast' ? [] : ['test', 'build']), ...(mode === 'deep' ? ['e2e'] : [])]
+    // The slow gates this run will run. It holds the machine's lock from the first to the last, and
+    // the wait for it is outside every gate's own time and cap.
+    const slow = names.filter((name) => HEAVY.includes(name) && ctx.commands[name] !== null && skip(name) === null)
+    let lock = null
     for (const name of names) {
       const why = skip(name)
       // A slow gate doesn't start once a quick one has failed.
       const failed = results.find((r) => r.status === 'fail' && !HEAVY.includes(r.name))
       if (why !== null) results.push({ name, status: 'skipped', skipped: why })
       else if (failed !== undefined && HEAVY.includes(name)) results.push({ name, status: 'held', held: failed.name })
-      else results.push(await gate(name, () => commandGate(name, ctx.commands[name])))
+      else {
+        const first = lock === null && slow.includes(name)
+        if (first) lock = await takeLock(ctx, slow.length)
+        const r = await gate(name, () => commandGate(name, ctx.commands[name]))
+        results.push(first && lock.waited > 0 ? { ...r, waited: lock.waited } : r)
+      }
     }
+    if (lock?.held) releaseLock(ctx)
   }
   const green = results.every((r) => r.status !== 'fail')
   // A stamp is earned by a run that ran all four stamped commands itself, or by a green one whose
@@ -1202,7 +1363,9 @@ async function main(argv) {
   for (const r of results) for (const line of r.lines ?? []) console.log(redact(line))
   const label = mode === 'full' ? 'check' : `check --${mode}`
   const seconds = ((performance.now() - started) / 1000).toFixed(1)
-  console.log(redact(`${label}: ${green ? 'PASS' : 'FAIL'} · ${results.map((r) => `${r.name} ${shown(r)}`).join(' · ')} · ${seconds} s`))
+  const waited = results.find((r) => r.waited)?.waited
+  const wait = waited ? ` · waited ${(waited / 1000).toFixed(1)} s for other gates` : ''
+  console.log(redact(`${label}: ${green ? 'PASS' : 'FAIL'} · ${results.map((r) => `${r.name} ${shown(r)}`).join(' · ')}${wait} · ${seconds} s`))
   const note = await hooksNote(top)
   if (note !== null) console.log(note)
   writeEvents(ctx, results)
@@ -1231,11 +1394,11 @@ async function selfTest() {
   try {
     const k = kit(temp, source, shims)
     const cases = [
-      ...[...secretCases(k), ...localeCases(k)].map(([name, test]) => [name, () => test(source)]),
+      ...[...secretCases(k), ...localeCases(k), ...queueCases(k)].map(([name, test]) => [name, () => test(source)]),
       ...[...hookCases(k), ...tokenCases(k), ...gateCases(k), ...armCases(k), ...eventCases(k)],
     ]
     outcomes.push(...(await pool(cases.map(([name, test]) => async () => [name, await attempt(test)]))))
-    const names = new Set(secretCases(k).map(([name]) => name))
+    const names = new Set([...secretCases(k), ...queueCases(k)].map(([name]) => name))
     const checks = mutations().map(([name, edits, own]) => async () => {
       const [mutated, problem] = mutate(source, cut, edits)
       if (problem || !names.has(own)) return [`mutation: ${name}`, problem ?? `its case doesn't exist: ${own}`]
@@ -1300,7 +1463,14 @@ async function catches(k, mutated, own) {
     reports.push(res)
     return res
   }
-  const [, test] = secretCases({ ...k, check: watch(k.check), push: watch(k.push) }).find(([name]) => name === own)
+  // A run that was only started reports when it ends, which its case waits for.
+  const begun = (...args) => {
+    const started = k.start(...args)
+    started.done.then((res) => reports.push(res))
+    return started
+  }
+  const watched = { ...k, check: watch(k.check), push: watch(k.push), start: begun }
+  const [, test] = [...secretCases(watched), ...queueCases(watched)].find(([name]) => name === own)
   let outcome
   try {
     outcome = await test(mutated)
@@ -1323,7 +1493,7 @@ function kit(temp, source, shims) {
   fs.writeFileSync(globalConfig, '[maintenance]\n\tauto = false\n')
   const base = {}
   for (const [key, value] of Object.entries(process.env)) {
-    if (!/^(?:GIT_.*|CI|CLAUDE_CODE_SESSION_ID|CHECK_TIMEOUT_MS|HOME|USERPROFILE)$/i.test(key)) base[key] = value
+    if (!/^(?:GIT_.*|CI|CLAUDE_CODE_SESSION_ID|CHECK_TIMEOUT_MS|CHECK_INSIDE|CHECK_NO_WAIT|HOME|USERPROFILE)$/i.test(key)) base[key] = value
   }
   Object.assign(base, {
     GIT_CONFIG_NOSYSTEM: '1',
@@ -1354,8 +1524,11 @@ function kit(temp, source, shims) {
     'const name = process.argv[2]',
     'const file = (suffix) => `${process.env.SELFTEST_STATE}/${name}.${suffix}`',
     "const read = (suffix) => (fs.existsSync(file(suffix)) ? fs.readFileSync(file(suffix), 'utf8') : '')",
+    "fs.writeFileSync(file('inside'), process.env.CHECK_INSIDE ?? '')",
     "fs.appendFileSync(file('count'), 'x')",
     "process.stdout.write(read('print') || `${name} ran\\n`)",
+    // A held command waits for its go file, for 100 seconds at most.
+    "for (let i = 0; read('hold') && !fs.existsSync(file('go')) && i < 2000; i += 1) await new Promise((resolve) => setTimeout(resolve, 50))",
     "if (read('hang')) {",
     "  spawn(process.execPath, ['-e', 'setTimeout(() => {}, 8000)'], { stdio: 'inherit', detached: true })",
     '  setTimeout(() => {}, 60000)',
@@ -1416,6 +1589,56 @@ function kit(temp, source, shims) {
     })
     return { ...res, ms: performance.now() - started }
   }
+  // Starts a run and doesn't wait for it. `said(text)` settles true once the run's output holds the
+  // text, and false when the run ends without it; `done` is its result, as check() gives one. A run
+  // still going after two minutes is stopped.
+  const start = (r, args, { input, env = {}, cwd = r.dir } = {}) => {
+    const child = spawn(process.execPath, [path.join(r.dir, '.githooks', 'check.mjs'), ...args], {
+      cwd,
+      env: { ...base, SELFTEST_STATE: r.state, ...env },
+      windowsHide: true,
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    })
+    let out = ''
+    let ended = false
+    let waits = []
+    const settle = () => {
+      waits = waits.filter((wait) => {
+        const found = out.includes(wait.text)
+        if (found || ended) wait.resolve(found)
+        return !found && !ended
+      })
+    }
+    for (const stream of [child.stdout, child.stderr]) {
+      stream.setEncoding('utf8')
+      stream.on('data', (chunk) => {
+        out += chunk
+        settle()
+      })
+    }
+    const timer = setTimeout(() => stop(child), 120_000)
+    const done = new Promise((resolve) => {
+      const finish = (code) => {
+        if (ended) return
+        ended = true
+        clearTimeout(timer)
+        settle()
+        resolve({ code: code ?? -1, out, stdout: out })
+      }
+      child.on('error', () => finish(-1))
+      child.on('close', (code) => finish(code))
+    })
+    if (input !== undefined) {
+      child.stdin.on('error', () => {})
+      child.stdin.end(input)
+    }
+    const said = (text) =>
+      new Promise((resolve) => {
+        waits.push({ text, resolve })
+        settle()
+      })
+    return { pid: child.pid, said, done }
+  }
   const brief = (out) => out.trim().split('\n').slice(-3).join(' / ').slice(0, 400)
   return {
     temp,
@@ -1424,6 +1647,7 @@ function kit(temp, source, shims) {
     write,
     makeRepo,
     check,
+    start,
     brief,
     gitIn: (r, ...args) => exec('git', args, { cwd: r.dir, env: { SELFTEST_STATE: r.state } }),
     push: (r, input, args = ['--push', 'origin', '../remote.git']) => check(r, args, { input }),
@@ -2695,6 +2919,349 @@ function eventCases(k) {
   ]
 }
 
+// One run's slow gates at a time on a machine. Each case has a home of its own, holding .epikloop,
+// and takes the runner's source, so the mutations below can run it against a broken runner. A case
+// lets go of whatever it held up before it reads a result, so every run it started ends by itself.
+function queueCases(k) {
+  const { makeRepo, check, start, exec, g, refLine, setState, runs, passes, blocked, every } = k
+  const homeOf = (r) => {
+    const home = path.join(r.root, 'home')
+    fs.mkdirSync(path.join(home, '.epikloop'), { recursive: true })
+    return home
+  }
+  const at = (home, more = {}) => ({ HOME: home, USERPROFILE: home, ...more })
+  const lockFile = (home) => path.join(home, '.epikloop', 'gates.lock')
+  const lockOf = (home) => {
+    try {
+      return fs.readFileSync(lockFile(home), 'utf8')
+    } catch {
+      return null
+    }
+  }
+  // Another run's record: this self-test's own process, which outlives every case, with ten minutes
+  // left to hold the lock.
+  const live = (more = {}) => {
+    const record = { format: 1, run: 'feedf00d', pid: process.pid, cwd: 'C:/elsewhere/project', mode: 'full', since: new Date().toISOString(), until: new Date(Date.now() + 600_000).toISOString() }
+    return `${JSON.stringify({ ...record, ...more })}\n`
+  }
+  const plant = (home, text) => {
+    fs.writeFileSync(lockFile(home), text)
+    return text
+  }
+  // Runs to its end. A run that waits has the lock taken away, so that it ends too.
+  const through = async (r, args, home, { more = {}, input } = {}) => {
+    const run = start(r, args, { env: at(home, more), input })
+    const waited = await run.said('waiting for the gates of')
+    if (waited) fs.rmSync(lockFile(home), { force: true, recursive: true })
+    return { waited, res: await run.done }
+  }
+  const quiet = (res) => (!res.out.includes('waiting for') && !res.out.includes('not waiting for other gates')) || `it said: ${k.brief(res.out)}`
+  const inside = (r, name) => {
+    try {
+      return fs.readFileSync(path.join(r.state, `${name}.inside`), 'utf8')
+    } catch {
+      return null
+    }
+  }
+  // Waits for a file, for two minutes at most.
+  const appears = async (file) => {
+    for (let i = 0; i < 2400 && !fs.existsSync(file); i += 1) await sleep(50)
+    return fs.existsSync(file)
+  }
+  const eventsOf = (home) => {
+    const events = path.join(home, '.epikloop', 'events')
+    if (!fs.existsSync(events)) return []
+    return fs.readdirSync(events).flatMap((day) => fs.readdirSync(path.join(events, day)).map((name) => JSON.parse(fs.readFileSync(path.join(events, day, name), 'utf8'))))
+  }
+  const slashed = (text) => text.split('\\').join('/')
+  // The end of a repository's folder as git names it, whatever form the temporary folder's own
+  // path takes on the way there.
+  const tail = (r) => `/${path.basename(r.root)}/work`
+  return [
+    [
+      "a run waits for another run's slow gates, then runs its own",
+      async (src) => {
+        const a = await makeRepo({ src, commands: true })
+        const b = await makeRepo({ src, commands: true })
+        const home = homeOf(a)
+        setState(a, 'test', 'hold', '1')
+        const first = start(a, [], { env: at(home) })
+        await appears(path.join(a.state, 'test.count'))
+        const second = start(b, [], { env: at(home) })
+        const waited = await second.said('waiting for the gates of')
+        const before = runs(b, 'test')
+        setState(a, 'test', 'go', '1')
+        const [resA, resB] = [await first.done, await second.done]
+        const line = resB.out.split('\n').find((text) => text.includes('waiting for the gates of')) ?? ''
+        const withWait = eventsOf(home).filter((e) => e.detail?.waited !== undefined)
+        return every(
+          waited || 'the second run did not wait',
+          before === 0 || `the second run's test had run ${before} times while it waited`,
+          passes(resA),
+          passes(resB),
+          (line.startsWith('check: waiting for the gates of ') && slashed(line).includes(`${tail(a)} (full, since `)) || `the waiting line: ${line}`,
+          line.endsWith('; this run goes on by itself when they end') || `the waiting line: ${line}`,
+          / · build ok · waited \d+\.\d s for other gates · \d+\.\d s\s*$/m.test(resB.out) || `no wait in the summary: ${k.brief(resB.out)}`,
+          !resA.out.includes('waited') || 'the first run says it waited',
+          (withWait.length === 1 && withWait[0].state === 'test' && slashed(withWait[0].cwd).endsWith(tail(b)) && withWait[0].detail.waited > 0) || `events with a wait: ${JSON.stringify(withWait.map((e) => [e.state, e.cwd, e.detail.waited]))}`,
+          lockOf(home) === null || 'the lock was left behind',
+        )
+      },
+    ],
+    [
+      "a dead run's lock is taken at once",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        plant(home, live({ pid: 2147483644 }))
+        const { waited, res } = await through(r, [], home)
+        return every(!waited || 'it waited for a run whose process is gone', passes(res), quiet(res), runs(r, 'test') === 1 || `test ran ${runs(r, 'test')} times`, lockOf(home) === null || 'a lock was left behind')
+      },
+    ],
+    [
+      'a lock past its time is taken, though its process lives',
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        plant(home, live({ until: new Date(Date.now() - 1000).toISOString() }))
+        const { waited, res } = await through(r, [], home)
+        return every(!waited || 'it waited for a lock past its time', passes(res), quiet(res), lockOf(home) === null || 'a lock was left behind')
+      },
+    ],
+    [
+      "a lock with a time no run could set isn't waited for",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        plant(home, live({ until: new Date(Date.now() + 24 * 3_600_000).toISOString() }))
+        const { waited, res } = await through(r, [], home)
+        return every(!waited || 'it waited for a lock held for a day', passes(res), quiet(res), lockOf(home) === null || 'a lock was left behind')
+      },
+    ],
+    [
+      "a lock that isn't a record is removed",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        plant(home, 'not a record\n')
+        const { waited, res } = await through(r, [], home)
+        return every(!waited || 'it waited', passes(res), quiet(res), lockOf(home) === null || 'the file was left in place')
+      },
+    ],
+    [
+      "a lock path that can't be used holds nothing up",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        const kept = path.join(lockFile(home), 'kept')
+        fs.mkdirSync(kept, { recursive: true })
+        const res = await start(r, [], { env: at(home) }).done
+        return every(
+          passes(res),
+          res.out.includes("check: not waiting for other gates: ~/.epikloop/gates.lock can't be used (") || `nothing said: ${k.brief(res.out)}`,
+          runs(r, 'test') === 1 || `test ran ${runs(r, 'test')} times`,
+          fs.existsSync(kept) || 'the folder at the lock path was removed',
+        )
+      },
+    ],
+    [
+      'the lock is held from the first slow gate to the last',
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        setState(r, 'test', 'hold', '1')
+        setState(r, 'build', 'hold', '1')
+        const run = start(r, [], { env: at(home) })
+        await appears(path.join(r.state, 'test.count'))
+        const atTest = lockOf(home)
+        setState(r, 'test', 'go', '1')
+        await appears(path.join(r.state, 'build.count'))
+        const atBuild = lockOf(home)
+        setState(r, 'build', 'go', '1')
+        const res = await run.done
+        let record = {}
+        try {
+          record = JSON.parse(atTest)
+        } catch {}
+        const span = Date.parse(record.until) - Date.parse(record.since)
+        return every(
+          passes(res),
+          (record.format === 1 && /^[0-9a-f]{8}$/.test(record.run) && record.pid === run.pid && record.mode === 'full' && slashed(record.cwd ?? '').endsWith(tail(r))) || `the record: ${atTest}`,
+          span === 2 * 660_000 || `the lock says it is held for ${span} ms`,
+          atBuild === atTest || 'the lock changed before the last slow gate',
+          (inside(r, 'test') === record.run && inside(r, 'build') === record.run) || 'a slow gate was not told the run it is inside',
+          inside(r, 'lint') === '' || 'a quick gate was told a run',
+          lockOf(home) === null || 'the lock was left behind',
+        )
+      },
+    ],
+    [
+      'a failing run gives the lock back',
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        setState(r, 'test', 'exit', '1')
+        const res = await check(r, [], { env: at(home) })
+        return every(blocked(res, 'test FAIL'), lockOf(home) === null || 'the lock was left behind')
+      },
+    ],
+    [
+      'a lock that changed hands is left at release',
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        setState(r, 'test', 'hold', '1')
+        const run = start(r, [], { env: at(home) })
+        await appears(path.join(r.state, 'test.count'))
+        const other = plant(home, live())
+        setState(r, 'test', 'go', '1')
+        const res = await run.done
+        return every(passes(res), lockOf(home) === other || "another run's lock was removed")
+      },
+    ],
+    [
+      "a commit doesn't wait",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        const other = plant(home, live())
+        const { waited, res } = await through(r, ['--fast'], home)
+        return every(!waited || 'a commit waited', passes(res), quiet(res), lockOf(home) === other || 'the lock was touched')
+      },
+    ],
+    [
+      "a push the stamp covers doesn't wait",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        const full = await check(r, [], { env: at(home) })
+        const other = plant(home, live())
+        const { waited, res } = await through(r, ['--push', 'origin', '../remote.git'], home, { input: refLine('refs/heads/main', await g(r.dir, 'rev-parse', 'HEAD')) })
+        return every(
+          passes(full),
+          !waited || 'a push the stamp covers waited',
+          passes(res),
+          res.out.includes('test skipped (stamp) · build skipped (stamp)') || `no skip: ${k.brief(res.out)}`,
+          quiet(res),
+          lockOf(home) === other || 'the lock was touched',
+        )
+      },
+    ],
+    [
+      "a run held back by a quick failure doesn't wait",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        setState(r, 'lint', 'exit', '1')
+        const other = plant(home, live())
+        const { waited, res } = await through(r, [], home)
+        return every(!waited || 'it waited for gates it would not run', blocked(res, 'lint FAIL', 'test not run (lint failed)'), quiet(res), lockOf(home) === other || 'the lock was touched')
+      },
+    ],
+    [
+      "a project with no test or build command doesn't wait",
+      async (src) => {
+        const r = await makeRepo({ src })
+        const home = homeOf(r)
+        const other = plant(home, live())
+        const { waited, res } = await through(r, [], home)
+        return every(!waited || 'it waited with no slow command to run', passes(res), quiet(res), lockOf(home) === other || 'the lock was touched')
+      },
+    ],
+    [
+      'nothing waits or is created where ~/.epikloop is missing',
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = path.join(r.root, 'home')
+        fs.mkdirSync(home)
+        const res = await check(r, [], { env: at(home) })
+        return every(passes(res), runs(r, 'test') === 1 || `test ran ${runs(r, 'test')} times`, !fs.existsSync(path.join(home, '.epikloop')) || '~/.epikloop was created')
+      },
+    ],
+    [
+      'nothing waits in CI',
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        const other = plant(home, live())
+        const { waited, res } = await through(r, [], home, { more: { CI: 'true' } })
+        return every(!waited || 'a run waited in CI', passes(res), quiet(res), lockOf(home) === other || 'the lock was touched')
+      },
+    ],
+    [
+      "a run told not to wait doesn't",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        const other = plant(home, live())
+        const { waited, res } = await through(r, [], home, { more: { CHECK_NO_WAIT: '1' } })
+        return every(!waited || 'a run waited with CHECK_NO_WAIT set', passes(res), quiet(res), lockOf(home) === other || 'the lock was touched')
+      },
+    ],
+    [
+      "a run inside the run that holds the lock doesn't wait for it, and a run inside another does",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        const other = plant(home, live())
+        const inner = await through(r, [], home, { more: { CHECK_INSIDE: 'feedf00d' } })
+        const untouched = lockOf(home) === other
+        const elsewhere = await makeRepo({ src, commands: true })
+        const outer = start(elsewhere, [], { env: at(home, { CHECK_INSIDE: 'another1' }) })
+        const waited = await outer.said('waiting for the gates of')
+        fs.rmSync(lockFile(home), { force: true })
+        const res = await outer.done
+        return every(
+          !inner.waited || 'a run waited for the run it is inside',
+          passes(inner.res),
+          quiet(inner.res),
+          untouched || 'the lock was touched',
+          waited || "a run inside another run didn't wait for this one",
+          passes(res),
+        )
+      },
+    ],
+    [
+      "the wait is outside the gate's own time",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        plant(home, live())
+        const run = start(r, [], { env: at(home) })
+        const waited = await run.said('waiting for the gates of')
+        // The lock stays for ten runs of the stand-in command, so the wait outlasts the gate however
+        // slow the machine is.
+        for (let i = 0; waited && i < 10; i += 1) await exec(process.execPath, ['gates/cmd.mjs', 'spare'], { cwd: r.dir, env: { SELFTEST_STATE: r.state } })
+        fs.rmSync(lockFile(home), { force: true })
+        const res = await run.done
+        const test = eventsOf(home).find((e) => e.state === 'test')
+        return every(waited || 'the run did not wait', passes(res), test?.detail.waited > test?.detail.ms || `test took ${test?.detail.ms} ms, after a wait of ${test?.detail.waited} ms`)
+      },
+    ],
+    [
+      "what a waiting run says of another run's record is cleaned",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        plant(home, live({ cwd: `C:/x\u001b[31m/${'y'.repeat(600)}`, mode: 'sudo', since: 'yesterday' }))
+        const run = start(r, [], { env: at(home) })
+        const waited = await run.said('waiting for the gates of')
+        fs.rmSync(lockFile(home), { force: true })
+        const res = await run.done
+        const line = res.out.split('\n').find((text) => text.includes('waiting for the gates of')) ?? ''
+        return every(
+          waited || 'the run did not wait',
+          passes(res),
+          !line.includes('\u001b') || 'a control character was printed',
+          line.includes('"C:/x\\u001b[31m/yyy') || `the folder isn't quoted: ${line.slice(0, 120)}`,
+          line.length < 400 || `the folder isn't cut short: ${line.length} characters`,
+          line.includes('(?, since ?)') || `the mode or the time: ${line.slice(-90)}`,
+        )
+      },
+    ],
+  ]
+}
+
 function mutations() {
   return [
     ...KEYS.map((key, i) => [`the ${key.kind} pattern (format ${i + 1}) matches nothing`, [[`/${key.re.source}/`, '/(?!)/']], 'a nested .env is a secret file']),
@@ -2743,6 +3310,47 @@ function mutations() {
       ],
       'AWS access key id (format 2) is blocked',
     ],
+    // One run's slow gates at a time.
+    ['no run waits', [['if (process.env.CI || process.env.CHECK_NO_WAIT || !fs.existsSync(dir)) return none', 'return none']], "a run waits for another run's slow gates, then runs its own"],
+    ["a live run's lock taken as a dead run's", [['if (record.until >= Date.now() && alive(record.pid)) return record', 'if (false) return record']], "a run waits for another run's slow gates, then runs its own"],
+    ['the wait left out of the summary', [["const wait = waited ? ` · waited ${(waited / 1000).toFixed(1)} s for other gates` : ''", "const wait = ''"]], "a run waits for another run's slow gates, then runs its own"],
+    ['the wait left out of the event', [['      if (r.waited) detail.waited = Math.round(r.waited)\n', '']], "a run waits for another run's slow gates, then runs its own"],
+    ['every process counted as there', [["return error.code === 'EPERM'", 'return true']], "a dead run's lock is taken at once"],
+    ["a lock's time ignored", [['if (record.until >= Date.now() && alive(record.pid)) return record', 'if (alive(record.pid)) return record']], 'a lock past its time is taken, though its process lives'],
+    ['any time taken for one a run could set', [['until - Date.now() <= LONGEST', 'true']], "a lock with a time no run could set isn't waited for"],
+    ['a file that is no record left in place', [['      if (tries >= 3) fs.rmSync(file, { force: true })\n', '']], "a lock that isn't a record is removed"],
+    ['nothing said on giving up', [["          console.log(`check: not waiting for other gates: ~/.epikloop/${LOCK} can't be used (${seen.stuck})`)\n", '']], "a lock path that can't be used holds nothing up"],
+    [
+      'the lock given back after the first slow gate',
+      [['        results.push(first && lock.waited > 0 ? { ...r, waited: lock.waited } : r)\n', '        results.push(first && lock.waited > 0 ? { ...r, waited: lock.waited } : r)\n        if (first && lock.held) releaseLock(ctx)\n']],
+      'the lock is held from the first slow gate to the last',
+    ],
+    ['the lock never given back', [['    if (lock?.held) releaseLock(ctx)\n', '']], 'the lock is held from the first slow gate to the last'],
+    ["one gate's time for a run of two", [['gates * (CAP + 60_000)', '(CAP + 60_000)']], 'the lock is held from the first slow gate to the last'],
+    ['a gate command not told the run it is inside', [['  if (INSIDE !== null) env.CHECK_INSIDE = INSIDE\n', '']], 'the lock is held from the first slow gate to the last'],
+    ['the lock kept after a failed gate', [['    if (lock?.held) releaseLock(ctx)\n', "    if (lock?.held && results.every((r) => r.status !== 'fail')) releaseLock(ctx)\n"]], 'a failing run gives the lock back'],
+    ['a lock removed without being read', [["if (JSON.parse(fs.readFileSync(file, 'utf8'))?.run === ctx.run) fs.rmSync(file, { force: true })", 'fs.rmSync(file, { force: true })']], 'a lock that changed hands is left at release'],
+    ['a wait before every command gate', [['const first = lock === null && slow.includes(name)', 'const first = lock === null']], "a commit doesn't wait"],
+    ['the lock taken before the gates are known to run', [['    let lock = null\n', '    let lock = names.some((name) => HEAVY.includes(name)) ? await takeLock(ctx, 2) : null\n']], "a push the stamp covers doesn't wait"],
+    ['a lock taken for a command that is not there', [['HEAVY.includes(name) && ctx.commands[name] !== null && skip(name) === null', 'HEAVY.includes(name) && skip(name) === null']], "a project with no test or build command doesn't wait"],
+    ['the folder made for the lock', [['!fs.existsSync(dir)) return none', '(fs.mkdirSync(dir, { recursive: true }), false)) return none']], 'nothing waits or is created where ~/.epikloop is missing'],
+    ['a wait in CI', [['if (process.env.CI || process.env.CHECK_NO_WAIT || ', 'if (process.env.CHECK_NO_WAIT || ']], 'nothing waits in CI'],
+    ['a wait in spite of CHECK_NO_WAIT', [['if (process.env.CI || process.env.CHECK_NO_WAIT || ', 'if (process.env.CI || ']], "a run told not to wait doesn't"],
+    ['the run it is inside waited for', [["    if (record.run === process.env.CHECK_INSIDE) return 'inside'\n", '']], "a run inside the run that holds the lock doesn't wait for it, and a run inside another does"],
+    ['any run taken for the one it is inside', [['if (record.run === process.env.CHECK_INSIDE)', 'if (process.env.CHECK_INSIDE !== undefined)']], "a run inside the run that holds the lock doesn't wait for it, and a run inside another does"],
+    [
+      "the gate's clock started before the wait",
+      [
+        [
+          '        if (first) lock = await takeLock(ctx, slow.length)\n        const r = await gate(name, () => commandGate(name, ctx.commands[name]))\n',
+          '        const r = await gate(name, async () => {\n          if (first) lock = await takeLock(ctx, slow.length)\n          return commandGate(name, ctx.commands[name])\n        })\n',
+        ],
+      ],
+      "the wait is outside the gate's own time",
+    ],
+    ["another run's folder printed as it is", [['/[\\u0000-\\u001f\\u007f]/.test(cwd) ? JSON.stringify(cwd) : cwd', 'cwd']], "what a waiting run says of another run's record is cleaned"],
+    ["another run's folder printed at any length", [['record.cwd.slice(0, 200)', 'record.cwd']], "what a waiting run says of another run's record is cleaned"],
+    ['any mode printed', [["['fast', 'full', 'push', 'deep'].includes(record.mode) ? record.mode : '?'", 'record.mode']], "what a waiting run says of another run's record is cleaned"],
   ]
 }
 

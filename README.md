@@ -537,7 +537,7 @@ The runner lives in your repository, so it works in a plain clone without the pl
 | full | per story | the above, plus tests and build, with secrets in the working state |
 | `--push` | pre-push | full, with secrets in every outgoing commit |
 | `--deep` | retro | full, plus end-to-end tests |
-| `--self-test` | every retro | known-bad and known-good samples for each gate, and mutations of the secret scan, so a gate that fails open is noticed |
+| `--self-test` | every retro | known-bad and known-good samples for each gate, and mutations of the secret scan and of the wait between runs, so a rule that fails open is noticed |
 
 - **Arming.** `node .githooks/check.mjs --arm` is the one entry in the stack's install step: npm's
   `prepare`, for example. It sets `core.hooksPath` to `.githooks`, never fails an install, and
@@ -568,6 +568,14 @@ The runner lives in your repository, so it works in a plain clone without the pl
     build that imports `design/tokens.css` makes `design/**` wrong.
   - Full and deep runs never use the list, so a wrong one is caught at the next. A deep run skips
     only on a state that a run tested itself.
+- **One run's slow gates at a time.** On a machine that runs several projects, the tests, build
+  and end-to-end tests of one run are at work at a time, so two batches don't starve each other.
+  - A run that finds another's at work says which project it waits for, and goes on by itself when
+    they end. The wait counts against no cap, and the summary line shows it.
+  - Commits never wait, and neither does a push the stamp covers.
+  - A run that was killed is passed over at once, and a stuck one once its caps have run out.
+  - A problem with the lock, `~/.epikloop/gates.lock`, is said in one line and holds nothing up.
+    Nothing waits in CI, or where `~/.epikloop` is missing.
 - **The secret scan** covers:
   - secret files at any depth
   - current key formats and password-bearing database URLs, in added lines only
@@ -758,6 +766,7 @@ to edit, and `init.mjs --refresh` replaces only the gate files.
 | `~/.epikloop/projects/<id>/cost.jsonl` | One cost row per turn of a story's worker: tier, worker, wall time, cost, model and effort. A worker's rows add up to its run |
 | `~/.epikloop/config.json` | Your settings: effort overrides and the Harbor switch |
 | `~/.epikloop/harbor.json` | Where the Harbor plugin is installed, which its start-of-session hook records |
+| `~/.epikloop/gates.lock` | The gate run whose tests, build or end-to-end tests are at work, while they are; the other runs on the machine wait for it |
 
 The emitter, a hooks module, writes the events and cost rows. Events say where, never what: no tool
 output, prompts, file contents or secret values. Claude Code transcripts are never parsed.

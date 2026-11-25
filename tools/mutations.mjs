@@ -122,7 +122,8 @@ export const MUTATIONS = [
   m(WORKFLOW, ['init'], 'write access', '  contents: read', '  contents: write'),
   m(WORKFLOW, ['init'], 'leave the token in the checkout', '          persist-credentials: false\n', ''),
 
-  // The gate runner, beyond the secret scan's own mutations, which its self-test runs.
+  // The gate runner, beyond the mutations its own self-test runs: the secret scan's, and those of
+  // one run's slow gates at a time.
   m(RUNNER, ['init'], 'a runner that reads only ref-named push lines', '.filter((fields) => fields.length === 4)', ".filter((fields) => fields.length === 4 && fields[0].startsWith('refs/'))"),
   m(RUNNER, ['check'], "no line for the gates' own files", "...(log ? [`  full log: ${log}`] : []), ...own] }", "...(log ? [`  full log: ${log}`] : [])] }"),
   m(RUNNER, ['check'], "the gates' own files on every failure", "const own = OWN_FILES.test(output.replace(/\\\\/g, '/'))", 'const own = true'),
@@ -157,6 +158,9 @@ export const MUTATIONS = [
   m(RUNNER, ['check'], 'let CHECK_TIMEOUT_MS raise the cap', 'Math.min((config.gates.cap_minutes ?? 10) * 60_000, Number(env.CHECK_TIMEOUT_MS) || Infinity)', 'Number(env.CHECK_TIMEOUT_MS) || (config.gates.cap_minutes ?? 10) * 60_000'),
   m(RUNNER, ['check'], 'take any gates.cap_minutes', 'if (cap !== undefined && !(Number.isInteger(cap) && cap >= 1 && cap <= 60)) problems.push(', 'if (false) problems.push('),
   m(RUNNER, ['check'], 'let a test_ignore path match the marker', "else if (list === 'test_ignore' && NEVER_IGNORED.some((file) => glob(entry.path).test(file))) {", 'else if (false) {'),
+  // One run's slow gates at a time: the one mutation that leaves a run looking for ever, which the
+  // runner's own list can't hold, since a run that never ends never reports.
+  m(RUNNER, ['check'], "look for ever at a lock that can't be used", 'if (tries >= GIVE_UP) {', 'if (false) {'),
 
   // The state reader: the cost rows and the workers' effort.
   m(STATE, ['state'], "count each of a worker's rows as a run", 'const run = runs.get(row.agent)', 'const run = undefined'),
@@ -400,6 +404,7 @@ export const MUTATIONS = [
   m(EVALS, ['evals'], "leave the run's cost rows behind", "    fs.rmSync(folder, { recursive: true, force: true })\n", ''),
   m(EVALS, ['evals'], 'delete events from elsewhere too', "const inside = (cwd) => typeof cwd === 'string' && roots.some(", 'const inside = (cwd) => true || roots.some('),
   m(EVALS, ['evals'], 'ignore the cost cap', 'if (!ctx.budget()) return', 'if (false) return'),
+  m(EVALS, ['evals'], "let a session's gates wait for other projects'", "CHECK_NO_WAIT: '1', ", ''),
   m(EVALS, ['evals'], 'let a session run past its timeout', '      timedOut = true\n      stop(child)\n', '      timedOut = true\n'),
   m(EVALS, ['evals'], 'read a file outside the workspace', "if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error(", 'if (false) throw new Error('),
   m(EVALS, ['evals'], 'read a glob as one file name', "if (spec.path.includes('*')) {", 'if (false) {'),

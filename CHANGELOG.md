@@ -9,6 +9,28 @@ All notable changes to Epikloop are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- One run's slow gates at a time on a machine
+  ([issue #11](https://github.com/Yheng/Epikloop/issues/11)).
+  - **The failure, read on 2026-11-24 from three projects' gate events on one machine:** two
+    projects' gates ran at once, and the slower project paid for it. 17 of its 28 commands cut
+    off at the cap ran while the other's test, build or end-to-end tests were at work, though only
+    13% of its gate time overlapped with them. Its slow gates failed 22 of 50 times beside the
+    other project's, and 36 of 441 times alone.
+  - A run takes a lock, `~/.epikloop/gates.lock`, before its first slow gate that runs a command,
+    and gives it back after its last. A run that finds it held says whose gates it waits for, and
+    goes on by itself. The wait counts against no cap, and the summary line and the gate's event
+    carry it. A commit never waits, and neither does a push the stamp covers.
+  - A waiting run takes over a lock whose process is gone, or whose time has passed: the cap and a
+    minute for each slow gate its run was to run. Beside the 1,310 runs that finished, 12 had
+    started and written no result.
+  - A problem with the lock fails no run and hangs none: the run says so and goes on without it.
+  - Nothing waits in CI, where `~/.epikloop` is missing, or with `CHECK_NO_WAIT` set, which the
+    eval runner sets for its timed sessions.
+  - It is not a lock for each checkout, which issue #10 expected to follow: two runs of one
+    project never overlapped.
+
 ### Changed
 
 - The gate runner runs a check only where one is needed

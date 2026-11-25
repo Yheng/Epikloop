@@ -276,7 +276,11 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - It holds the stamp to what a run checked: what a commit, a push and a deep run skip on a
     stamped state, what a run may stamp, and the paths `gates.test_ignore` lists.
   - It covers the slow gates held back by a quick failure, and the cap a project sets.
-  - Then it checks that each mutation of the secret scan is caught.
+  - It holds one run's slow gates at a time, each case in a home of its own: a run waits for
+    another's and reports the wait; a dead, overdue or unreadable lock is passed over; and a
+    commit, a push the stamp covers, a run in CI and a run inside the holder never wait.
+  - Then it checks that each mutation of the secret scan and of that wait is caught, each against
+    its own case.
   - CI runs it again on Node 22.0.0, the floor.
 - **The fixture's self-test** builds every eval fixture in a temporary folder with a home of its
   own. It reads each fixture's stage as the briefing does, the web page's from stage 3 to 5, runs
@@ -284,7 +288,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   `architected`'s remote, and checks that each case's scaffold names a fixture.
 - **The eval runner's self-test** loads every case, holds its YAML reader and graders to samples,
   and runs whole cases against a stand-in for `claude`. Those runs cover the fixture, the prompt,
-  the tools granted, a timeout, the cost cap and the cleaned events. It makes no model call.
+  the tools granted, a session's environment, a timeout, the cost cap and the cleaned events. It
+  makes no model call.
 - **The laws** check this repository:
   - the prompt ceiling
   - a shell only as a thin shim: the `check.sh` template, and each eval case's `scaffold.sh`,
@@ -352,6 +357,8 @@ node tools/evals.mjs story plan   # the named cases
     repository inside `.git`, so nothing leaves the machine.
   - Its environment is the runner's, with `PWD` set to that folder and none of the variables naming
     the Claude Code session the runner was started from, so its effort and its shell are its own.
+    It also carries `CHECK_NO_WAIT`, so a session's gates don't wait for the slow gates of the
+    projects at work on the machine: a session is timed, and runs under the machine's own home.
   - There's no OS sandbox. The guard stands in front of each shell command, and the runner deletes
     what the sessions wrote to `~/.epikloop`.
   - `--cap` (default $5) stops starting runs, `--jobs` (default 3) sets how many run at once, and
