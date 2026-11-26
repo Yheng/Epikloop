@@ -9,8 +9,14 @@
 //   a self-test that can't start.
 // It prints those, then one summary line.
 //
+// `--shard <index>/<count>` runs one part of the list: every <count>th mutation, starting from the
+// one at <index>, counted from 0. CI runs the parts side by side, each job taking its index and
+// the count from its own matrix, so no part can be left out. A run that selects no mutation fails,
+// so a part that doesn't exist can't pass for one.
+//
 // `node tools/mutate.mjs --self-test` checks the check with the guard's self-test: an edit that
-// changes nothing survives, a text that isn't there is stale, and a broken rule is caught.
+// changes nothing survives, a text that isn't there is stale, and a broken rule is caught. It also
+// holds the parts to the whole list, and a part that doesn't exist to a failure.
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -40,6 +46,31 @@ const TESTS = {
   laws: [process.execPath, 'tools/laws.mjs', '--self-test'],
   fixture: [process.execPath, 'plugins/epikloop/evals/fixture.mjs', '--self-test'],
   evals: [process.execPath, 'tools/evals.mjs', '--self-test'],
+}
+
+const USAGE = `usage: node tools/mutate.mjs [--self-test | [--shard <index>/<count>] [${Object.keys(TESTS).join(' | ')} …]]`
+
+// One part of a list of mutations: every `count`th, starting from the one at `index`. Dealing them
+// out in turn keeps the parts even however the list grows.
+export const part = (list, index, count) => list.filter((_, i) => i % count === index)
+
+// The arguments as the self-tests they name and the part they ask for: { names, shard }, where
+// shard is { index, count }, or null for the whole list. Null when `--shard` names no part that
+// exists, or comes twice.
+export function parse(args) {
+  const names = []
+  let shard = null
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] !== '--shard') {
+      names.push(args[i])
+      continue
+    }
+    i += 1
+    const asked = /^(\d+)\/(\d+)$/.exec(args[i] ?? '')
+    if (shard !== null || asked === null || !(Number(asked[1]) < Number(asked[2]))) return null
+    shard = { index: Number(asked[1]), count: Number(asked[2]) }
+  }
+  return { names, shard }
 }
 
 // The repository's files as a copy needs them: tracked, and new ones not yet ignored.
@@ -168,11 +199,15 @@ const line = (mutation, result) => {
   return `${label} ${mutation.file}: ${mutation.name}: ${result.why}`
 }
 
-async function main(names) {
+async function main(args) {
   const started = performance.now()
-  const unknown = names.filter((name) => !(name in TESTS))
-  if (unknown.length > 0) return console.log(`usage: node tools/mutate.mjs [--self-test | ${Object.keys(TESTS).join(' | ')} …]`)
-  const chosen = names.length === 0 ? MUTATIONS : MUTATIONS.filter((mutation) => mutation.tests.some((name) => names.includes(name)))
+  const asked = parse(args)
+  if (asked === null || asked.names.some((name) => !(name in TESTS))) return console.log(USAGE)
+  const { names, shard } = asked
+  const named = names.length === 0 ? MUTATIONS : MUTATIONS.filter((mutation) => mutation.tests.some((name) => names.includes(name)))
+  const chosen = shard === null ? named : part(named, shard.index, shard.count)
+  // Nothing to run would otherwise end as nothing surviving.
+  if (chosen.length === 0) return console.log('mutations: none to run')
   const list = files()
   const needed = [...new Set(chosen.flatMap((mutation) => mutation.tests))]
   const failed = await baseline(list, needed)
@@ -186,7 +221,8 @@ async function main(names) {
   for (const text of bad) console.log(text)
   const caught = results.filter((result) => result.outcome === 'caught').length
   const minutes = ((performance.now() - started) / 60_000).toFixed(1)
-  console.log(`mutations: ${caught}/${chosen.length} caught · ${needed.length} self-tests · ${JOBS} at a time · ${minutes} min`)
+  const of = shard === null ? '' : ` · part ${shard.index + 1} of ${shard.count}`
+  console.log(`mutations: ${caught}/${chosen.length} caught${of} · ${needed.length} self-tests · ${JOBS} at a time · ${minutes} min`)
   if (bad.length === 0) process.exitCode = 0
 }
 
@@ -200,8 +236,43 @@ async function selfTest() {
   const list = files()
   const results = await pool(cases.map(([, mutation]) => () => mutate(list, mutation)))
   const failures = cases.flatMap(([name, , want], i) => (results[i].outcome === want ? [] : [`${name}: ${results[i].outcome}${results[i].why ? ` (${results[i].why})` : ''}`]))
+
+  // The parts: whatever their count, they hold every mutation exactly once and stay even.
+  const some = Array.from({ length: 11 }, (_, i) => i)
+  const split = [1, 2, 3, 4].flatMap((count) => {
+    const parts = Array.from({ length: count }, (_, index) => part(some, index, count))
+    const sizes = parts.map((each) => each.length)
+    const whole = parts.flat().sort((a, b) => a - b).join() === some.join()
+    return whole && Math.max(...sizes) - Math.min(...sizes) <= 1 ? [] : [`${count} parts of 11 hold ${parts.map((each) => each.join('+')).join(' | ')}`]
+  })
+  const asked = [
+    [['--shard', '0/3'], { names: [], shard: { index: 0, count: 3 } }],
+    [['guard', '--shard', '2/3', 'fold'], { names: ['guard', 'fold'], shard: { index: 2, count: 3 } }],
+    [['guard'], { names: ['guard'], shard: null }],
+    [['--shard', '3/3'], null],
+    [['--shard', '0/0'], null],
+    [['--shard', '-1/3'], null],
+    [['--shard', '1'], null],
+    [['--shard'], null],
+    [['--shard', '0/2', '--shard', '1/2'], null],
+  ].flatMap(([args, want]) => (JSON.stringify(parse(args)) === JSON.stringify(want) ? [] : [`${args.join(' ')} reads as ${JSON.stringify(parse(args))}`]))
+  // Through the real entry: a part that doesn't exist, and one that holds nothing, each fail
+  // before any self-test runs.
+  const entry = (args) => spawnSync(process.execPath, [import.meta.filename, ...args], { cwd: ROOT, encoding: 'utf8', windowsHide: true })
+  const none = [
+    ["a part that doesn't exist is refused", entry(['--shard', '3/3']), 'usage: node tools/mutate.mjs'],
+    ['a part that holds nothing fails', entry(['fold', '--shard', '998/999']), 'mutations: none to run'],
+  ].flatMap(([name, run, says]) => (run.status === 1 && run.stdout.startsWith(says) ? [] : [`${name}: exit ${run.status}, saying ${JSON.stringify(run.stdout.trim().slice(0, 120))}`]))
+  const checks = [
+    ['the parts hold every mutation once, evenly', split],
+    ['--shard reads as a part that exists, or as none', asked],
+    ['a run with nothing to run fails', none],
+  ]
+  for (const [name, problems] of checks) if (problems.length > 0) failures.push(`${name}: ${problems.join('; ')}`)
+
   for (const text of failures) console.log(`FAIL ${text}`)
-  console.log(`mutate self-test: ${cases.length - failures.length}/${cases.length} as expected`)
+  const total = cases.length + checks.length
+  console.log(`mutate self-test: ${total - failures.length}/${total} as expected`)
   process.exitCode = failures.length > 0 ? 1 : 0
 }
 

@@ -63,7 +63,9 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   schema rules that `CLAUDE.md` states in sentences. The evals run on a contributor's machine
   instead, since CI would need a Claude credential stored on GitHub
 - the CI mutation check (done): `tools/mutate.mjs` breaks each rule in a copy and expects its
-  self-test to fail, across every self-test, in its own job on Linux
+  self-test to fail, across every self-test, in jobs of its own on Linux
+  - since 2026-11-26 the list runs in three parts, side by side: as one job, 412 mutations took
+    34.5 of its 45 minutes
 - a plugin eval suite with a fixture project (done): ten cases in `plugins/epikloop/evals/`, each
   with deterministic graders, on fixtures that `fixture.mjs` builds
   - `tools/evals.mjs` runs them on any system, under the contributor's own Claude Code login, a

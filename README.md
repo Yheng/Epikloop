@@ -1099,9 +1099,11 @@ gate runner's self-test also runs on Node 22.0.0, the floor.
   - no top-level `bin/` in a plugin, which claude.ai and Cowork refuse to install
   - a sign-off on every commit but a merge
   - no commit crediting an AI tool
-- **The mutation check** runs in its own job on Ubuntu, as `node tools/mutate.mjs`. It breaks one
-  rule at a time in a copy of the repository, and expects the self-test that covers the rule to
-  fail. A self-test that would pass a broken rule fails CI.
+- **The mutation check** runs in three jobs on Ubuntu, side by side, a third of its list each, as
+  `node tools/mutate.mjs --shard <index>/<count>`. It breaks one rule at a time in a copy of the
+  repository, and expects the self-test that covers the rule to fail. A self-test that would pass
+  a broken rule fails CI. Each job takes its place and the count from its own matrix, so no part
+  of the list can be left out.
 
 ### Trying a change
 

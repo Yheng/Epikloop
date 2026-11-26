@@ -20,7 +20,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    # Windows is the slowest of the three: 7.3 minutes on 2026-11-26, most of it git's spawns in
+    # the state reader's self-test.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -57,10 +59,18 @@ jobs:
       - run: node tools/laws.mjs
 
   mutations:
-    name: mutations
+    name: mutations (${{ matrix.part }} of ${{ strategy.job-total }})
+    strategy:
+      # A part that finds a survivor leaves the others to finish, so one run names them all.
+      fail-fast: false
+      matrix:
+        # One job per entry. Each job takes its place and the count from the matrix itself, below,
+        # so the parts are the whole list however many entries this holds.
+        part: [1, 2, 3]
     runs-on: ubuntu-latest
-    # Each mutation runs a whole self-test, four at a time, and the state reader's are the most.
-    timeout-minutes: 45
+    # Each mutation runs a whole self-test, four at a time. As one job, 412 of them took 34.5
+    # minutes on 2026-11-26.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -69,7 +79,7 @@ jobs:
       # The emitter's mutations run its suite through claude plugin test.
       - run: npm install --global @anthropic-ai/claude-code@2.1.303
       - run: node tools/mutate.mjs --self-test
-      - run: node tools/mutate.mjs
+      - run: node tools/mutate.mjs --shard ${{ strategy.job-index }}/${{ strategy.job-total }}
 
   floor:
     name: gate runner on node 22.0.0

@@ -192,11 +192,11 @@ node tools/laws.mjs --self-test
 node tools/laws.mjs
 ```
 
-A separate job on Ubuntu runs the mutation check:
+Three more jobs on Ubuntu run the mutation check, a third of its list each:
 
 ```
 node tools/mutate.mjs --self-test
-node tools/mutate.mjs
+node tools/mutate.mjs --shard <index>/<count>
 ```
 
 Validating the marketplace alone skips the plugins' own files, so run all three validations.
@@ -341,6 +341,10 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - A mutation that survives, or whose text no longer appears exactly once, fails CI, so
     `tools/mutations.mjs` changes with the code it breaks.
   - `node tools/mutate.mjs <test>` runs one self-test's mutations.
+  - `--shard <index>/<count>` runs one part of the list: every count-th mutation, starting from
+    the one at the index, counted from 0. Each of CI's jobs takes its index and the count from its
+    own matrix, so the parts are the whole list, and a run that selects no mutation fails.
+  - Its self-test holds the parts to the whole list, and a part that doesn't exist to a failure.
 
 To load a plugin for one session:
 

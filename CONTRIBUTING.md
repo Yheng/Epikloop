@@ -82,6 +82,8 @@ node tools/mutate.mjs
   - The mutations live in `tools/mutations.mjs`. When you change code that a mutation breaks,
     change the mutation with it: one that survives, or whose text no longer matches, fails CI.
   - `node tools/mutate.mjs init` runs only the mutations that `init`'s self-test catches.
+  - CI runs the list in three parts, side by side, as `node tools/mutate.mjs --shard 0/3`, `1/3`
+    and `2/3`. The whole list takes hours on one machine, so run the parts your change touches.
 
 To try a plugin:
 

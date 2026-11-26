@@ -108,6 +108,16 @@ All notable changes to Epikloop are recorded here.
   - `gates.cap_minutes` sets the cap on each gate command, a whole number from 1 to 60, and 10 by
     default. The cap had cut 12 commands off with nothing failing, and three stories were planned
     only to fit it.
+- CI runs the mutation check in three parts, side by side.
+  - **The failure, measured on 2026-11-26 from CI's own run:** as one job, 412 mutations took 34.5
+    of its 45 minutes. The day before, 336 had taken 17.2 of 30, and the limit had been raised
+    once already to keep up. The Windows job took 7.3 of its 10 minutes.
+  - `node tools/mutate.mjs --shard <index>/<count>` runs every count-th mutation, starting from
+    the one at the index. Each job takes both from its own matrix, so the parts are the whole
+    list however many there are, and a part that fails leaves the others to finish.
+  - A run that selects no mutation now fails. It used to end as nothing surviving, so a part that
+    didn't exist would have passed.
+  - Each part gets 30 minutes, and the validate jobs 15, up from 10.
 
 ### Fixed
 
