@@ -102,29 +102,9 @@ function sessionWrites(home, id, now) {
   return false
 }
 
-// Folds the emitter's files: each past day's events, and every project's cost rows. Today's events
-// stay, since the emitter is still writing them.
-function foldAll(fold, home, now) {
-  const root = path.join(home, '.epikloop')
-  const today = new Date(now).toISOString().slice(0, 10)
-  let [events, rows] = [0, 0]
-  for (const entry of entries(path.join(root, 'events'))) {
-    if (!entry.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(entry.name) || entry.name >= today) continue
-    const folder = path.join(root, 'events', entry.name)
-    events += fold(folder, `${folder}.jsonl`).folded
-    try {
-      fs.rmdirSync(folder)
-    } catch {}
-  }
-  for (const entry of entries(path.join(root, 'projects'))) {
-    const folder = path.join(root, 'projects', entry.name, 'cost')
-    if (entry.isDirectory() && fs.existsSync(folder)) rows += fold(folder, path.join(root, 'projects', entry.name, 'cost.jsonl')).folded
-  }
-  return { events, rows }
-}
-
-// The report, as lines: a summary, then one line per check.
-export async function report({ cwd, env, home, node, exec, now, harbor = HARBOR }) {
+// The report, as lines: a summary, then one line per check. `here` is the folder of the core's
+// scripts, which the advice on loading Harbor's plugin looks beside.
+export async function report({ cwd, env, home, node, exec, now, harbor = HARBOR, here = HERE }) {
   const lines = []
   let fixes = 0
   const ok = (what) => lines.push(`- ${what}: ok.`)
@@ -234,7 +214,8 @@ export async function report({ cwd, env, home, node, exec, now, harbor = HARBOR 
   if (readJson(path.join(home, '.epikloop', 'config.json'))?.harbor === true) {
     const root = readJson(path.join(home, '.epikloop', 'harbor.json'))?.root
     if (typeof root !== 'string' || !fs.existsSync(path.join(root, 'harbor.mjs'))) {
-      fix("Harbor: it's on, but its plugin, epikloop-harbor, hasn't run in a session here", 'install it with claude plugin install epikloop-harbor@epikloop, then start a new session')
+      const { installAdvice } = await import('./switch.mjs')
+      fix("Harbor: it's on, but its plugin, epikloop-harbor, hasn't run in a session here", `${installAdvice(here)}; or turn Harbor off with /epikloop:harbor off`)
     } else {
       const app = await healthApp(harbor)
       if (app === 'epikloop-harbor') ok(`Harbor: it answers at ${harbor}`)
@@ -243,8 +224,8 @@ export async function report({ cwd, env, home, node, exec, now, harbor = HARBOR 
     }
   }
 
-  const { fold } = await import('./fold.mjs')
-  const folded = foldAll(fold, home, now)
+  const { foldAll } = await import('./fold.mjs')
+  const folded = foldAll(home, now)
   if (folded.events + folded.rows > 0) {
     const count = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`
     const what = [folded.events > 0 && count(folded.events, 'event file'), folded.rows > 0 && count(folded.rows, 'cost row')].filter(Boolean)
@@ -303,7 +284,7 @@ async function selfTest() {
     // The report, with a fake claude, git version and npx: `claude` is { version, auth }, either one
     // null for a claude that can't say; `git` is the version git reports, or null for no git; `npx`
     // is npx's version, or null for no npx.
-    async run({ cwd = k.dir('plain'), home = k.home(), env = { CLAUDE_CODE_SESSION_ID: SESSION }, node = '22.12.0', claude = {}, git = '2.45.1', npx = '10.9.2', harbor } = {}) {
+    async run({ cwd = k.dir('plain'), home = k.home(), env = { CLAUDE_CODE_SESSION_ID: SESSION }, node = '22.12.0', claude = {}, git = '2.45.1', npx = '10.9.2', harbor, here } = {}) {
       const { version = '2.1.314', auth = 'claude.ai' } = claude
       const fake = (program, args, at) => {
         if (program === 'claude' && args[0] === '--version') return version === null ? { status: null, stdout: '' } : { status: 0, stdout: `${version} (Claude Code)\n` }
@@ -312,7 +293,7 @@ async function selfTest() {
         if (program === 'npx') return npx === null ? { status: null, stdout: '' } : { status: 0, stdout: `${npx}\n` }
         return exec(program, args, at)
       }
-      return `${(await report({ cwd, env, home, node, exec: fake, now: NOW, harbor })).join('\n')}\n`
+      return `${(await report({ cwd, env, home, node, exec: fake, now: NOW, harbor, here })).join('\n')}\n`
     },
     // A server on 127.0.0.1 whose /health names `app`, and its address.
     async server(app) {
@@ -481,6 +462,13 @@ async function selfTest() {
           return home
         }
         const on = { format: 1, harbor: true }
+        // The core's scripts folder as an install has it, and as a checkout has it, with Harbor's
+        // plugin beside the core's.
+        const installed = path.join(k.dir('installed'), 'epikloop', 'scripts')
+        const checkout = path.join(k.dir('checkout'), 'epikloop', 'scripts')
+        k.write(path.join(checkout, '..', '..', 'epikloop-harbor'), 'harbor.mjs', '')
+        const advice = (folder) =>
+          `- Harbor: it's on, but its plugin, epikloop-harbor, hasn't run in a session here. Fix: install it with \`claude plugin install epikloop-harbor@epikloop\`, or, where the core is loaded with \`--plugin-dir\`, add a second \`--plugin-dir ${folder}\`, and then start a new session; or turn Harbor off with /epikloop:harbor off.\n`
         const harbor = await k.server('epikloop-harbor')
         const other = await k.server('something-else')
         const closed = await k.server('epikloop-harbor')
@@ -491,7 +479,8 @@ async function selfTest() {
           return [
             ...(off.includes('Harbor') || none.includes('Harbor') ? ['spoke of Harbor with its flag off'] : []),
             ...k.has(await k.run({ home: at(on, plugin), harbor: harbor.url }), `- Harbor: it answers at ${harbor.url}: ok.\n`),
-            ...k.has(await k.run({ home: at(on), harbor: harbor.url }), "- Harbor: it's on, but its plugin, epikloop-harbor, hasn't run in a session here. Fix: install it with claude plugin install epikloop-harbor@epikloop, then start a new session.\n"),
+            ...k.has(await k.run({ home: at(on), harbor: harbor.url, here: installed }), advice("<the epikloop-harbor plugin's folder>")),
+            ...k.has(await k.run({ home: at(on), harbor: harbor.url, here: checkout }), advice(`"${path.join(checkout, '..', '..', 'epikloop-harbor')}"`)),
             ...k.has(await k.run({ home: at(on, k.dir('gone')), harbor: harbor.url }), "hasn't run in a session here"),
             ...k.has(await k.run({ home: at(on, plugin), harbor: closed.url }), `- Harbor: it's on, but nothing answers at ${closed.url}. Fix: /epikloop:harbor open starts it.\n`),
             ...k.has(await k.run({ home: at(on, plugin), harbor: other.url }), `- Harbor: it's on, but what answers at ${other.url} isn't Harbor. Fix: stop what holds that port, then /epikloop:harbor open.\n`),

@@ -70,12 +70,14 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   with deterministic graders, on fixtures that `fixture.mjs` builds
   - `tools/evals.mjs` runs them on any system, under the contributor's own Claude Code login, a
     plan included. They run in each slice that changes model-facing text, one run each on Sonnet
-    5.5, under a $5 cap, at about $3.20 a pass at list price since M2's adoption case joined.
+    5.5, under a $5 cap, at about $3.20 a pass at list price since M2's adoption case joined, and
+    $3.80 for the nineteen cases of 2026-11-26.
   - `claude plugin eval` reads the same files. Its Linux sandbox (Claude Code 2.1.316) makes the
     run's temporary folder and `.git` read-only, so the cases that load a format or commit fail
     there for now.
   - CI runs the fixture's and the runner's self-tests, which make no model call
-  - chained shell commands, a watch item, aren't graded yet
+  - chained shell commands, a watch item, aren't graded: in two projects, 92% and 94% of the
+    workers' shell commands were chained ([issue #13](https://github.com/Yheng/Epikloop/issues/13))
 - the lane authoring guide (done: [docs/lanes.md](lanes.md))
 - this repository's own law checks (done: `tools/laws.mjs`, in CI on all three systems):
   - prompt ceiling
@@ -111,6 +113,9 @@ So the emitter is a hooks module (see [architecture](architecture.md#the-emitter
   - Default, acceptEdits and dontAsk modes honour the guard's `allow`; plan mode does not.
   - Whether that `allow` skips the classifier isn't documented. It changes only the classifier's
     work per shell command, and the first dogfood project runs in auto mode.
+  - Measured on 2026-11-26: workers chain most of their shell commands, which the allow list
+    doesn't cover, so the other modes ask at each one. An unattended batch needs auto mode, or
+    the user's own allow rules ([issue #13](https://github.com/Yheng/Epikloop/issues/13)).
 - **Where the protocol lives.** Settled on 2026-10-28: SessionStart `additionalContext`.
   - A committed `CLAUDE.md` include can't name the plugin's files, whose install path differs by
     machine and version, so the only alternative was pasting the text into `CLAUDE.md`.
@@ -185,6 +190,8 @@ The Bridge's review pages need design, so they stay in M4.
   - a story's brief names the screens that show its requirements, and the story reads one
     screenshot per screen it touches beside its design
   - each retro's full visual compare reads every designed state at both widths
+    - since 2026-11-26, the states that are new or changed since a retro last read them
+      ([issue #13](https://github.com/Yheng/Epikloop/issues/13))
   - the web lane's first story with a UI loads `design/tokens.css`
 - **Slice 3, adopting a production repository (done):**
   - a repository on an earlier template layout is converted, behind a `before-adoption` rollback

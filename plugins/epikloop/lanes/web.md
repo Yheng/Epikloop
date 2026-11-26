@@ -22,15 +22,17 @@ Where the brief names screens, the story keeps the project's screens spec in ste
 builds or changes, creating the spec when there is none. The spec renders each state in
 `design/manifest.md` at both widths, once from its design file and once from the app, as
 `test-results/screens/<screen>.<state>.<width>.design.png` and `.app.png`, each test titled by its
-screen and state, so `npx playwright test <spec> -g <screen>` renders one screen. The story's UI
-evidence includes each screen it touches in its default state at the narrow width, as built, read
-beside its design render; what differs is fixed, or parked as a question when the design should
-change instead. Behaviour a screen needs that no requirement or design file describes is a product
-call, parked with its default.
+screen and state, so `npx playwright test <spec> -g <screen>` renders one screen. It renders the
+whole page, with the clock and the data fixed and animations off, so a screen that didn't change
+renders the same bytes. The story's UI evidence includes each screen it touches in its default
+state at the narrow width, as built, read beside its design render; what differs is fixed, or
+parked as a question when the design should change instead. Behaviour a screen needs that no
+requirement or design file describes is a product call, parked with its default.
 
 ## Retro
 
 The deep gates run the whole Playwright suite as the e2e gate. Where the project has a design, that
-run leaves every render of the screens spec in `test-results/screens/`, and the full visual compare
-reads each state's app render beside its design render at both widths: a difference is a finding,
-and so is a state in `design/manifest.md` that nothing renders.
+run leaves every render of the screens spec in `test-results/screens/`, and the visual compare
+reads the pairs the script lists after it, each app render beside its design render: a difference
+is a finding, and so is a state in `design/manifest.md` that nothing renders. Where a story changed
+what every screen shares, `--compare all` lists every changed pair, and the retro reads those.

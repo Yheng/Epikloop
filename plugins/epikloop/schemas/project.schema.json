@@ -30,6 +30,14 @@
       "description": "Date the MVP set was frozen by plan. It moves only by a recorded decision."
     },
     "effort": { "$ref": "#/$defs/effort_overrides" },
+    "model": {
+      "type": "object",
+      "description": "Models the project names for those with no choice of their own in ~/.epikloop/config.json, which wins, since an account decides which models it has.",
+      "additionalProperties": false,
+      "properties": {
+        "design": { "$ref": "#/$defs/model" }
+      }
+    },
     "hours_per_day": {
       "type": "number",
       "exclusiveMinimum": 0,
@@ -116,6 +124,11 @@
         "review": { "$ref": "#/$defs/effort" }
       }
     },
-    "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+    "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] },
+    "model": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]*$",
+      "description": "A model's name as the Agent tool takes one, such as fable or opus. `design` is the model that draws a design's directions and screens."
+    }
   }
 }

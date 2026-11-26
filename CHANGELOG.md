@@ -11,6 +11,41 @@ All notable changes to Epikloop are recorded here.
 
 ### Added
 
+- Notes for Epikloop in a retro's record, and what the machine's event log counted ([issue #13](https://github.com/Yheng/Epikloop/issues/13)).
+  - **The failure, read on 2026-11-26 from two projects' decisions and event log.** 13 of their
+    17 retro records wrote down trouble with Epikloop itself: a time limit that cut gate runs off
+    with nothing failing, a full test run for a commit that changed only docs, a staging smoke
+    that failed the same way at four retros running. Three said to raise it as an issue, and
+    none was filed. What no retro saw was in the event log: in the twelve days between two of
+    one project's retros, 11 of 74 Agent calls came back as errors, and 6 of 275 gate runs ended
+    with no result.
+  - A retro writes each thing as a line `- Epikloop: …` in its record, after its other fields,
+    with nothing of the product in it. No script takes a note as an argument: this change's
+    first design handed each one to a script that way, where a note that quoted a command in
+    backticks would have run it.
+  - The reader takes a note wherever it stands in its entry. In this change's first trial, the
+    retro wrote a line of its own before its note, where the reader stops reading fields, and
+    the note was passed over without a word.
+  - `state.mjs --retro` collects the notes of every record into
+    `~/.epikloop/projects/<id>/notes.md`. Its brief says how many there are, where the file is,
+    and that sending them as an issue is the human's. Nothing leaves the machine.
+  - The brief also gives the event log's counts for the project since the last retro, 30 days
+    back at most: gate runs and those with no result, the longest gate command against the
+    project's cap, the wait for other gate runs, Agent calls and those answered with an error,
+    and permission prompts. A log with no notification at all says so, since some machines log
+    none, and that is not no prompt. A log line is anyone's to write, so a gate named as no gate
+    is names no longest command, and puts no text of its own in the brief.
+- A setting for the model that draws a design (issue #13).
+  - **The failure, read on 2026-11-26 from one project's history and session log:** its design
+    of 58 screens in 123 states was drawn on the session's model, then cleared and drawn again
+    the next day on a model its human chose. Nothing in Epikloop named the model that draws,
+    and the session then passed that model by hand on 37 Agent calls.
+  - `model.design`, in `~/.epikloop/config.json`, or in the project marker for those with no
+    choice of their own. The user's wins, where an effort's loses, since an account decides
+    which models it has.
+  - `state.mjs --design` always says which model draws. With one set, subagents started on it
+    draw the directions and the screens, and the session keeps the pick, the tokens and the
+    manifest. With none, the session draws, and first tells the human on which model.
 - A review stage in solo mode: a reviewer reads each story once it has landed
   ([issue #12](https://github.com/Yheng/Epikloop/issues/12)).
   - **The failures, read on 2026-11-24 and 25 from two projects' decisions, queues and
@@ -93,6 +128,53 @@ All notable changes to Epikloop are recorded here.
 
 ### Changed
 
+- A retro's visual compare reads the pictures that are new or changed ([issue #13](https://github.com/Yheng/Epikloop/issues/13)).
+  - **The failure, read on 2026-11-26 from two projects' retro records and folders.** The
+    compare was to read every designed state at both widths. One project renders 258 app
+    pictures a retro: every retro since its fifth cut the reading down by hand, against
+    pictures kept in folders the session chose, and one found the last phase's pictures gone.
+    The other project's retros read only the states their epic added. Its screens spec renders
+    34 of the 62 states its design lists, and 6 more that a manifest's four states can't name.
+  - `state.mjs --compare` sorts each state at each width, by its bytes and its size in pixels,
+    against the list the last landed record names. To read: new, changed in size, changed in
+    design, or changed at the same size on a screen that a story or fix of the phase names.
+    On the first of those projects it lists 27 of the 258: the 16 new ones, one that had
+    shrunk, which that retro found by hand, and 10 that a story names.
+  - A pair that changed and isn't read keeps its old entry, so it is listed again at every
+    retro until one reads it. `state.mjs --compare all` lists every changed pair to read: an
+    independent read of this change found that nothing else could take such a pair off the
+    list, even once a retro had read it or the screens spec had been made steady.
+  - A state the design lists and nothing rendered is named, and a pair the spec renders in a
+    state the manifest doesn't list is sorted with the others.
+  - The record carries the compare's line, which names the list it saved by a code. Only a
+    list that a landed record's whole line names is trusted, so a code that a record only
+    mentions names none, and a machine without the list reads every pair.
+  - The lane's profile says where its screens spec writes, in `design.renders`. The web lane's
+    spec renders the whole page, with the clock and the data fixed: 115 of those 258 pictures
+    had changed at the same size on screens no story touched.
+- The state reader folds the emitter's files at a batch's and a retro's start (issue #13).
+  - **The failure, seen on 2026-11-24 on one machine:** about 89,000 one-event files had piled
+    up in two weeks, up to 14,000 a day, since only Harbor and `doctor` folded them, and Harbor
+    was off.
+  - `state.mjs --ready` and `--retro` fold the days before today and the cost rows first: 2,000
+    files a pass, and no new pass once 3 seconds have gone. The folding from a start-of-session
+    hook that this change first drew was dropped: its background process would have locked its
+    folder on Windows.
+  - A fold that is cut off between its append and its delete leaves its lines twice. The cost
+    rows and a retro's counts take a line they meet twice once.
+  - Another session's fold may now run while either is read. Both read a folder before its
+    folded file, by name, and a file a fold has just taken costs only itself: the same read of
+    this change found that a day folded after the listing went uncounted, and that one cost
+    file gone mid-read dropped the rest.
+- The docs say what the guard's allow list covers (issue #13).
+  - **The failure, measured on 2026-11-26 in two projects' session logs:** the docs said the
+    guard is how the pipeline runs without prompts in default, acceptEdits and dontAsk modes.
+    92% and 94% of the workers' 40,597 shell commands were chained, which the allow list
+    doesn't cover, though the worker's text says each command runs on its own.
+  - The docs now say the list covers the pipeline's own commands, each on its own, and that an
+    unattended batch needs auto mode or the user's own allow rules. The allow list is
+    unchanged: letting it pass a `cd` to the project before a git command would have covered
+    185 of those commands.
 - The gate runner runs a check only where one is needed
   ([issue #10](https://github.com/Yheng/Epikloop/issues/10)).
   - **The failures, read on 2026-11-24 from one project's own gate events:** 621 runs took 39 hours
@@ -121,6 +203,14 @@ All notable changes to Epikloop are recorded here.
 
 ### Fixed
 
+- The advice for a Harbor that is on while its plugin hasn't run fits a plugin loaded from a
+  folder (issue #13).
+  - **The failure, seen on 2026-11-25:** on a machine whose plugins are loaded with
+    `--plugin-dir`, with Harbor on and its plugin not loaded, `doctor` said to install the
+    plugin from the marketplace.
+  - `doctor` and `/epikloop:harbor` now give both ways: the marketplace install, or a second
+    `--plugin-dir`, naming Harbor's folder where it lies beside the core's. Both say how to
+    turn Harbor off.
 - An MVP story added to a phase already closed is no longer passed over (issue #12).
   - **The failure, found on 2026-11-25 by reading the state reader,** and shown by a self-test
     case that failed before the fix. A decision can add a rework story to an epic that is already

@@ -10,6 +10,7 @@
     "allow": ["npx playwright test"]
   },
   "design": {
-    "widths": [390, 1280]
+    "widths": [390, 1280],
+    "renders": "test-results/screens"
   }
 }

@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "at": "2026-11-26T04:12:09.000Z",
+  "commit": "3f9c2a7",
+  "pictures": [
+    {
+      "name": "sign-in.default.390.app.png",
+      "sha256": "9f2b8c1d4e7a60533b1f8c2e5d9a7b4c6e0f1a2b3c4d5e6f708192a3b4c5d6e7",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "name": "sign-in.default.390.design.png",
+      "sha256": "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809",
+      "width": 390,
+      "height": 844
+    }
+  ]
+}

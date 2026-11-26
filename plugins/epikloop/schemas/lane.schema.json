@@ -65,6 +65,11 @@
               "minItems": 2,
               "maxItems": 2,
               "description": "The two widths, in pixels, each screen is drawn at, the narrow one first."
+            },
+            "renders": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)*$",
+              "description": "The folder, inside the project, that the lane's screens spec writes its pictures to, which the lane's fragment names too. The retro's visual compare reads them there."
             }
           }
         }

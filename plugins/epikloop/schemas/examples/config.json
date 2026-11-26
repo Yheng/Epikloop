@@ -1,5 +1,6 @@
 {
   "format": 1,
   "effort": { "T1": "low" },
+  "model": { "design": "fable" },
   "harbor": false
 }

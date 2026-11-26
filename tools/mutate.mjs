@@ -35,6 +35,7 @@ const TESTS = {
   brief: [process.execPath, 'plugins/epikloop/scripts/brief.mjs', '--self-test'],
   init: [process.execPath, 'plugins/epikloop/scripts/init.mjs', '--self-test'],
   state: [process.execPath, 'plugins/epikloop/scripts/state.mjs', '--self-test'],
+  home: [process.execPath, 'plugins/epikloop/scripts/home.mjs', '--self-test'],
   smoke: [process.execPath, 'plugins/epikloop/scripts/smoke.mjs', '--self-test'],
   doctor: [process.execPath, 'plugins/epikloop/scripts/doctor.mjs', '--self-test'],
   fold: [process.execPath, 'plugins/epikloop/scripts/fold.mjs', '--self-test'],

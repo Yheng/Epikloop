@@ -31,6 +31,8 @@ adopted, each end to end (`docs/roadmap.md`), and the core's first release, 0.1.
 screens as the truth at story and retro time, and adopting a production repository, which converts
 an earlier template layout and brings in the design the product has. Since then, solo mode has a
 review stage: a reviewer reads each story once it has landed, and the human settles what it finds.
+A retro notes what its phase showed about Epikloop itself, and reads the pictures that are new or
+changed.
 
 ## Map
 
@@ -52,8 +54,11 @@ review stage: a reviewer reads each story once it has landed, and the human sett
     for the session that set the project up; `--refresh` brings a project's gate files up to the
     plugin's
   - `scripts/state.mjs` — reads the project files and git into the stage and the fuel gauge, and
-    prints the briefs a batch, its reviews, a retro, a release and the design read, with its
-    self-test; the briefing imports it
+    prints the briefs a batch, its reviews, a retro, a release and the design read, and the
+    pictures a retro's visual compare reads, with its self-test; the briefing imports it
+  - `scripts/home.mjs` — what a project keeps under `~/.epikloop`, with its self-test: the notes
+    for Epikloop collected from its records, what the event log counted since the last retro, and
+    the list of pictures a visual compare read; the state reader calls it
   - `scripts/smoke.mjs` — the staging smoke that `retro` and `release` run, with its self-test
   - `scripts/doctor.mjs` — the machine check behind `doctor`, which also folds the emitter's
     files, with its self-test
@@ -65,7 +70,8 @@ review stage: a reviewer reads each story once it has landed, and the human sett
   - `templates/spec/`, `templates/docs/` and `templates/design/` — an example of each project file
     a script reads, in the formats `docs/formats.md` defines; the state reader's self-test parses
     them
-  - `scripts/fold.mjs` — folds the emitter's files into `.jsonl` files, with its self-test
+  - `scripts/fold.mjs` — folds the emitter's files into `.jsonl` files, a folder or a whole home, with
+    its self-test; `doctor` and the state reader call it
   - `templates/githooks/check.mjs` — the gate runner, which product repos carry as
     `.githooks/check.mjs`, with its self-test. Beside it are `templates/githooks/pre-commit` and
     `pre-push`, and `templates/scripts/check.sh`, the shims that run it. The rest of the plugin
@@ -178,6 +184,7 @@ node plugins/epikloop/scripts/guard.mjs --self-test
 node plugins/epikloop/scripts/brief.mjs --self-test
 node plugins/epikloop/scripts/init.mjs --self-test
 node plugins/epikloop/scripts/state.mjs --self-test
+node plugins/epikloop/scripts/home.mjs --self-test
 node plugins/epikloop/scripts/smoke.mjs --self-test
 node plugins/epikloop/scripts/doctor.mjs --self-test
 node plugins/epikloop/scripts/switch.mjs --self-test
@@ -260,6 +267,28 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - It reads `Severity` and `Reworks`, and reports one that is malformed or not last. The retro's
     brief counts the reviews by tier and the rework that landed since the last retro, whatever
     its epic, and a reviewer's cost rows stay out of the ETA and show on a line of their own.
+  - It reads the notes for Epikloop a record carries, wherever they stand in its entry, and gives
+    a retro what the machine's log counted since the tag that closed the last one, beside a
+    branch of that tag's name, with the notes collected on the way.
+  - It checks `--compare` against the list the last landed record names: the new, the resized
+    and the named to read, one changed and not read, which `--compare all` lists to read, a
+    later record, a code that a record only mentions, and a record that hasn't landed.
+  - It says which model draws a design: the user's over the project's, a value that is no name
+    passed over, and none read from the user's file in an eval's session. A batch's and a retro's
+    calls fold the emitter's past days first, each call on its own. A cost row a fold left twice
+    counts once, and a cost file that can't be read costs only itself.
+- **The home script's self-test** runs in throwaway homes and folders. It collects the notes
+  file from records with none, one and several notes, and leaves one it can't write to the
+  brief's line.
+  - It counts the event log for one project, from the folders not folded yet and the folded
+    days, since a time and 30 days back at most, taking a line met twice once. A day that a fold
+    turned into its file after the listing still counts, and a result whose gate has no gate's
+    name gives no longest command.
+  - It sorts pictures against a list: new, resized, changed in design, changed and named, changed
+    and not read, which keeps its old entry until all are asked for, not rendered, and not
+    placed. A pair in a state the manifest doesn't list is sorted as the others are, and one
+    picture of such a pair isn't placed, nor is a folder named as one.
+  - It holds a saved list to its schema, and quotes a name that isn't plain where it prints one.
 - **The smoke's self-test** smokes a server on 127.0.0.1: answers, redirects, a timeout, a closed
   port, the marker's URL, and credentials sent but never printed. In throwaway repos, it checks the
   commit staging names against HEAD: HEAD in full and short, a staging behind it, a commit HEAD
@@ -267,10 +296,13 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
 - **The doctor's self-test** runs the checks in process, against throwaway repos and homes, with a
   fake `claude`, git version and `npx`. It covers each floor, each account, the lanes this machine
   can build, the UI test tool, the hooks, the gate files, team mode's workflow, this session's
-  events, Harbor against stand-in servers on 127.0.0.1, and the fold.
+  events, Harbor against stand-in servers on 127.0.0.1, the advice for a Harbor whose plugin hasn't
+  run, with its folder beside the core's and without, and the fold.
 - **The switch's self-test** runs `/epikloop:harbor`'s script in throwaway homes, with a stand-in
   for Harbor's `harbor.mjs`. It covers a first `on`, kept keys, `off` and `open`, a missing or stale
   record of Harbor's plugin, a config that doesn't parse, Harbor's own failure and the usage line.
+  Without that record it gives both ways to load the plugin, naming Harbor's folder only where it
+  lies beside the core's.
 - **The gallery's self-test** writes the gallery in throwaway projects: directions alone, a full
   design framed at both widths, a design that came with the product, a missing state's placeholder,
   escaped text and encoded file names, the picked direction marked, nothing loaded from outside
@@ -286,7 +318,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
     writes rows marked `review`. Its events name no story.
 - **The fold's self-test** folds sample files in a temporary folder. It covers the lock free,
   held, left stale and freed by a fold that throws, a folder that's gone, and four processes
-  folding one folder at once.
+  folding one folder at once. It folds with a limit, the oldest files first, and a whole home: with
+  little time, one pass of the oldest day, and then the rest, with today's events left.
 - **The Harbor check** (`tools/harbor.mjs`) runs Harbor's start-of-session hook with the plugin's
   copied build, in throwaway homes on free ports, on all three systems.
   - With the flag on, Harbor answers its health, page, art and event stream, and it stops once the
@@ -310,7 +343,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   `existing`'s tests and the gates on `planned`, commits through `earlier`'s armed hook, pushes to
   `architected`'s remote, and checks that each case's scaffold names a fixture. It reads `landed`,
   a T3 story that landed without what it promised, as waiting for its review, and `reviewed` as
-  waiting for `decide`.
+  waiting for `decide`. It reads `web-modelled`'s drawing model from its marker, and `web-closing`
+  as waiting for its retro, with its screen's pictures outside git and its gates passing.
 - **The eval runner's self-test** loads every case, holds its YAML reader and graders to samples,
   and runs whole cases against a stand-in for `claude`. Those runs cover the fixture, the prompt,
   the tools granted, a session's environment, a timeout, the cost cap and the cleaned events. It
@@ -366,7 +400,7 @@ node tools/evals.mjs story plan   # the named cases
 
 - **Login and cost.** Runs use whatever Claude Code is logged in with, so a Claude plan is
   enough; neither Epikloop nor its evals need an API key. Every run is a real model call, and a
-  pass comes to about $3.20 at list price, which a plan counts against its usage limits.
+  pass comes to about $4 at list price, which a plan counts against its usage limits.
 - **When.** Run the suite in each slice whose change touches model-facing text, before reporting:
   - the skills, the worker or the lanes
   - the briefing or the state reader
@@ -374,7 +408,8 @@ node tools/evals.mjs story plan   # the named cases
   - the evals
 - **Each case sets its own run.**
   - `runs: 1` and `model: claude-sonnet-5-5`; the worker keeps its pinned Opus, and the reviewer
-    runs on the case's model.
+    runs on the case's model. The `design-model` case's drawers run on Haiku, which its fixture
+    names.
   - Its graders are deterministic: `regex`, `tool_used` and `file_exists`, with no LLM judge.
   - A `regex` grader's file target may be a glob, such as `spec/*.md`, which reads every file it
     matches, so the grader checks what was written whichever tool wrote it.
@@ -389,6 +424,8 @@ node tools/evals.mjs story plan   # the named cases
     the Claude Code session the runner was started from, so its effort and its shell are its own.
     It also carries `CHECK_NO_WAIT`, so a session's gates don't wait for the slow gates of the
     projects at work on the machine: a session is timed, and runs under the machine's own home.
+    And it carries `EPIKLOOP_EVAL`, so a session's batch folds none of the machine's event files,
+    and its design reads no drawing model from the contributor's own settings.
   - There's no OS sandbox. The guard stands in front of each shell command, and the runner deletes
     what the sessions wrote to `~/.epikloop`.
   - `--cap` (default $5) stops starting runs, `--jobs` (default 3) sets how many run at once, and

@@ -156,9 +156,13 @@ What each event does:
     PowerShell, which on Windows opens a `.sh` file in Git Bash instead of running it.
   - It allows a command only when every part of it is on that list, and nothing in it substitutes
     or redirects, gives git a global option or a URL, or runs a program through a git option.
-  - A plugin can't ship a permissions allowlist, so this hook is how the pipeline runs without
-    prompts in default, acceptEdits and dontAsk modes. Plan mode and the user's own deny and ask
-    rules still apply.
+  - A plugin can't ship a permissions allowlist, so this hook is how the pipeline's own commands
+    run without prompts in default, acceptEdits and dontAsk modes, each on its own. Plan mode and
+    the user's own deny and ask rules still apply.
+  - It doesn't make a batch unattended there. Workers chain commands, whatever their text says:
+    in two projects, 92% and 94% of the workers' 40,597 shell commands were chained
+    ([issue #13](https://github.com/Yheng/Epikloop/issues/13)), and the allow list covers none of
+    those. An unattended batch needs auto mode, or the user's own allow rules.
 - **PostToolUse** only emits. It can't shorten the logs that matter: a failing command fires
   `PostToolUseFailure`, which can't replace output. Claude Code already truncates long successful
   output, and `check.sh` keeps its own output to failures plus a one-line summary.
@@ -197,6 +201,12 @@ macOS and Windows, and reads session cost.
 - **Compaction.** Harbor and `doctor` fold each day's folder into `events/YYYY-MM-DD.jsonl` with a
   Node append, then delete what they folded. A file that doesn't parse yet is left for the next
   pass, because a module's writes aren't atomic.
+  - The state reader folds too, before a batch's ready list and a retro's brief: the days before
+    today and the cost rows, 2,000 files a pass, with no new pass once 3 seconds have gone
+    ([issue #13](https://github.com/Yheng/Epikloop/issues/13)). With Harbor off and `doctor`
+    not run, about 89,000 files had piled up on one machine in two weeks.
+  - A pass that is cut off between its append and its delete leaves its lines twice. A reader
+    that counts takes a line it meets twice once: the cost rows, and a retro's counts.
   - A fold holds `<target>.lock`, beside the file it appends to, while it runs, so two folds never
     fold one folder at once. A fold that finds the lock taken folds nothing that pass.
   - A lock older than ten minutes was left by a fold that died. The pass that finds it clears it,
@@ -252,8 +262,21 @@ The gates' self-test measures two targets:
   `agent`, `wall`, `cost`, `model` and `effort`, and `review` on a reviewer's. An agent's rows add
   up to its run, and the runs are the instrument for tuning effort. A reviewer's stay out of the
   ETA.
+- **`~/.epikloop/projects/<id>/notes.md`** holds what the project's records say about Epikloop
+  itself, one line a note, under a head that says nothing is sent anywhere
+  ([issue #13](https://github.com/Yheng/Epikloop/issues/13)).
+  - A retro writes each note in its record, as a line `- Epikloop: …`, and `state.mjs --retro`
+    writes this file again from every record. So the notes live in the repository, and the file is
+    where one person finds them for every project on the machine.
+  - The retro's brief says how many there are, where the file is, and that sending them as an
+    issue is the human's. In two projects, 13 of 17 retro records had written such trouble down,
+    three said to raise an issue, and none was filed.
+- **`~/.epikloop/projects/<id>/compare/<code>.json`**
+  ([schema](../plugins/epikloop/schemas/compare.schema.json)) is a list of the pictures a retro's
+  visual compare read: each one's name, fingerprint and size in pixels, and never the picture.
+  `state.mjs --compare` writes it, and a retro's record names it by its code.
 - **`~/.epikloop/config.json`** ([schema](../plugins/epikloop/schemas/config.schema.json)) holds the
-  user's effort overrides and the Harbor switch.
+  user's effort overrides, the model that draws a design, and the Harbor switch.
 - **`~/.epikloop/harbor.json`** ([schema](../plugins/epikloop/schemas/harbor.schema.json)) records
   where the `epikloop-harbor` plugin is installed, for `/epikloop:harbor` and `doctor`. Harbor's
   start-of-session hook writes it.
@@ -380,7 +403,8 @@ only layers 2 and 3 gate them.
 - **`spec/<capability>.md`** holds the current requirements with stable IDs (`REQ-AUTH-003`) and
   business rules quoted verbatim. `spec/architecture.md` is the current architecture.
 - **`docs/decisions.md`** is append-only: `DECISION-XXX` entries with context, decision, rejected
-  options, trade-offs and an implementation note.
+  options, trade-offs and an implementation note. A retro's entry also carries its notes for
+  Epikloop and its visual compare's line.
 - **`docs/stories/<epic>.md`** holds the stories. Each one cites requirement IDs and carries a spec
   delta. Closing a story applies its delta in the same commit as the code, so there is no separate
   document-sync step. A rework story names the story it reworks.
@@ -424,7 +448,9 @@ The pieces work like this:
 
 - **The profile** is data, and code reads each field. `doctor` reads `requires`, the guard reads
   the UI test tool's `allow` prefixes, and the state reader and the design gallery read `design`'s
-  widths.
+  widths. `design.renders` names the folder the lane's screens spec writes its pictures to, which
+  the visual compare reads; the fragment names the same folder, and the state reader's self-test
+  holds the two together.
 - **The fragment** holds `Plan`, `Story` and `Retro` sections. The state reader prints the active
   lane's sections into plan's injection, each story-worker's brief and the retro's brief.
   - Nothing loads until it is used, and skills never name a lane.
@@ -444,13 +470,13 @@ Native iOS and Android are community lanes. Contributors add lanes without touch
 | `/epikloop:doctor` | Verify the install and the machine; `--check` runs the gates. | low | user, Claude |
 | `/epikloop:discover` | Greenfield: an interview, or a pasted brief with only the gaps asked. Writes `spec/`. | xhigh | user, Claude |
 | `/epikloop:adopt` | Brownfield: observed spec and architecture, gate config, confirmation batch; converts an earlier template layout, brings in the design it has, and tags a product in production `live`. | xhigh | user, Claude |
-| `/epikloop:design` | Three directions → pick → every screen as HTML, tokens, manifest, gallery; `amend`, `add`, `audit`, `ingest`. | high | user, Claude |
+| `/epikloop:design` | Three directions → pick → every screen as HTML, tokens, manifest, gallery; `amend`, `add`, `audit`, `ingest`. Drawn on the model the user set, when there is one. | high | user, Claude |
 | `/epikloop:architect` | Stack, schema as code, API contract, pre-mortem, `spec/architecture.md`, lane confirmation. | max | user, Claude |
 | `/epikloop:plan` | Epics, tiered stories with requirement IDs and spec deltas, the frozen MVP set; `--extend` for later work. | high | user, Claude |
 | `/epikloop:epic N`, `:next`, `:story X.X` | The batch: one story-worker per story, in isolation. `epic` then has one story-reviewer read each landed story. | medium | user, Claude |
 | `/epikloop:decide` | Batch-answer parked questions, record decisions, unblock; a review's findings one at a time. | low | user, Claude |
 | `/epikloop:triage "<what you found>"` | Human intake through the same router. | low | user only |
-| `/epikloop:retro` | Phase gate: staging smoke, deep gates, self-test, the reviews and the rework counted, queue pruning, pipeline deletion, tag; MVP sign-off in the final phase; after go-live, each epic's close. | medium | user only |
+| `/epikloop:retro` | Phase gate: staging smoke, deep gates, self-test, the visual compare of what changed, the reviews and the rework counted, what the machine's log counted, queue pruning, pipeline deletion, notes for Epikloop, tag; MVP sign-off in the final phase; after go-live, each epic's close. | medium | user only |
 | `/epikloop:release` | The go-live story: production, promotion, rollback note, post-launch checklist. | high | user only |
 | `/epikloop:harbor on\|off\|open` | Harbor's switch and its view. | low | user only |
 
@@ -516,6 +542,15 @@ the model through the state reader's briefs instead (see [Lanes](#lanes)).
   has none, so it keeps the worker's tier effort.
 - `model` is pinned only on the worker. A skill whose model differs from the session's makes that
   turn re-read the whole conversation uncached. The reviewer pins none.
+- The model that draws a design is a setting, not a pin
+  ([issue #13](https://github.com/Yheng/Epikloop/issues/13)): `model.design`, in
+  `~/.epikloop/config.json`, or in the marker for those with no choice of their own.
+  - The user's wins, where an effort's loses: an account decides which models it has.
+  - `state.mjs --design` always says which model draws. With one set, subagents started on it draw
+    the directions and the screens, and the session keeps the pick, the tokens and the manifest.
+    With none, the session draws, and first tells the human on which model.
+  - One project's design of 58 screens was drawn on the session's model, then cleared and drawn
+    again the next day on a model its human chose.
 - User-only ceremonies set `disable-model-invocation: true`, which also keeps their descriptions out
   of context.
 - Only the front door sets `name`, because a `name` also registers a bare command.
@@ -583,6 +618,38 @@ once the record has landed there: in team mode, after the human merges it. A `Go
 record leaves no tag. `state.mjs --retro` and `--release` print what each ceremony covers, and
 then the tags, so placing a tag is the script's call, not the model's.
 
+A retro's brief also carries two things from the machine
+([issue #13](https://github.com/Yheng/Epikloop/issues/13)):
+
+- **What the event log counted since the last retro,** which is the newest `phase-N` or `live`
+  tag, and 30 days back at most: gate runs and those with no result, the longest gate command
+  against the project's cap, the wait for other gate runs, `Agent` calls and those answered with
+  an error, and permission prompts. A log that holds no notification says so, since some machines
+  log none. The retros had not seen what the log held: in the twelve days between two of one
+  project's retros, 11 of 74 `Agent` calls came back as errors.
+- **The notes for Epikloop,** which it collects on the way (see
+  [Event log and cost rows](#event-log-and-cost-rows)).
+
+**The visual compare** reads what a retro has to read, not every picture
+([issue #13](https://github.com/Yheng/Epikloop/issues/13)). One project renders 258 app pictures a
+retro, and every retro since its fifth had cut the reading down by hand, against pictures kept in
+folders the session chose.
+
+- After the deep gates, `state.mjs --compare` sorts each state at each width against the list
+  that the last landed record names: not rendered, to read, changed and not read, or unchanged.
+- To read: new, changed in size, changed in design, or changed at the same size on a screen that
+  a story with a `feat` or `fix` commit since the last retro names.
+- A pair that changed and isn't read keeps its old entry in the next list, so it is listed again
+  at every retro until one reads it. `state.mjs --compare all` lists every changed pair to read,
+  which is how a retro reads those and takes them into its list.
+- A pair the screens spec renders in a state the manifest doesn't list, or of a screen it doesn't
+  list, is sorted as the others are, and says so. A picture without its other half isn't placed.
+- The compare prints one line for the record, with its counts and `(snapshot <code>)`, the code
+  of the list it saved. The next compare trusts the last such line on the default branch, so an
+  abandoned compare is never trusted, a code that a record only mentions names no list, and a
+  machine that lacks the list reads every pair.
+- A picture older than the last commit is said to be, since the deep gates' run didn't write it.
+
 ## Token economy
 
 - Effort is pinned per skill, and the global default is medium. Opus 5.5 at medium matches or beats
@@ -601,8 +668,9 @@ then the tags, so placing a tag is the script's call, not the model's.
 - A product's `CLAUDE.md` stays under 200 lines, with project rules only; the protocol arrives by
   hook.
 - In a project with a design, each web story reads one screenshot per screen it touches, its
-  default state at the narrow width. The retro's full visual compare reads every designed state at
-  both widths, once per epic. A story runs only the Playwright specs it touched.
+  default state at the narrow width. The retro's visual compare reads, once per epic, the states
+  that are new or changed since a retro last read them, at both widths. A story runs only the
+  Playwright specs it touched.
 - The design gallery is written by a script from the manifest, so the model never writes or
   rewrites it.
 - Cost rows per story are the tuning instrument: model, effort, wall time and, when available,
@@ -658,6 +726,9 @@ How it ships ([issue #5](https://github.com/Yheng/Epikloop/issues/5)):
 - `/epikloop:harbor on|off|open` runs the core's `scripts/switch.mjs`. It flips one line in
   `~/.epikloop/config.json`, keeping the rest, then starts Harbor, or opens it, from the folder that
   record names. Off means no Harbor process exists, since Harbor stops within 2 seconds.
+- Where that record is missing, the switch and `doctor` give the same advice: the marketplace
+  install, or, where the core is loaded with `--plugin-dir`, a second one for Harbor's folder,
+  which they name when it lies beside the core's; and how to turn Harbor off.
 - Harbor makes two network calls, each allowed in one file of its build: the server listens on
   127.0.0.1 through `node:http`, and the page opens its event stream at `/events`. The laws refuse
   any other.
@@ -675,7 +746,7 @@ the tool's name and docs don't use it.
 | `plugins/epikloop/skills/` | Sixteen skills, each with its body | now |
 | `plugins/epikloop/agents/` | The worker subagent, `story-worker.md`, and the reviewer, `story-reviewer.md` | now |
 | `plugins/epikloop/schemas/` | JSON Schemas, with examples | now |
-| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, the staging smoke, doctor, the design gallery and Harbor's switch | now |
+| `plugins/epikloop/hooks/`, `plugins/epikloop/scripts/` | Hooks, the emitter, the guard, the briefing, setup, the state reader, what a project keeps on the machine, the staging smoke, doctor, the design gallery and Harbor's switch | now |
 | `plugins/epikloop/lanes/` | `web` and `service`, each a profile and a fragment; then `mobile-expo` and `mobile-flutter` | now, M3 |
 | `plugins/epikloop/templates/` | The gate runner and its hooks in `githooks/`, `scripts/check.sh`, an example of each project file in `spec/`, `docs/` and `design/`, `CLAUDE.template.md`, and the team-mode workflow in `github/workflows/` | now |
 | `plugins/epikloop/evals/` | The eval suite, inside the plugin where `claude plugin eval` reads it: a folder per case, and `fixture.mjs`, which builds the fixture project each case starts in | now |

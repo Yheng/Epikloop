@@ -21,10 +21,10 @@ code changes here.
 What the retro covers comes from a script. Run `git fetch` on its own, then
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --retro`, also on its own. It prints the phase and
 its stories, the evidence to gather, the queue and its delta, the reviews and the rework since the
-last retro, the cost rows, whether this retro also
-signs off the MVP and what sign-off needs, the record and how it lands. When it names a git command,
-run that on its own and read it again. When it says only the tags are left, placing them is the
-whole retro; any other reason ends it.
+last retro, the cost rows, what this machine's event log counted, the notes for Epikloop so far,
+whether this retro also signs off the MVP and what sign-off needs, the record and how it lands.
+When it names a git command, run that on its own and read it again. When it says only the tags are
+left, placing them is the whole retro; any other reason ends it.
 
 Gather the evidence first; the staging smoke is `node "${CLAUDE_PLUGIN_ROOT}/scripts/smoke.mjs"`,
 and then the human clicks through the stories on staging. A failing gate or smoke, like anything the
@@ -34,14 +34,18 @@ question. Where the cost rows show a tier's effort, or the reviewer's, costing m
 needs, or too little to do it, propose an override for it; the human decides, and it goes in
 `.epikloop/project.json`. Propose one deletion: a rule in `CLAUDE.md`, a gate exception or allowed
 workflow, an effort override, or another part of the project's pipeline that the phase showed costs
-more than it catches. Friction in Epikloop itself is an issue the human files.
+more than it catches. Friction in Epikloop itself, a part of it that costs more than it catches
+included, goes in the record as lines `- Epikloop: …` after its other fields, one for each thing:
+what happened and what it cost, with nothing of the product in it. The script collects them, and
+sending them as an issue is the human's.
 
 The MVP is signed off only on the human's word, and only when the smoke is green and
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs"` shows queue Δ at 0 or below after the pruning;
 otherwise the record says what sign-off waits for. The record is a decision titled
-`Phase N retro`, holding the evidence, the reviews and the rework as the brief counts them, the
-pruning, the cost review and the deletion, and one
-titled `MVP sign-off` when the human signs off, numbered as the script says, in this format:
+`Phase N retro`, holding the evidence, with the visual compare's line as the script gives it, the
+reviews, the rework and the machine's counts as the brief gives them, the pruning, the cost review
+and the deletion, and one titled `MVP sign-off` when the human signs off, numbered as the script
+says, in this format, whose fields hold all of it but those notes:
 
 !`node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --example decisions`
 

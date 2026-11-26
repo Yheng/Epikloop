@@ -20,6 +20,14 @@
         "review": { "$ref": "#/$defs/effort" }
       }
     },
+    "model": {
+      "type": "object",
+      "description": "Models the user chooses. This setting wins over a project's own in .epikloop/project.json, since an account decides which models it has.",
+      "additionalProperties": false,
+      "properties": {
+        "design": { "$ref": "#/$defs/model" }
+      }
+    },
     "harbor": {
       "type": "boolean",
       "default": false,
@@ -27,6 +35,11 @@
     }
   },
   "$defs": {
-    "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] }
+    "effort": { "enum": ["low", "medium", "high", "xhigh", "max"] },
+    "model": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9.-]*$",
+      "description": "A model's name as the Agent tool takes one, such as fable or opus. `design` is the model that draws a design's directions and screens."
+    }
   }
 }

@@ -91,6 +91,13 @@ Compared with Spec Kit, OpenSpec, BMAD and Superpowers, Epikloop leads with the 
 - The human is interrupted at most twice a day.
 - Scope can only grow by a recorded human decision.
 
+Claude Code's own `/ship` starts where a change is finished: it commits and pushes the work, opens
+the pull request, reviews it, and then handles failing checks, conflicts and review comments until
+the pull request is merged or closed, which it leaves to you. Epikloop is what comes before a change
+is finished: the spec, the frozen plan, each story's tier and tests, and gates that no commit gets
+past. In team mode a story ends in a pull request, which is where `/ship` begins. In solo mode there
+is none, and Epikloop's own reviewer reads each story once it has landed.
+
 ## Status
 
 Epikloop is built milestone by milestone, and each milestone is usable on its own.
@@ -109,13 +116,14 @@ Epikloop is built milestone by milestone, and each milestone is usable on its ow
 | The path to a frozen plan: `/epikloop`, `discover`, `architect` and `plan`, with full instructions | **Available** |
 | The batch: `epic`, `next`, `story`, the `story-worker`, `decide` and `triage`, with full instructions | **Available** |
 | The review stage: in solo mode a `story-reviewer` reads each landed story, `decide` settles its findings one at a time, and each retro counts the reviews and the rework | **Available** |
+| What a retro tells Epikloop: notes for Epikloop in its record, collected on your machine for you to send, and what the event log counted since the last retro | **Available** |
 | Closing the loop: `retro`, `release`, `adopt` and `doctor`, with full instructions, the staging smoke, and `init.mjs --refresh` | **Available** |
 | The `web` and `service` lanes: Playwright tests as a web story's UI evidence, the guard allowing the lane's test runner, `doctor`'s lane checks, and the [lane authoring guide](docs/lanes.md) | **Available** |
 | The team-mode workflow, `.github/workflows/check.yml`, which runs the pre-push gates over every commit a pull request adds, and the `CLAUDE.md` template | **Available** |
 | This repository's own law checks in CI (the prompt ceiling, a shell only as a thin shim, no network calls in hook or Harbor code, skill frontmatter, hooks and plugin paths, JSON formats, the plugin layout, a sign-off on every commit, no AI credits), and a mutation check for every self-test | **Available** |
-| The plugin eval suite: seventeen cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
+| The plugin eval suite: nineteen cases on a fixture project, run by `node tools/evals.mjs` under your own Claude Code login on any system, with no API key needed | **Available** |
 | `design`: the brief, three directions and your pick, every screen with its tokens, manifest and gallery, and `amend`, `add`, `audit` and `ingest`, with stage 3 | **Available** |
-| The screens as the truth: a screenshot per screen a story touches, read beside its design, and the retro's full visual compare | **Available** |
+| The screens as the truth: a screenshot per screen a story touches, read beside its design, and the retro's visual compare of the states that are new or changed | **Available** |
 | Adopting a production repository: converting an earlier template layout behind a rollback tag, the design it has, and post-MVP mode for a product already live | **Available** |
 | Design tokens extracted from the code of an adopted product with no design | Held until one is adopted |
 | Parallel story workers, the story-size law, the `mobile-expo` and `mobile-flutter` lanes | M3 |
@@ -432,11 +440,13 @@ step is also a command you can run directly.
    - the gates' self-test
 
    In the web lane, the deep gates run the whole Playwright suite. In a project with a design,
-   that run renders every designed state at both widths, and the retro compares each one, as
-   built, with its design. Perf budgets wait for a project that needs them. The retro then counts
-   the phase's reviews and rework, prunes the queue with you, reviews the cost rows, and deletes
-   something from the pipeline, or records why nothing qualified. It records all this in
-   `docs/decisions.md` and tags the phase.
+   that run renders every designed state at both widths, and the retro reads the ones that are
+   new or changed since a retro last read them, each as built beside its design. Perf budgets
+   wait for a project that needs them. The retro then counts the phase's reviews and rework,
+   shows what this machine's event log counted since the last retro, prunes the queue with you,
+   reviews the cost rows, and deletes something from the pipeline, or records why nothing
+   qualified. What the phase showed about Epikloop itself goes in as notes for Epikloop. It
+   records all this in `docs/decisions.md` and tags the phase.
 
    In the final phase, it also takes you through MVP sign-off. Sign-off waits until queue Δ is 0 or
    below and the staging smoke is green.
@@ -526,7 +536,7 @@ The front door is `/epikloop`. Every other command is namespaced as `/epikloop:<
 | `/epikloop:doctor [--check]` | Checks that this machine can run Epikloop and says how to fix what is missing; `--check` also runs the gates | low | you or Claude |
 | `/epikloop:discover [brief]` | Greenfield: turns an interview, or a pasted brief with only the gaps asked, into `spec/` | xhigh | you or Claude |
 | `/epikloop:adopt` | Brownfield: an observed spec and architecture, gate config and a confirmation batch; it converts an earlier template layout, brings in the design the product has, and tags a product in production `live` | xhigh | you or Claude |
-| `/epikloop:design [amend <screen> "<change>" \| add <screen> \| audit \| ingest]` | Three directions, your pick, then every screen as HTML, with tokens, a manifest and a gallery | high | you or Claude |
+| `/epikloop:design [amend <screen> "<change>" \| add <screen> \| audit \| ingest]` | Three directions, your pick, then every screen as HTML, with tokens, a manifest and a gallery, drawn on the model you set when you set one | high | you or Claude |
 | `/epikloop:architect` | The stack, the schema as code, the API contract, a pre-mortem, `spec/architecture.md` and the lane | max | you or Claude |
 | `/epikloop:plan [--extend]` | Epics and tiered stories with requirement IDs and spec deltas, and the frozen MVP set; `--extend` plans later work | high | you or Claude |
 | `/epikloop:epic <N>` | Runs epic N as an unattended batch, one worker per story, then one reviewer per landed story | medium | you or Claude |
@@ -534,7 +544,7 @@ The front door is `/epikloop`. Every other command is namespaced as `/epikloop:<
 | `/epikloop:story <X.X>` | Runs one named story, then stops | medium | you or Claude |
 | `/epikloop:decide` | Takes you through the parked questions, a review's findings one at a time, records the decisions and unblocks stories | low | you or Claude |
 | `/epikloop:triage "<what you found>"` | Routes your finding through the threshold router | low | you only |
-| `/epikloop:retro` | Closes a phase: staging smoke, deep gates, self-test, the reviews and the rework counted, queue pruning, one pipeline deletion and the tag; MVP sign-off in the final phase | medium | you only |
+| `/epikloop:retro` | Closes a phase: staging smoke, deep gates, self-test, the visual compare of what changed, the reviews and the rework counted, queue pruning, one pipeline deletion, notes for Epikloop and the tag; MVP sign-off in the final phase | medium | you only |
 | `/epikloop:release` | The go-live story: production, promotion, a rollback note and a post-launch checklist | high | you only |
 | `/epikloop:harbor on\|off\|open` | Harbor's switch and its view | low | you only |
 
@@ -683,8 +693,12 @@ decides as usual. Outside an Epikloop project the guard never answers.
   invocations such as `sh -c`, aliases or scripts are not caught. The git hooks and the required
   check cover those.
 - **Your settings still apply.** A plugin can't ship a permissions allowlist, so this hook is how
-  the pipeline runs without prompts in default, acceptEdits and dontAsk modes. Plan mode and your
-  own deny and ask rules still apply.
+  the pipeline's own commands run without prompts in default, acceptEdits and dontAsk modes, each
+  on its own. Plan mode and your own deny and ask rules still apply.
+- **An unattended batch needs auto mode.** Workers chain commands, whatever their instructions
+  say: in two projects, 92% and 94% of the workers' 40,597 shell commands were chained, and the
+  allow list covers none of those. In auto mode they run. In the other modes each one asks,
+  unless your own allow rules cover it.
 - **It is quick.** Its self-test runs every sample through the real hook and reports spawn times.
   The target is a median under 150 ms on Windows.
 
@@ -809,7 +823,9 @@ to edit, and `init.mjs --refresh` replaces only the gate files.
 |---|---|
 | `~/.epikloop/events/YYYY-MM-DD.jsonl` | The event log: one line per event, written only inside an Epikloop project |
 | `~/.epikloop/projects/<id>/cost.jsonl` | One cost row per turn of a story's worker or its reviewer: tier, agent, wall time, cost, model and effort. An agent's rows add up to its run, and a reviewer's are marked `review` |
-| `~/.epikloop/config.json` | Your settings: effort overrides and the Harbor switch |
+| `~/.epikloop/projects/<id>/notes.md` | What the project's retros noted about Epikloop itself, collected from its records for you to send as an issue, or not |
+| `~/.epikloop/projects/<id>/compare/<code>.json` | The pictures a retro's visual compare read, each by its fingerprint and size, which the next compare sorts today's pictures against |
+| `~/.epikloop/config.json` | Your settings: effort overrides, the model that draws a design, and the Harbor switch |
 | `~/.epikloop/harbor.json` | Where the Harbor plugin is installed, which its start-of-session hook records |
 | `~/.epikloop/gates.lock` | The gate run whose tests, build or end-to-end tests are at work, while they are; the other runs on the machine wait for it |
 
@@ -856,9 +872,9 @@ The event kinds are `session.start|end`, `tool.pre|post`, `subagent.start|stop`,
 `story.started|committed`, `gate.started|passed|failed`, `question.parked`, `decision.recorded` and
 `phase.tagged`.
 
-The emitter writes each event as a small file in `~/.epikloop/events/YYYY-MM-DD/`. Harbor and
-`doctor` fold each day's folder into that day's `.jsonl` file, one fold at a time, through a lock
-file beside it.
+The emitter writes each event as a small file in `~/.epikloop/events/YYYY-MM-DD/`. Harbor,
+`doctor` and the start of each batch and retro fold each past day's folder into that day's
+`.jsonl` file, one fold at a time, through a lock file beside it.
 
 </details>
 
@@ -889,6 +905,7 @@ you want to change a choice.
 | `mode` | yes | `solo` or `team` |
 | `mvp_frozen` | | The date `plan` froze the MVP set; it moves only by a recorded decision |
 | `effort` | | Story-worker effort per tier, `T1` to `T3`, and the reviewer's, `review` |
+| `model.design` | | The model that draws a design, for those with no choice of their own in `~/.epikloop/config.json` |
 | `hours_per_day` | | Hours per day you work on the project, an input to the ETA |
 | `deadline` | | The target date, when there is one |
 | `staging_url` | | Where the staging smoke runs |
@@ -937,12 +954,14 @@ you want to change a choice.
 |---|---|---|
 | `format` | yes | The file's format version: `1` |
 | `effort` | | Story-worker effort per tier, `T1` to `T3`, and the reviewer's, `review`; a project's own setting wins |
+| `model.design` | | The model that draws a design's directions and screens, such as `fable`; it wins over a project's own |
 | `harbor` | | Whether Harbor runs: `false` by default, and off means no Harbor process exists |
 
 ```json
 {
   "format": 1,
   "effort": { "T1": "low" },
+  "model": { "design": "fable" },
   "harbor": false
 }
 ```
@@ -953,6 +972,11 @@ you want to change a choice.
   `~/.epikloop/config.json`, then the defaults: T1 medium, T2 high and T3 xhigh. The levels are
   `low`, `medium`, `high`, `xhigh` and `max`.
 - **Reviewer effort.** `effort.review` comes from the same places, and is `high` by default.
+- **The drawing model.** `model.design` names the model that draws a design. Yours, in
+  `~/.epikloop/config.json`, wins over a project's, since your account decides which models you
+  have. `/epikloop:design` says which model draws before it draws: with one set, subagents
+  started on it draw the directions and the screens, and with none, your session's own model
+  does.
 - **Command effort.** Each command pins its own effort (see [Commands](#commands)); the global
   default is medium.
 - **Cost rows.** Each closed story records its model, effort, wall time and, when available,
@@ -965,8 +989,9 @@ you want to change a choice.
   `promptCacheTtl`, and `doctor` says so.
 - **Small outputs.** `check.sh` prints failures and a one-line summary, a product's `CLAUDE.md`
   stays under 200 lines, and a web story runs only the Playwright specs it touched, with the whole
-  suite once per epic. A web story reads one screenshot per screen it touches, and the full visual
-  compare runs once per epic. The design gallery is written by a script, not by the model.
+  suite once per epic. A web story reads one screenshot per screen it touches, and the visual
+  compare runs once per epic, on the states that are new or changed since a retro last read them.
+  The design gallery is written by a script, not by the model.
 
 More in [Architecture → Token economy](docs/architecture.md#token-economy).
 
@@ -1001,7 +1026,9 @@ The loudest motion always means you are needed.
 `/epikloop:harbor on` and `off` flip one line in `~/.epikloop/config.json`, and off means no Harbor
 process exists: Harbor stops within 2 seconds. `/epikloop:harbor open` shows Harbor in the browser,
 at `http://127.0.0.1:4747/`, starting it if it isn't running. While Harbor is on, its plugin's
-start-of-session hook starts it with each session, and says so only when it can't.
+start-of-session hook starts it with each session, and says so only when it can't. When that
+plugin hasn't run in a session, `/epikloop:harbor` and `doctor` say how to load it: installed from
+the marketplace, or with a second `--plugin-dir` where the core is loaded from a folder.
 
 The plugin carries Harbor's build: the server in one file, and the page with its source maps and
 its art. Harbor itself is built in a repository of its own. Later, the Bridge adds review pages on
@@ -1067,6 +1094,7 @@ node plugins/epikloop/scripts/guard.mjs --self-test
 node plugins/epikloop/scripts/brief.mjs --self-test
 node plugins/epikloop/scripts/init.mjs --self-test
 node plugins/epikloop/scripts/state.mjs --self-test
+node plugins/epikloop/scripts/home.mjs --self-test
 node plugins/epikloop/scripts/smoke.mjs --self-test
 node plugins/epikloop/scripts/doctor.mjs --self-test
 node plugins/epikloop/scripts/switch.mjs --self-test
@@ -1128,14 +1156,16 @@ reads, and `node tools/evals.mjs` runs it.
   - architected
   - planned
   - planned with a question parked
-  - a greeter web page before its design, after the pick, drawn but for one state, and designed and
-    architected
+  - the greeter with its story landed, before its review and after it
+  - a greeter web page before its design, after the pick, after the pick with a drawing model
+    named, drawn but for one state, designed and architected, and at its phase's retro
   - the greeter page on an earlier template layout
 
-  The first three, and the web page before its design, after the pick and once architected, carry
-  a remote nothing has been pushed to, as a new project's GitHub repository is; a push there goes
-  to a bare repository inside `.git`. The fixture's self-test runs in CI on every push, at no cost.
-- **What the seventeen cases cover:**
+  The empty, specified and architected ones, and the web page before its design, after the pick,
+  with or without a drawing model named, and once architected, carry a remote nothing has been
+  pushed to, as a new project's GitHub repository is; a push there goes to a bare repository
+  inside `.git`. The fixture's self-test runs in CI on every push, at no cost.
+- **What the nineteen cases cover:**
   - the front door, inside and outside a project
   - a plain question answered from the briefing
   - a story landed by its worker, with its open product call parked
@@ -1145,6 +1175,9 @@ reads, and `node tools/evals.mjs` runs it.
   - `architect` waiting for confirmation
   - `plan`, `discover` and `adopt`
   - `design`: three directions that wait for the pick, the screens after it, and an audit
+  - `design` with a drawing model set: subagents started on that model draw the screens
+  - `retro`: the evidence, the pictures the visual compare lists, the record with the compare's
+    line and a note for Epikloop, its landing and the tag
   - `plan` on a designed web page, whose stories load the tokens and build to the design
   - `adopt` on an earlier template layout: the rollback tag, Epikloop's hooks, the template's files
     and folded docs gone, the decisions numbered on, `CLAUDE.md` rebuilt and the design brought in
@@ -1163,7 +1196,7 @@ node tools/evals.mjs story plan   # the named cases
   is logged in with, so a Claude plan is enough; neither Epikloop nor its evals need an API key.
 - **Any system.** It runs on Linux, macOS and Windows alike, with nothing to install beyond what
   Epikloop already needs.
-- **Cost.** Every run is a real model call. A pass of the whole suite comes to about $3.20 at list
+- **Cost.** Every run is a real model call. A pass of the whole suite comes to about $4 at list
   price, which on a plan counts against your usage limits rather than adding a charge. `--cap`
   stops starting runs at $5 of that estimate.
 - **When to run it.** Run it when a change touches model-facing text:

@@ -30,6 +30,7 @@ unknown lane as a problem.
 | `ui_test.allow` | the guard | Command prefixes the guard allows in the lane's projects |
 | `design` | the state reader and the design gallery | How the lane's screens are drawn in `design/`, or `null` for a lane without screens, which skips design |
 | `design.widths` | the state reader and the design gallery | The two widths, in pixels, each screen is drawn at, the narrow one first; `web` draws at 390 and 1280 |
+| `design.renders` | `state.mjs --compare` | The folder, inside the project, that the lane's screens spec writes its pictures to, as `<screen>.<state>.<width>.design.png` and `.app.png`. The fragment names the same folder, since a worker writes there, and the state reader's self-test holds the two together; `web` writes to `test-results/screens` |
 
 A field that nothing reads doesn't belong in the profile yet. Perf budgets, for example, wait for a
 project that shows the failure they would catch.

@@ -1,0 +1,66 @@
+schema_version: "1.1"
+name: retro
+description: /epikloop:retro gathers the phase's evidence, reads the pictures the compare lists, records the phase with the compare's line and a note for Epikloop, lands the record and tags the phase.
+tags: [retro]
+runs: 1
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: '/epikloop:retro I have clicked through 1.1 on my own machine, and it works. This project has no staging yet, so record that, and leave the MVP unsigned. Keep the queue as it is, and record that nothing qualified for deletion. One thing about Epikloop itself for the record: its brief asks for a click-through on staging where a project has none. Record the retro, land it and tag the phase, without asking me anything else.'
+  model: claude-sonnet-5-5
+  max_turns: 60
+  timeout_seconds: 1200
+  allowed_tools: [Read, Glob, Grep, Skill]
+graders:
+  - name: runs-the-retro-script
+    type: tool_used
+    tool: Bash
+    input_match: 'state\.mjs.*--retro'
+  - name: runs-the-compare
+    type: tool_used
+    tool: Bash
+    input_match: 'state\.mjs.*--compare'
+  - name: reads-a-picture
+    type: tool_used
+    tool: Read
+    input_match: 'screens[/\\]+greet\.'
+  - name: records-the-retro
+    type: regex
+    target: { source: file, path: docs/decisions.md }
+    pattern: '^## DECISION-\d{3} Phase 1 retro \(\d{4}-\d{2}-\d{2}\)$'
+    flags: m
+  - name: carries-the-compare-line
+    type: regex
+    target: { source: file, path: docs/decisions.md }
+    pattern: 'Visual compare: \d+ read, \d+ unchanged, \d+ changed and not read, \d+ not rendered \(snapshot [0-9a-f]{8}\)'
+  - name: notes-epikloop
+    type: regex
+    target: { source: file, path: docs/decisions.md }
+    pattern: '^- Epikloop: \S'
+    flags: m
+  - name: lands-the-record
+    type: regex
+    target: { source: file, path: .git/logs/HEAD }
+    pattern: '\tcommit: chore\(phase-1\): retro'
+  - name: pushes-it
+    type: regex
+    target: { source: file, path: .git/logs/refs/remotes/origin/main }
+    pattern: '\tupdate by push'
+  - name: collects-the-note
+    type: regex
+    target: trace
+    pattern: 'Notes for Epikloop in this project.s records: [1-9]\d*, collected in'
+  - name: tags-the-phase
+    type: regex
+    target: { source: file, path: .git/refs/tags/phase-1 }
+    pattern: '^[0-9a-f]{40}'
+  - name: pushes-the-tag
+    type: regex
+    target: { source: file, path: .git/origin.git/refs/tags/phase-1 }
+    pattern: '^[0-9a-f]{40}'
+  - name: changes-no-code
+    type: tool_used
+    tool: Write
+    input_match: 'src[/\\]+'
+    min: 0
+    max: 0

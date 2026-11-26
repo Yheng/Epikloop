@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Yheng/Epikloop/main/plugins/epikloop/schemas/compare.schema.json",
+  "title": "Epikloop compare list",
+  "description": "~/.epikloop/projects/<id>/compare/<code>.json: the pictures a retro's visual compare read, by fingerprint and size, which the next compare sorts today's pictures against. Written by `state.mjs --compare`, never by the model. The code is the first eight hex digits of the entries' own fingerprint, and a retro's record names it as `(snapshot <code>)`.",
+  "type": "object",
+  "required": ["format", "at", "commit", "pictures"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": 1, "description": "Format version of the file." },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the compare ran (ISO 8601 UTC)."
+    },
+    "commit": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "The commit the checkout was at, abbreviated; null where git couldn't say."
+    },
+    "pictures": {
+      "type": "array",
+      "description": "One entry for each picture, in the order of their names. A pair that changed and wasn't read keeps the entry it had, so it stays listed until a retro reads it.",
+      "items": {
+        "type": "object",
+        "required": ["name", "sha256", "width", "height"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z0-9][a-z0-9.-]*\\.[0-9]+\\.(design|app)\\.png$",
+            "description": "The picture's file name: <screen>.<state>.<width>.design.png, or .app.png. The state is one the manifest lists, or one the project's screens spec renders beyond it."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "The fingerprint of the picture's bytes."
+          },
+          "width": { "type": "integer", "minimum": 1, "description": "The picture's width in pixels." },
+          "height": { "type": "integer", "minimum": 1, "description": "The picture's height in pixels." }
+        }
+      }
+    }
+  }
+}

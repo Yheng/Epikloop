@@ -17,8 +17,13 @@ in that direction, at both of the lane's widths, in each state it has, with real
 
 Where the design stands comes from a script: run
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/state.mjs" --design` on its own. It prints the lane's widths,
-how far the design has come, the files it still lacks, the number for the pick's record and what
-an audit reads, and the work picks up from there.
+how far the design has come, which model draws, the files it still lacks, the number for the pick's
+record and what an audit reads, and the work picks up from there.
+
+When the script names a drawing model, subagents started with it as their `model` draw the
+directions and the screens, each from the brief and, once there is a pick, the tokens and its
+screens' entries in the manifest, while this session keeps the pick, the tokens and the manifest.
+When it names none, this session draws, and first tells the human which model that is.
 
 The brief, `design/brief.md`, is titled with the product's name, which the gallery shows, and draws
 on `spec/` and on any images the human puts in `design/refs/`: who the product is for, the feel it

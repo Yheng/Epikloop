@@ -40,6 +40,7 @@ jobs:
       - run: node plugins/epikloop/scripts/brief.mjs --self-test
       - run: node plugins/epikloop/scripts/init.mjs --self-test
       - run: node plugins/epikloop/scripts/state.mjs --self-test
+      - run: node plugins/epikloop/scripts/home.mjs --self-test
       - run: node plugins/epikloop/scripts/smoke.mjs --self-test
       - run: node plugins/epikloop/scripts/doctor.mjs --self-test
       - run: node plugins/epikloop/scripts/switch.mjs --self-test

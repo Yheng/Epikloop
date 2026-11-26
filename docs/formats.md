@@ -82,6 +82,16 @@ Example: [`templates/docs/decisions.md`](../plugins/epikloop/templates/docs/deci
 - **Records.** The closing ceremonies record themselves as entries with fixed titles: `retro`
   writes `Phase N retro`, the MVP sign-off `MVP sign-off`, and `release` `Go live`, or
   `Go live later` when production comes later. The reader finds them by title.
+- **Notes for Epikloop.** An entry may carry lines `- Epikloop: <text>`, any number of them: what
+  a phase showed about Epikloop itself. A retro writes them after its other fields, so a reader
+  from before they existed still reads the entry. The reader takes such a line wherever it stands
+  in the entry, also after a line it doesn't know, or indented under another. `state.mjs --retro`
+  collects them on the machine, in `~/.epikloop/projects/<id>/notes.md`, for the human to send on.
+- **The visual compare's line.** A retro's record carries the line `state.mjs --compare` gives
+  it, `Visual compare: N read, N unchanged, N changed and not read, N not rendered (snapshot <8
+  hex digits>)`. The next compare trusts the list of pictures that the last such line on the
+  default branch names, so the line is copied as given, whole and on one line: a code that a
+  record only mentions names no list.
 - **Append-only.** The file is never edited above its last entry.
 
 ## `design/`

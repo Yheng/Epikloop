@@ -468,8 +468,10 @@ async function runCase(loaded, ctx) {
     // outside any repository.
     const own = Object.fromEntries(Object.entries(process.env).filter(([key]) => !INHERITED.test(key)))
     // A session is timed and runs under the machine's own home, so its gate runs don't wait for the
-    // slow gates of the projects at work there.
-    const env = { ...own, PWD: work, DISABLE_AUTOUPDATER: '1', CHECK_NO_WAIT: '1', GIT_CEILING_DIRECTORIES: ctx.root, ...ctx.env }
+    // slow gates of the projects at work there. It is also told that it is an eval's: its batch
+    // folds none of the machine's event files, and its design reads no drawing model from the
+    // contributor's own settings, so a run is the same on every machine.
+    const env = { ...own, PWD: work, DISABLE_AUTOUPDATER: '1', CHECK_NO_WAIT: '1', EPIKLOOP_EVAL: '1', GIT_CEILING_DIRECTORIES: ctx.root, ...ctx.env }
     const ran = await session(ctx.claude, claudeArgs(loaded.kase), { cwd: work, input: ex.prompt, env, ms: seconds * 1000 })
     fs.writeFileSync(path.join(ctx.root, loaded.name, `${i}.jsonl`), ran.out)
     try {
@@ -605,7 +607,7 @@ process.stdin.on('end', () => {
     pwdIsCwd = fs.realpathSync(process.env.PWD) === fs.realpathSync(process.cwd())
   } catch {}
   const inherited = ['CLAUDECODE', 'CLAUDE_EFFORT', 'CLAUDE_CODE_SESSION_ID'].filter((key) => process.env[key] !== undefined)
-  const reply = [plan.reply || '', 'prompt=' + input, 'marker=' + fs.existsSync('.epikloop/project.json'), 'args=' + process.argv.slice(2).join(' '), 'pwd-is-cwd=' + pwdIsCwd, 'inherited=' + (inherited.join(',') || 'none'), 'no-wait=' + (process.env.CHECK_NO_WAIT || 'unset')].join(' | ')
+  const reply = [plan.reply || '', 'prompt=' + input, 'marker=' + fs.existsSync('.epikloop/project.json'), 'args=' + process.argv.slice(2).join(' '), 'pwd-is-cwd=' + pwdIsCwd, 'inherited=' + (inherited.join(',') || 'none'), 'no-wait=' + (process.env.CHECK_NO_WAIT || 'unset'), 'eval=' + (process.env.EPIKLOOP_EVAL || 'unset')].join(' | ')
   const lines = [
     { type: 'system', subtype: 'init', cwd: process.cwd() },
     ...(plan.tools || []).map((tool) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', name: tool.name, input: tool.input }] } })),
@@ -807,7 +809,7 @@ async function selfTest() {
         Object.assign(process.env, { PWD: temp, CLAUDECODE: '1', CLAUDE_EFFORT: 'max', CLAUDE_CODE_SESSION_ID: 'the-caller' })
         try {
           const graders =
-            "  - name: pwd\n    type: regex\n    pattern: 'pwd-is-cwd=true'\n  - name: clean\n    type: regex\n    pattern: 'inherited=none'\n  - name: alone\n    type: regex\n    pattern: 'no-wait=1'\n"
+            "  - name: pwd\n    type: regex\n    pattern: 'pwd-is-cwd=true'\n  - name: clean\n    type: regex\n    pattern: 'inherited=none'\n  - name: alone\n    type: regex\n    pattern: 'no-wait=1'\n  - name: an-eval\n    type: regex\n    pattern: 'eval=1'\n"
           const { results } = await run([['clean', yaml('clean', { graders })]])
           return results[0].passed ? [] : [`it failed: ${JSON.stringify(results[0].runs)}`]
         } finally {

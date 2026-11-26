@@ -14,6 +14,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import zlib from 'node:zlib'
 import { openProject, readState } from '../scripts/state.mjs'
 
 const PLUGIN = path.join(import.meta.dirname, '..')
@@ -307,6 +308,95 @@ const WEB_ARCHITECT = {
   files: { 'spec/architecture.md': WEB_ARCHITECTURE, 'docs/decisions.md': WEB_DECISIONS, 'package.json': PACKAGE },
   marker: ARCHITECT.marker,
 }
+// The greeter page with a drawing model named in its marker, one no eval's session runs on, so
+// the design has to hand its drawing to subagents started on it.
+const MODEL = { subject: 'name the drawing model', date: '2026-11-05', files: {}, marker: { model: { design: 'haiku' } } }
+
+// The greeter page's one story, which shows both requirements on its one screen.
+const WEB_STORIES = `# Epic 1: Greeter page
+
+## 1.1 Greet by name
+- Tier: T1
+- MVP: yes
+- Requirements: REQ-GREET-001, REQ-GREET-002
+
+\`src/greet.mjs\` exports \`greet(name)\`, which the page calls: "Hello, <name>!" for a name, and
+"Who should I greet?" for none. Done when tests show both.
+
+### Spec delta
+- none
+`
+const WEB_PLAN = {
+  subject: 'plan the greeter page',
+  date: '2026-11-07',
+  files: { 'docs/stories/1-greeter.md': WEB_STORIES, 'docs/queue.md': QUEUE },
+  marker: { mvp_frozen: '2026-11-07', hours_per_day: 2, deadline: null },
+}
+const WEB_LAND = {
+  subject: 'feat(1.1): greet by name',
+  raw: true,
+  date: '2026-11-08',
+  files: {
+    '.gitignore': 'node_modules/\ntest-results/\n',
+    'src/greet.mjs': "export function greet(name) {\n  return name ? `Hello, ${name}!` : 'Who should I greet?'\n}\n",
+    'test/greet.test.mjs': [
+      "import assert from 'node:assert/strict'",
+      "import { test } from 'node:test'",
+      "import { greet } from '../src/greet.mjs'",
+      '',
+      "test('greets a person by name', () => {",
+      "  assert.equal(greet('Ada'), 'Hello, Ada!')",
+      '})',
+      '',
+      "test('asks for a missing name', () => {",
+      "  assert.equal(greet(''), 'Who should I greet?')",
+      '})',
+      '',
+    ].join('\n'),
+  },
+}
+
+// A small picture of one colour, as a PNG's bytes: enough for a session to open it, and for the
+// visual compare to read its size.
+function png(width, height, colour) {
+  const crc = (bytes) => {
+    let c = 0xffffffff
+    for (const byte of bytes) {
+      c ^= byte
+      for (let bit = 0; bit < 8; bit += 1) c = (c >>> 1) ^ (0xedb88320 & -(c & 1))
+    }
+    return (c ^ 0xffffffff) >>> 0
+  }
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data])
+    const length = Buffer.alloc(4)
+    length.writeUInt32BE(data.length)
+    const sum = Buffer.alloc(4)
+    sum.writeUInt32BE(crc(body))
+    return Buffer.concat([length, body, sum])
+  }
+  const head = Buffer.alloc(13)
+  head.writeUInt32BE(width, 0)
+  head.writeUInt32BE(height, 4)
+  // Eight bits a channel, in red, green and blue.
+  head[8] = 8
+  head[9] = 2
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width * 3 }, (_, i) => colour[i % 3]))])
+  const rows = Buffer.concat(Array.from({ length: height }, () => row))
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', head), chunk('IDAT', zlib.deflateSync(rows)), chunk('IEND', Buffer.alloc(0))])
+}
+
+// What the page's screens spec left when the deep gates last ran: each state of its one screen at
+// both widths, from the design and from the app, which here are the same picture.
+const PICTURES = Object.fromEntries(
+  [
+    ['default', [240, 253, 250]],
+    ['error', [254, 242, 242]],
+  ].flatMap(([state, colour]) => [390, 1280].flatMap((width) => ['app', 'design'].map((kind) => [`test-results/screens/greet.${state}.${width}.${kind}.png`, png(width, 240, colour)]))),
+)
+// The review of 1.1, which found nothing in a T1 story, so its commit holds nothing. `untracked`
+// is written after the commit, and stays out of it.
+const WEB_REVIEW = { subject: 'review(1.1): no findings', raw: true, date: '2026-11-09', files: {}, empty: true, untracked: PICTURES }
 
 // The greeter page on an earlier template layout, for adopting one: the template's version file,
 // session command, hook and gate, a test that holds the hook, its rules and protocol in CLAUDE.md,
@@ -445,8 +535,13 @@ export const FIXTURES = {
   'web-specified': [WEB_SPECIFY],
   'web-picked': [WEB_SPECIFY, PICK],
   'web-incomplete': [WEB_SPECIFY, PICK, DRAW],
+  // The greeter page after the pick, with a drawing model that no session of the suite runs on.
+  'web-modelled': [WEB_SPECIFY, PICK, MODEL],
   // The greeter page at stage 5, its design complete and its architecture written.
   'web-architected': [WEB_SPECIFY, PICK, DRAW, DRAW_ERROR, WEB_ARCHITECT],
+  // The greeter page at its phase's retro: its one story landed and reviewed, and the pictures of
+  // its screen where the deep gates leave them.
+  'web-closing': [WEB_SPECIFY, PICK, DRAW, DRAW_ERROR, WEB_ARCHITECT, WEB_PLAN, WEB_LAND, WEB_REVIEW],
   // The greeter page on an earlier template layout, outside a project, for adopt to convert.
   earlier: [EARLIER_LAYOUT],
 }
@@ -455,10 +550,10 @@ export const FIXTURES = {
 // network URL that nothing has been pushed to yet, from which init.mjs reads the project id. A push
 // goes to a bare repository inside .git, where git never looks, so nothing leaves the machine. The
 // other fixtures have no remote, so the skills that run `git fetch` never reach the network.
-const REMOTE = new Set(['empty', 'specified', 'architected', 'web-specified', 'web-picked', 'web-architected'])
+const REMOTE = new Set(['empty', 'specified', 'architected', 'web-specified', 'web-picked', 'web-modelled', 'web-architected'])
 // A fixture a batch has pushed from carries that remote with its commits on it. There a fetch goes
 // to the bare repository too, so `git fetch` answers at once, and without the network.
-const PUSHED = new Set(['landed'])
+const PUSHED = new Set(['landed', 'web-closing'])
 
 // ---- Building one
 
@@ -512,9 +607,10 @@ export function build(name, dir) {
     }
     const when = `${commit.date}T10:00:00Z`
     // The fixture's history is set, not gated; the run's own commits are the ones that matter.
-    git(dir, ['commit', '-q', '--no-verify', '-m', commit.raw ? commit.subject : `fixture: ${commit.subject}`], { GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when })
+    git(dir, ['commit', '-q', '--no-verify', ...(commit.empty ? ['--allow-empty'] : []), '-m', commit.raw ? commit.subject : `fixture: ${commit.subject}`], { GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when })
     // Armed as the earlier template's install step armed it.
     if (commit.armed) git(dir, ['config', 'core.hooksPath', '.githooks'])
+    for (const [file, bytes] of Object.entries(commit.untracked ?? {})) write(dir, file, bytes)
   }
   if (PUSHED.has(name)) git(dir, ['push', '-q', '--no-verify', 'origin', 'main'])
 }
@@ -688,6 +784,38 @@ async function selfTest() {
       },
     ],
     ['web-architected is at stage 5, its design complete', () => stage('web-architected', 5, '/epikloop:plan')],
+    [
+      'web-modelled is at stage 3, with its direction picked and a drawing model named in its marker',
+      () => {
+        const problems = stage('web-modelled', 3, '/epikloop:design')
+        const dir = path.join(temp, 'web-modelled')
+        const named = openProject(dir).project.model?.design
+        return named === 'haiku' ? problems : [...problems, `web-modelled names ${JSON.stringify(named)} as its drawing model`]
+      },
+    ],
+    [
+      "web-closing is at stage 7, at its retro, with its screen's pictures outside git, and its gates pass as it stands",
+      () => {
+        const problems = stage('web-closing', 7, '/epikloop:retro')
+        const dir = path.join(temp, 'web-closing')
+        const screens = path.join(dir, 'test-results', 'screens')
+        const pictures = fs.existsSync(screens) ? fs.readdirSync(screens).sort() : []
+        const sizes = pictures.map((name) => {
+          const bytes = fs.readFileSync(path.join(screens, name))
+          return `${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`
+        })
+        const read = (args) => spawnSync('git', args, { cwd: dir, encoding: 'utf8', windowsHide: true }).stdout.trim()
+        return [
+          ...problems,
+          ...(pictures.length === 8 && pictures[0] === 'greet.default.1280.app.png' ? [] : [`web-closing's pictures are ${pictures.join(', ') || 'missing'}`]),
+          ...(new Set(sizes).size === 2 && sizes.includes('390x240') && sizes.includes('1280x240') ? [] : [`web-closing's pictures measure ${[...new Set(sizes)].join(', ')}`]),
+          ...(read(['status', '--porcelain']) === '' ? [] : ["web-closing's tree isn't clean"]),
+          ...(read(['rev-list', '--count', 'refs/remotes/origin/main..HEAD']) === '0' ? [] : ["web-closing's remote doesn't hold its commits"]),
+          ...passes(dir, ['--test'], "web-closing's node --test"),
+          ...passes(dir, [path.join('.githooks', 'check.mjs')], "web-closing's gates"),
+        ]
+      },
+    ],
     [
       'web-incomplete is at stage 3, with one state left to draw',
       () => {

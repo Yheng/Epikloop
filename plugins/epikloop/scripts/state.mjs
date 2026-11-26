@@ -1,7 +1,10 @@
 // Epikloop's reader of a project's state. It parses the four project files in their formats
 // (docs/formats.md) and reads git, then derives what the stage machine and the fuel gauge need:
 // which stories are done, the current phase, the stage and its next step, and the gauge. Nothing
-// is stored; every read derives it again. The briefing imports it, and skills run it:
+// of that is stored; every read derives it again. What is kept on the machine is home.mjs's: a
+// retro's call collects the notes for Epikloop, and `--compare` saves the list of pictures it
+// sorted. A batch's and a retro's calls also fold the emitter's files first. The briefing imports
+// it, and skills run it:
 //
 //   node state.mjs                                          the state of the project here
 //   node state.mjs --ready [N | N.M]                        the stories a batch may start and their workers' effort, or why none
@@ -10,8 +13,9 @@
 //   node state.mjs --review N.M                             a story-reviewer's brief
 //   node state.mjs --ids                                    the next question, decision and epic numbers
 //   node state.mjs --retro                                  the retro's brief, or the tags it leaves
+//   node state.mjs --compare                                the pictures a retro's visual compare reads, and its line for the record
 //   node state.mjs --release                                the release's brief, or the tag it leaves
-//   node state.mjs --design                                 where the design stands, and what an audit reads
+//   node state.mjs --design                                 where the design stands, which model draws, and what an audit reads
 //   node state.mjs --lane plan|story|retro                  that section of the project's lane
 //   node state.mjs --lanes                                  the lanes, with what each is for
 //   node state.mjs --example spec|stories|queue|decisions|manifest   a project file's example, its format
@@ -20,6 +24,8 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { foldAll } from './fold.mjs'
+import { collectNotes, compareLines, countsLine, eventCounts, listCode, readList, saveList, sortPictures } from './home.mjs'
 
 const DAY = 86_400_000
 const REQ_ID = 'REQ-[A-Z0-9]{2,12}-\\d{3,}'
@@ -66,15 +72,19 @@ function readLines(root, rel) {
 }
 
 // Reads the `- Key: value` lines that open an entry, from line `i`, into `fields`. Returns the
-// index of the first line after them.
-function readFields(lines, i, names, fields, problem) {
+// index of the first line after them. A key in `many` may come any number of times, and reads as
+// the list of its values.
+function readFields(lines, i, names, fields, problem, many = []) {
   let at = i
   while (at < lines.length && lines[at].trim() === '' && Object.keys(fields).length === 0) at += 1
   for (; at < lines.length; at += 1) {
     const field = /^- ([A-Z][A-Za-z -]*): (.*)$/.exec(lines[at])
     if (field === null || !names.includes(field[1])) break
-    if (field[1] in fields) problem(at + 1, `has a second ${field[1]}`)
-    fields[field[1]] = field[2].trim()
+    if (many.includes(field[1])) fields[field[1]] = [...(fields[field[1]] ?? []), field[2].trim()]
+    else {
+      if (field[1] in fields) problem(at + 1, `has a second ${field[1]}`)
+      fields[field[1]] = field[2].trim()
+    }
   }
   return at
 }
@@ -237,7 +247,13 @@ function readQueue(text, problems, stories) {
   return { questions, backlog }
 }
 
-// docs/decisions.md: `## DECISION-NNN Title (date)`, each with its fields.
+// A record's notes about Epikloop itself: its lines `- Epikloop: <text>`, any number of them and
+// wherever they stand in its entry, so a note that follows a line the reader doesn't know, or sits
+// under another line, is still read.
+const notesIn = (entry) => [...entry.matchAll(/^[ \t]*- Epikloop:[ \t]*(\S.*)$/gm)].map(([, note]) => note.trim())
+
+// docs/decisions.md: `## DECISION-NNN Title (date)`, each with its fields, and the notes for
+// Epikloop its entry carries.
 function readDecisions(root, problems) {
   const rel = 'docs/decisions.md'
   const lines = readLines(root, rel) ?? []
@@ -245,22 +261,26 @@ function readDecisions(root, problems) {
   const required = ['Context', 'Decision', 'Rejected', 'Trade-offs', 'Implementation note']
   for (let i = 0; i < lines.length; i += 1) {
     if (!lines[i].startsWith('## ')) continue
-    const heading = new RegExp(`^## (DECISION-\\d{3,}) (\\S.*) \\(${DATE}\\)$`).exec(lines[i].trim())
+    const heading = new RegExp(`^## (DECISION-\\d{3,}) (\\S.*) \\((${DATE})\\)$`).exec(lines[i].trim())
     if (heading === null) {
       problems.push(`${rel}:${i + 1}: "${lines[i]}" is not "## DECISION-NNN Title (YYYY-MM-DD)"`)
       continue
     }
-    const [, id, title] = heading
+    const [, id, title, date] = heading
     if (decisions.some((d) => d.id === id)) problems.push(`${rel}:${i + 1}: ${id} appears twice`)
     const fields = {}
-    readFields(lines, i + 1, ['Answers', ...required], fields, (at, what) => problems.push(`${rel}:${at}: ${id} ${what}`))
+    readFields(lines, i + 1, ['Answers', ...required, 'Epikloop'], fields, (at, what) => problems.push(`${rel}:${at}: ${id} ${what}`), ['Epikloop'])
     for (const field of required) if (fields[field] === undefined) problems.push(`${rel}:${i + 1}: ${id} has no ${field}`)
     const answers = fields.Answers !== undefined && /^Q-\d{3,}$/.test(fields.Answers) ? fields.Answers : null
     if (fields.Answers !== undefined && answers === null) problems.push(`${rel}:${i + 1}: ${id}'s Answers is not a Q-NNN`)
-    decisions.push({ id, title, answers, text: sectionAt(lines, i) })
+    const text = sectionAt(lines, i)
+    decisions.push({ id, title, date, answers, notes: notesIn(text), text })
   }
   return decisions
 }
+
+// The notes for Epikloop that the records carry, oldest first, as home.mjs collects them.
+const notesOf = (state) => state.decisions.flatMap((d) => d.notes.map((text) => ({ date: d.date, id: d.id, title: d.title, text })))
 
 // ---- Lanes: lanes/<name>.json, the profile, and lanes/<name>.md, its fragment (docs/lanes.md)
 
@@ -321,8 +341,13 @@ function laneProblem(lane, file) {
   const { design } = lane
   const widths = design?.widths
   const drawn =
-    typeof design === 'object' && design !== null && Object.keys(design).join() === 'widths' && Array.isArray(widths) && widths.length === 2 && widths.every((w) => Number.isInteger(w) && w > 0) && widths[0] < widths[1]
+    typeof design === 'object' && design !== null && Object.keys(design).every((key) => key === 'widths' || key === 'renders') && Array.isArray(widths) && widths.length === 2 && widths.every((w) => Number.isInteger(w) && w > 0) && widths[0] < widths[1]
   if (design !== null && !drawn) return 'has a design without its two widths, narrow first'
+  // Where its screens spec writes its pictures: a folder inside the project, which the lane's own
+  // text names too, since a worker writes there and the compare reads there.
+  const renders = design?.renders
+  if (renders !== undefined && !(typeof renders === 'string' && /^[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)*$/.test(renders))) return 'has a design whose renders is not a folder inside the project'
+  if (renders !== undefined && !Object.values(lane.sections).some((text) => text.includes(`\`${renders}/`))) return `has a design whose renders, ${renders}, its fragment doesn't name`
   const extra = Object.keys(lane.sections).filter((name) => !LANE_SECTIONS.includes(name))
   if (extra.length > 0) return `has ${extra.map((name) => `## ${name}`).join(', ')} in its fragment, which no brief prints`
   return null
@@ -577,11 +602,18 @@ function costRows(home, id) {
   const dir = path.join(home, '.epikloop', 'projects', id)
   const rows = []
   const runs = new Map()
+  // A fold that died between its append and its delete leaves a row twice, in the file and in
+  // the folder. A row carries its time to the millisecond, so the same line is the same row.
+  const seen = new Set()
   const add = (text) => {
     for (const line of text.split('\n')) {
       try {
         const row = JSON.parse(line)
         if (!(/^T[123]$/.test(row.tier) && Number.isFinite(row.wall) && row.wall > 0)) continue
+        if (typeof row.ts === 'string') {
+          if (seen.has(line.trim())) continue
+          seen.add(line.trim())
+        }
         const run = runs.get(row.agent)
         if (run === undefined) {
           rows.push(row)
@@ -593,12 +625,24 @@ function costRows(home, id) {
       } catch {}
     }
   }
+  // The folder is read before the file, so another session's fold at work in between hides no
+  // row, and each of its files on its own, so one that a fold has just taken costs only itself.
+  // The file's rows are still taken first, being the older ones.
+  const unfolded = []
+  let names = []
+  try {
+    names = fs.readdirSync(path.join(dir, 'cost')).sort()
+  } catch {}
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue
+    try {
+      unfolded.push(fs.readFileSync(path.join(dir, 'cost', name), 'utf8'))
+    } catch {}
+  }
   try {
     add(fs.readFileSync(path.join(dir, 'cost.jsonl'), 'utf8'))
   } catch {}
-  try {
-    for (const name of fs.readdirSync(path.join(dir, 'cost'))) if (name.endsWith('.json')) add(fs.readFileSync(path.join(dir, 'cost', name), 'utf8'))
-  } catch {}
+  for (const text of unfolded) add(text)
   return rows
 }
 
@@ -1209,6 +1253,45 @@ function workerLine(lines, project, home) {
 // The reviews' list's last line: the reviewer's effort, which the batch passes with its spawn.
 const reviewLine = (project, home) => `Review effort: ${workerEffort(project, home).review}.`
 
+// A model's name as the Agent tool takes one: a lowercase word, such as fable or opus.
+const MODEL_NAME = /^[a-z][a-z0-9.-]*$/
+
+// The model that draws a design: the user's choice in ~/.epikloop/config.json, else the project's
+// in its marker. An account decides which models it has, so the user's comes first, where an
+// effort's comes last. A value that is no model name is passed over, and `passed` says which. An
+// eval's session reads none from the user's file, so a contributor's own choice changes no run.
+function designModel(project, home, env) {
+  let user = {}
+  if (!env.EPIKLOOP_EVAL) {
+    try {
+      user = JSON.parse(fs.readFileSync(path.join(home, '.epikloop', 'config.json'), 'utf8').replace(/^﻿/, '')) ?? {}
+    } catch {}
+  }
+  const passed = []
+  for (const [where, value] of [
+    ['~/.epikloop/config.json', user.model?.design],
+    ['.epikloop/project.json', project.model?.design],
+  ]) {
+    if (value === undefined) continue
+    if (typeof value === 'string' && MODEL_NAME.test(value)) return { model: value, where, passed }
+    passed.push(`${JSON.stringify(value)} in ${where}`)
+  }
+  return { model: null, where: null, passed }
+}
+
+// The design brief's lines on which model draws: always one, so a session that draws on its own
+// model does so knowingly, and one more for each value passed over.
+function drawingLines(project, home, env) {
+  const { model, where, passed } = designModel(project, home, env)
+  const whose = where === '~/.epikloop/config.json' ? `which the human set in ${where}` : `which ${where} sets`
+  return [
+    ...passed.map((what) => `The drawing model ${what} is no model name, a lowercase word such as fable, so it is passed over.`),
+    model === null
+      ? 'The drawing model: none is set, so this session\'s own model draws. "model": { "design": "<name>" } in ~/.epikloop/config.json sets one.'
+      : `The drawing model: ${model}, ${whose}.`,
+  ]
+}
+
 // The cost rows on this machine, per tier and effort, and the reviews after them, per effort, with
 // the models that reviewed: how many runs, and their mean wall time and cost.
 function costLines(project, home) {
@@ -1275,19 +1358,65 @@ function stagingLine(project, what) {
 const refuse = (text) => ({ text, fails: true })
 
 // How far a retro's visual compare reaches, once the design is complete: every screen in the
-// manifest, in each of its states, at both widths.
+// manifest, in each of its states, at both widths. Where the lane says where its pictures are
+// written, `--compare` then says which of them a retro reads.
 function compareLine(state) {
   const d = state.design
   if (!d?.complete) return []
   const states = d.screens.reduce((sum, screen) => sum + screen.states.length, 0)
-  return [`The visual compare covers ${plural(d.screens.length, 'screen')} in design/manifest.md, ${plural(states, 'state')} in all, each at ${d.widths[0]} and ${d.widths[1]} pixels.`]
+  const listed = typeof state.lane?.design?.renders === 'string' ? ' After the deep gates, `state.mjs --compare` lists the pairs to read, and gives the line for the record.' : ''
+  return [`The visual compare covers ${plural(d.screens.length, 'screen')} in design/manifest.md, ${plural(states, 'state')} in all, each at ${d.widths[0]} and ${d.widths[1]} pixels.${listed}`]
+}
+
+// The line a record carries for its compare, as `--compare` gives it, for git's grep. The whole
+// line is asked for, so a code that a record only mentions, in a note or in passing, names no list.
+const COMPARE_LINE = 'Visual compare: [0-9]+ read, [0-9]+ unchanged, [0-9]+ changed and not read, [0-9]+ not rendered \\(snapshot [0-9a-f]{8}\\)'
+
+// The code of the list that the last such line names in the default branch's docs/decisions.md,
+// or null. Read from the branch, so a record that hasn't landed isn't trusted, and asked of git as
+// matches alone, so the file's size never matters, and as text, whatever bytes the file holds.
+function trustedCode(git, branch) {
+  const found = branch === null ? null : git(['grep', '-a', '-h', '-o', '-E', COMPARE_LINE, branch, '--', 'docs/decisions.md'])
+  return [...(found ?? '').matchAll(/\(snapshot ([0-9a-f]{8})\)/g)].at(-1)?.[1] ?? null
+}
+
+// What `--compare` prints after a retro's deep gates: the lane's pictures sorted against the list
+// the last landed record names, the pairs to read, and the line for the record, which names the
+// list this compare saved. A screen is named by each story with a feat or fix commit since the
+// last retro that cites a requirement it shows. With `all`, every changed pair is to read, named
+// or not, which is how a retro reads the pairs it had left and takes them into its list.
+export function compareBrief(root, state, project, { home = os.homedir(), now = Date.now(), all = false } = {}) {
+  const d = state.design
+  const rel = state.lane?.design?.renders
+  if (d === null || typeof rel !== 'string') return refuse(state.lane === null ? `Lane "${project.lane}" is not one of ${laneNames().join(', ')}.` : `The ${state.lane.name} lane has no pictures to compare.`)
+  if (!d.complete) return refuse(`The visual compare waits for the design: ${designWhy(d)}.`)
+  const git = gitReader(root)
+  const against = trustedCode(git, refsOf(git).branch)
+  const trusted = against === null ? null : readList(home, project.id, against)
+  const named = new Map()
+  for (const story of planOrder(state.stories)) {
+    if (!state.scope.commits.has(story.id)) continue
+    for (const screen of d.screens) if (screen.requirements.some((req) => story.requirements.includes(req))) named.set(screen.id, [...(named.get(screen.id) ?? []), story.id])
+  }
+  const sorted = sortPictures({ dir: path.join(root, ...rel.split('/')), screens: d.screens, widths: d.widths, named, trusted, all })
+  if (sorted.times.length === 0) return refuse(`No picture is in ${rel}/, where the deep gates' e2e run writes them.`)
+  const head = Number(git(['log', '-1', '--format=%ct', 'HEAD'])) * 1000 || null
+  let code
+  const unsaved = []
+  try {
+    code = saveList(home, project.id, sorted.entries, { now, commit: git(['rev-parse', '--short', 'HEAD'])?.trim() || null })
+  } catch (error) {
+    code = listCode(sorted.entries)
+    unsaved.push(`This list couldn't be saved on this machine (${String(error?.code ?? error?.message ?? error).split('\n')[0]}), so the next compare reads every pair.`)
+  }
+  return { text: [...compareLines(sorted, { rel, code, against, held: trusted !== null, head }), ...unsaved].join('\n') }
 }
 
 // The retro's brief at stage 7, where a phase closes, at stage 8, the MVP sign-off, or once the
 // product is live, where each epic that lands closes: what it covers, the evidence it gathers, the
 // queue, the cost rows, the record and how it lands. Once a record is on the default branch, only
 // the tags it leaves.
-export function retroBrief(state, project, facts, { home = os.homedir() } = {}) {
+export function retroBrief(state, project, facts, { home = os.homedir(), machine = () => [], collected = () => null } = {}) {
   const { stage } = state
   const closing = stage.n === 7 || stage.retro === true
   if ((!closing && stage.n !== 8) || stage.held) return refuse(`A retro waits: ${stage.why}. Next: ${stage.next}.`)
@@ -1309,7 +1438,8 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
   }
   if (tags.length > 0) {
     const records = [retro, tags.includes('mvp') ? signOff : undefined].filter(Boolean).map((d) => `${d.title} in ${d.id}`)
-    return { text: [`Recorded: ${records.join(' and ')}. ${tagging(facts, tags)}`, ...notes].join('\n') }
+    const forEpikloop = collected()
+    return { text: [`Recorded: ${records.join(' and ')}. ${tagging(facts, tags)}`, ...notes, ...(forEpikloop === null ? [] : [forEpikloop])].join('\n') }
   }
 
   const next = nextDecision(state)
@@ -1327,6 +1457,7 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
       ...reviewLines(state, project),
       reworkLine(state),
       ...costLines(project, home),
+      ...machine(),
     )
   } else {
     out.push(
@@ -1355,6 +1486,35 @@ export function retroBrief(state, project, facts, { home = os.homedir() } = {}) 
   out.push(landing(project, facts, `one commit whose subject is "${subject}", holding the record, the queue and whatever else the retro changes`, branch))
   out.push('Once it has landed, `--retro` again prints the tags.')
   return { text: out.join('\n') }
+}
+
+// The newest phase-N or live tag and its time, or null: where the last retro ended. A tag that
+// `git tag phase-N` makes carries its commit's time, which is the record's.
+function lastClosing(git) {
+  // The name without refs/tags/, which the short form keeps as tags/ where a branch has the name.
+  const listed = git(['for-each-ref', '--sort=-creatordate', '--format=%(refname:lstrip=2)%09%(creatordate:unix)', 'refs/tags']) ?? ''
+  for (const line of listed.split('\n')) {
+    const [name, at] = line.split('\t')
+    if (/^(?:phase-\d+|live)$/.test(name)) return { name, at: Number(at) * 1000 }
+  }
+  return null
+}
+
+// What a retro's brief takes from the machine, each read only when the brief prints it: the event
+// log's counts since the last retro with the line on the notes for Epikloop, and that line alone
+// once the record has landed and carries a note. Either way the notes are collected into their
+// file on the way.
+export function retroExtras(root, project, state, { now = Date.now(), home = os.homedir() } = {}) {
+  const notes = notesOf(state)
+  return {
+    home,
+    machine: () => {
+      const tag = lastClosing(gitReader(root))
+      const cap = (Number.isInteger(project.gates?.cap_minutes) ? project.gates.cap_minutes : 10) * 60
+      return [countsLine(eventCounts(home, project.id, { since: tag?.at ?? 0, now }), { tag: tag?.name ?? null, cap }), collectNotes(home, project.id, notes)]
+    },
+    collected: () => (notes.length === 0 ? null : collectNotes(home, project.id, notes)),
+  }
 }
 
 // The release's brief at stage 9: staging, where the hosting is described, the production smoke,
@@ -1401,13 +1561,14 @@ const decided = (d) => (/^- Decision: (.*)$/m.exec(d.text)?.[1] ?? '').trim().re
 // audit reads, which is the current requirements no screen cites, the manifest's citations that
 // aren't current, the screen files it doesn't list and its unreadable lines. A lane that skips
 // design is refused.
-export function designBrief(state, project) {
+export function designBrief(state, project, { home = os.homedir(), env = process.env } = {}) {
   const d = state.design
   if (d === null) return refuse(state.lane === null ? `Lane "${project.lane}" is not one of ${laneNames().join(', ')}.` : `The ${state.lane.name} lane skips design.`)
   const [narrow, wide] = d.widths
   const out = [
     `Design for this ${state.lane.name} project: each screen is drawn at ${narrow} and ${wide} pixels wide, in its default state and any of empty, loading and error.`,
     `Where it stands: ${d.complete ? 'the design is complete' : designWhy(d)}.`,
+    ...drawingLines(project, home, env),
     `The brief: design/brief.md is ${d.brief ? 'written' : 'missing'}; design/refs/ ${d.refs.length === 0 ? 'is empty' : `holds ${prose(d.refs)}`}.`,
     ...(cameWith(d)
       ? ['No directions: design/tokens.css came with the product, and amend and add follow it.']
@@ -1444,7 +1605,11 @@ const EXAMPLES = {
   manifest: 'design/manifest.md',
 }
 const USAGE =
-  'usage: node state.mjs [--ready [N | N.M] | --story N.M | --reviews | --review N.M | --ids | --retro | --release | --design | --lane plan|story|retro | --lanes | --example spec|stories|queue|decisions|manifest]'
+  'usage: node state.mjs [--ready [N | N.M] | --story N.M | --reviews | --review N.M | --ids | --retro | --compare [all] | --release | --design | --lane plan|story|retro | --lanes | --example spec|stories|queue|decisions|manifest]'
+// A batch's and a retro's calls fold the emitter's files, and start no pass of the fold once this
+// long has gone, so the files don't pile up where neither Harbor nor doctor runs, and no call
+// waits long for it.
+const FOLD_MS = 3_000
 // The flags that read a project for a batch, a ceremony, the design or a lane, each with a test of
 // its argument.
 const FLAGS = {
@@ -1454,6 +1619,7 @@ const FLAGS = {
   '--review': (arg) => STORY.test(arg ?? ''),
   '--ids': (arg) => arg === undefined,
   '--retro': (arg) => arg === undefined,
+  '--compare': (arg) => arg === undefined || arg === 'all',
   '--release': (arg) => arg === undefined,
   '--design': (arg) => arg === undefined,
   '--lane': (arg) => LANE_SECTIONS.some((section) => section.toLowerCase() === arg),
@@ -1483,8 +1649,15 @@ function cli(argv) {
       process.exitCode = 1
       return console.log(`.epikloop/project.json ${opened.problem}.`)
     }
-    const state = readState(opened.root, opened.project)
     const now = Date.now()
+    // Before anything reads the cost rows. An eval's session leaves the machine's files alone,
+    // and a fold that can't run fails nothing.
+    if ((flag === '--ready' || flag === '--retro') && !process.env.EPIKLOOP_EVAL) {
+      try {
+        foldAll(os.homedir(), now, { budget: FOLD_MS })
+      } catch {}
+    }
+    const state = readState(opened.root, opened.project)
     if (flag === '--ids') {
       const epic = `The next epic is ${nextEpic(state)}: it follows the epics in docs/stories/ and every feat(N.M) commit on the default branch.`
       return console.log([...nextIds(state, now), epic].join('\n'))
@@ -1502,9 +1675,14 @@ function cli(argv) {
       if (brief.fails) process.exitCode = 1
       return console.log(brief.text)
     }
+    if (flag === '--compare') {
+      const brief = compareBrief(opened.root, state, opened.project, { now, all: name === 'all' })
+      if (brief.fails) process.exitCode = 1
+      return console.log(brief.text)
+    }
     const facts = batchFacts(opened.root)
     if (flag === '--retro' || flag === '--release') {
-      const brief = flag === '--retro' ? retroBrief(state, opened.project, facts) : releaseBrief(state, opened.project, facts)
+      const brief = flag === '--retro' ? retroBrief(state, opened.project, facts, retroExtras(opened.root, opened.project, state, { now })) : releaseBrief(state, opened.project, facts)
       if (brief.fails) process.exitCode = 1
       return console.log(brief.text)
     }
@@ -1839,7 +2017,8 @@ const CASES = [
       const service = k.repo(spec, { marker: { lane: 'service' } })
       const unknown = k.repo(spec, { marker: { lane: 'desktop' } })
       const head = 'Design for this web project: each screen is drawn at 390 and 1280 pixels wide, in its default state and any of empty, loading and error.'
-      const lines = (...all) => `0 ${[head, ...all].join('\n')}\n`
+      const draws = 'The drawing model: none is set, so this session\'s own model draws. "model": { "design": "<name>" } in ~/.epikloop/config.json sets one.'
+      const lines = (stands, ...all) => `0 ${[head, stands, draws, ...all].join('\n')}\n`
       return k.expect([
         [
           k.run(fresh, '--design'),
@@ -2057,11 +2236,13 @@ const CASES = [
         '- 12.2 Story 12.2',
         "The evidence: the deep gates, `scripts/check.sh --deep` from Bash or `node .githooks/check.mjs --deep` from PowerShell; the gates' self-test, the same with `--self-test`; the staging smoke, though .epikloop/project.json has no staging_url: the human sets it, or the record says why there is no staging; and the human's click-through of these stories on staging.",
         `The web lane: ${readLane('web').sections.Retro.replace(/\s*\n\s*/g, ' ')}`,
-        'The visual compare covers 1 screen in design/manifest.md, 1 state in all, each at 390 and 1280 pixels.',
+        'The visual compare covers 1 screen in design/manifest.md, 1 state in all, each at 390 and 1280 pixels. After the deep gates, `state.mjs --compare` lists the pairs to read, and gives the line for the record.',
         'The queue: 0 questions and 1 backlog line.',
         'Reviews since the last retro: 2 (T1 1, T2 1); 1 had findings (T2 1), 1 finding in all.',
         'Rework since the last retro: none.',
         'There are no cost rows on this machine yet.',
+        'This machine has no event log, so nothing is counted for this project.',
+        "Notes for Epikloop in this project's records: none.",
         'The product is live, so this retro closes epic 12 and signs nothing off.',
         'The record, in docs/decisions.md: a decision titled "Phase 12 retro", DECISION-001.',
         'Landing: one commit whose subject is "chore(phase-12): retro", holding the record, the queue and whatever else the retro changes, on main, then `git push origin main`.',
@@ -2978,7 +3159,7 @@ const CASES = [
         '- 1.2 Story 1.2',
         "The evidence: the deep gates, `scripts/check.sh --deep` from Bash or `node .githooks/check.mjs --deep` from PowerShell; the gates' self-test, the same with `--self-test`; the staging smoke against https://staging.example.com/; and the human's click-through of these stories on staging.",
         `The web lane: ${readLane('web').sections.Retro.replace(/\s*\n\s*/g, ' ')}`,
-        'The visual compare covers 1 screen in design/manifest.md, 1 state in all, each at 390 and 1280 pixels.',
+        'The visual compare covers 1 screen in design/manifest.md, 1 state in all, each at 390 and 1280 pixels. After the deep gates, `state.mjs --compare` lists the pairs to read, and gives the line for the record.',
         'The queue: 1 question and 2 backlog lines; queue Δ 0 since the MVP set was frozen.',
         'Reviews since the last retro: 2 (T1 1, T2 1); none had findings.',
         'Rework since the last retro: none.',
@@ -2986,6 +3167,8 @@ const CASES = [
         '- T1 at low: 1 run, 10.0 min and $0.10 each on average',
         '- T1 at medium: 2 runs, 45.0 min and $0.30 each on average',
         '- T2 at high: 1 run, 60.0 min each on average',
+        'This machine has no event log, so nothing is counted for this project.',
+        "Notes for Epikloop in this project's records: none.",
         'The record, in docs/decisions.md: a decision titled "Phase 1 retro", DECISION-002.',
         'Landing: one commit whose subject is "chore(phase-1): retro", holding the record, the queue and whatever else the retro changes, on main, then `git push origin main`.',
         'Once it has landed, `--retro` again prints the tags.',
@@ -3152,7 +3335,15 @@ const CASES = [
       const problems = names.map((name) => [name, laneProblem(readLane(name), name)]).filter(([, problem]) => problem !== null)
       const good = { format: 1, name: 'x', description: 'a kind of product', requires: ['npx'], ui_test: { tool: 'T', package: 'p', allow: ['npx t run'] }, design: { widths: [390, 1280] }, sections: { Plan: 'p' } }
       const widths = 'has a design without its two widths, narrow first'
+      // A lane that says where its screens spec writes its pictures, in its profile and its text.
+      const rendered = { ...good, design: { widths: [390, 1280], renders: 'out/screens' }, sections: { Story: 'The spec writes `out/screens/<screen>.png`.' } }
+      const folder = 'has a design whose renders is not a folder inside the project'
       const bad = [
+        [{ ...rendered, design: { ...rendered.design, renders: '../screens' } }, folder],
+        [{ ...rendered, design: { ...rendered.design, renders: '/tmp/screens' } }, folder],
+        [{ ...rendered, design: { ...rendered.design, renders: 'out/screens/' } }, folder],
+        [{ ...rendered, design: { ...rendered.design, renders: 7 } }, folder],
+        [{ ...rendered, sections: { Story: 'The spec writes `shots/<screen>.png`.' } }, "has a design whose renders, out/screens, its fragment doesn't name"],
         [{ ...good, name: 'y' }, 'is named "y", not x'],
         [{ ...good, design: undefined }, widths],
         [{ ...good, design: { widths: [1280, 390] } }, widths],
@@ -3170,9 +3361,10 @@ const CASES = [
           [names.join(' '), 'service web'],
           [Object.keys(readLane('web').sections).join(' '), 'Plan Story Retro'],
           [Object.keys(readLane('service').sections).join(' '), 'Plan Story'],
-          [JSON.stringify(readLane('web').design), '{"widths":[390,1280]}'],
+          [JSON.stringify(readLane('web').design), '{"widths":[390,1280],"renders":"test-results/screens"}'],
           [readLane('service').design, null],
           [laneProblem(good, 'x'), null],
+          [laneProblem(rendered, 'x'), null],
           [laneProblem({ ...good, design: null }, 'x'), null],
           ...bad.map(([lane, wanted]) => [laneProblem(lane, 'x'), wanted]),
           // A name that climbs out of lanes/ to a JSON file that exists is still no lane.
@@ -3240,6 +3432,286 @@ const CASES = [
       return k.expect([[`${linked.status} ${linked.stdout}`, `0 ${k.cli(dir, ['--lanes']).stdout}`]])
     },
   ],
+  [
+    'a record may carry notes for Epikloop, any number of them, wherever they stand in its entry',
+    (k) => {
+      const fields = ['- Context: c', '- Decision: d', '- Rejected: r', '- Trade-offs: t', '- Implementation note: n']
+      const dir = k.folder({
+        'docs/decisions.md': [
+          '# Decisions',
+          '',
+          '## DECISION-001 Stack (2026-11-11)',
+          ...fields,
+          '',
+          '## DECISION-002 Phase 1 retro (2026-11-12)',
+          ...fields,
+          '- Epikloop: the push gate ran every test for a commit that changed only docs.',
+          '- Epikloop: the cap cut the build off twice.',
+          '- Epikloop: ',
+          '',
+          // A retro writes its notes last, and one written first reads too.
+          '## DECISION-003 Phase 2 retro (2026-11-13)',
+          '- Epikloop: nothing waited.',
+          ...fields,
+          '',
+          '## DECISION-004 Twice (2026-11-14)',
+          ...fields,
+          '- Context: again',
+          '',
+          // A line the reader doesn't know ends the fields, and the notes after it still read, as
+          // does one that sits under another line.
+          '## DECISION-005 Phase 3 retro (2026-11-15)',
+          ...fields,
+          '- MVP sign-off: left unsigned.',
+          '- Epikloop: the brief asks for staging where there is none.',
+          '',
+          'More, in prose.',
+          '  - Epikloop: a note under another line.',
+          '',
+        ].join('\n'),
+      })
+      const s = k.read(dir)
+      return k.expect([
+        [s.problems.filter((problem) => problem.startsWith('docs/decisions.md')).join(' | '), 'docs/decisions.md:34: DECISION-004 has a second Context'],
+        [s.decisions.map((d) => `${d.id} ${d.date} ${d.notes.length}`).join(', '), 'DECISION-001 2026-11-11 0, DECISION-002 2026-11-12 2, DECISION-003 2026-11-13 1, DECISION-004 2026-11-14 0, DECISION-005 2026-11-15 2'],
+        [s.decisions[1].notes.join(' / '), 'the push gate ran every test for a commit that changed only docs. / the cap cut the build off twice.'],
+        [s.decisions[4].notes.join(' / '), 'the brief asks for staging where there is none. / a note under another line.'],
+      ])
+    },
+  ],
+  [
+    "the retro's brief gives what the machine's log counted since the last retro, and collects the notes for Epikloop",
+    (k) => {
+      const files = planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', true]] })
+      files['docs/decisions.md'] = `${decisionsFile(['Stack', 'Phase 1 retro'])}- Epikloop: the cap cut the build off twice.\n`
+      const dir = k.repo(files, { freeze: true, frozenAgo: 9, marker: { gates: { cap_minutes: 20 } } })
+      k.commit(dir, 'feat(1.1): one', 8)
+      k.commit(dir, 'review(1.1): no findings', 6)
+      k.commit(dir, 'chore(phase-1): retro', 5)
+      k.git(dir, 'tag', 'phase-1')
+      // A branch of the tag's name, beside which git's short form calls the tag tags/phase-1.
+      k.git(dir, 'branch', 'phase-1')
+      k.commit(dir, 'feat(2.1): two', 2)
+      k.commit(dir, 'review(2.1): no findings', 1)
+      // A newer tag that closes no phase, which the counts don't start from.
+      k.git(dir, 'tag', 'checkpoint')
+      k.remote(dir)
+      const home = k.homeDir()
+      const at = (days, hours = 0) => new Date(NOW - days * DAY + hours * 3_600_000).toISOString()
+      const event = (ts, kind, fields) => `${JSON.stringify({ format: 1, ts, project_id: MARKER.id, cwd: dir, session_id: 's', kind, ...fields })}\n`
+      // The day before the last retro, which doesn't count, and a day since.
+      k.write(home, `.epikloop/events/${at(6).slice(0, 10)}.jsonl`, event(at(6), 'tool.post', { tool: 'Agent', detail: { is_error: true } }))
+      k.write(
+        home,
+        `.epikloop/events/${at(2).slice(0, 10)}.jsonl`,
+        [
+          event(at(2), 'gate.started', { detail: { mode: 'full', run: 'r1' } }),
+          event(at(2, 1), 'gate.failed', { state: 'test', detail: { mode: 'full', run: 'r1', ms: 1_150_000 } }),
+          event(at(2, 2), 'tool.post', { tool: 'Agent', detail: { is_error: false } }),
+          event(at(2, 3), 'tool.post', { tool: 'Agent', detail: { is_error: true } }),
+          event(at(2, 4), 'notification', { detail: { notification_type: 'permission_prompt' } }),
+        ].join(''),
+      )
+      const state = k.read(dir)
+      const brief = retroBrief(state, k.project, batchFacts(dir), retroExtras(dir, k.project, state, { now: NOW, home })).text
+      const notes = path.join(home, '.epikloop', 'projects', MARKER.id, 'notes.md')
+      const collected = fs.existsSync(notes) ? fs.readFileSync(notes, 'utf8').trimEnd().split('\n').at(-1) : 'no file'
+      return [
+        ...k.has(
+          `${brief}\n`,
+          "\nThis machine's event log for this project, since the phase-1 tag: 1 gate run, 0 with no result; the longest gate command was test, 1150 s of its 1200; 0 s waited for other gate runs; 2 Agent calls, 1 answered with an error; 1 permission prompt.\n",
+          `\nNotes for Epikloop in this project's records: 1, collected in ${notes}. Sending them as an issue is the human's: https://github.com/Yheng/Epikloop/issues.\n`,
+        ),
+        ...k.expect([[collected, '- 2026-11-10 · DECISION-002 Phase 1 retro · the cap cut the build off twice.']]),
+      ]
+    },
+  ],
+  [
+    'once its record has landed, the retro names the notes it carries, beside the tags',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', true]] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 0)
+      k.reviewed(dir, '1.1')
+      k.remote(dir)
+      k.write(dir, 'docs/decisions.md', `${decisionsFile(['Phase 1 retro'])}- Epikloop: the briefing took four seconds.\n`)
+      k.commit(dir, 'chore(phase-1): retro', 0)
+      k.git(dir, 'push', '-q', 'origin', 'main')
+      const notes = path.join(k.homeDir(), '.epikloop', 'projects', MARKER.id, 'notes.md')
+      return k.expect([
+        [
+          k.run(dir, '--retro'),
+          `0 Recorded: Phase 1 retro in DECISION-001. What's left is the tag: \`git tag phase-1\`, then \`git push origin phase-1\`.\nNotes for Epikloop in this project's records: 1, collected in ${notes}. Sending them as an issue is the human's: https://github.com/Yheng/Epikloop/issues.\n`,
+        ],
+        [fs.existsSync(notes), true],
+      ])
+    },
+  ],
+  [
+    '--compare lists the pictures a retro reads, against the list the last landed record names',
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', true]] }), { freeze: true, frozenAgo: 5 })
+      k.write(dir, '.gitignore', 'test-results/\n')
+      k.commit(dir, 'feat(1.1): one', 4)
+      const none = k.run(dir, '--compare')
+      for (const width of [390, 1280]) for (const kind of ['app', 'design']) k.png(dir, `home.default.${width}.${kind}.png`, [width, 800])
+      const first = k.run(dir, '--compare')
+      const code = /\(snapshot ([0-9a-f]{8})\)/.exec(first)?.[1]
+      const saved = path.join(k.homeDir(), '.epikloop', 'projects', MARKER.id, 'compare', `${code}.json`)
+      // The retro's record lands with the compare's line, and the phase is tagged.
+      k.write(dir, 'docs/decisions.md', decisionsFile(['Phase 1 retro']).replace('- Decision: d', `- Decision: d. Visual compare: 2 read, 0 unchanged, 0 changed and not read, 0 not rendered (snapshot ${code}).`))
+      k.commit(dir, 'chore(phase-1): retro', 3)
+      k.git(dir, 'tag', 'phase-1')
+      const same = k.run(dir, '--compare')
+      // A picture changes at its size while no story of the phase names its screen.
+      k.png(dir, 'home.default.1280.app.png', [1280, 800], 3)
+      const drifted = k.run(dir, '--compare')
+      // Asked for all, the compare lists that pair to read too. No record takes its line here, so
+      // nothing below trusts its list.
+      const all = k.run(dir, '--compare', 'all')
+      const allCode = /\(snapshot ([0-9a-f]{8})\)/.exec(all)?.[1]
+      // Then a fix for 1.1 lands, whose requirement the screen shows, and the other picture changes
+      // in size.
+      k.commit(dir, 'fix(1.1): the greeting', 2)
+      k.png(dir, 'home.default.390.app.png', [390, 640])
+      const changed = k.run(dir, '--compare')
+      const next = /\(snapshot ([0-9a-f]{8})\)/.exec(changed)?.[1]
+      // A later record lands with that compare's line, and is the one trusted from then on.
+      const records = () => fs.readFileSync(path.join(dir, 'docs', 'decisions.md'), 'utf8')
+      const line = /Visual compare: [^"\n]*\(snapshot [0-9a-f]{8}\)/.exec(changed)?.[0]
+      k.write(dir, 'docs/decisions.md', `${records()}\nThe compare after the fix. ${line}.\n`)
+      k.commit(dir, 'docs: a later record', 1)
+      const later = k.run(dir, '--compare')
+      // A code that a landed record only mentions, as a note might, names no list. The note also
+      // holds a byte that makes git take the file for no text, which hides no line from the compare.
+      k.write(dir, 'docs/decisions.md', `${records()}- Epikloop: the compare before it, (snapshot ${code}), was the first.\u0000\n`)
+      k.commit(dir, 'docs: a mention', 0)
+      const mentioned = k.run(dir, '--compare')
+      // A record that hasn't landed carries another compare's line, which nothing trusts yet.
+      k.write(dir, 'docs/decisions.md', `${records()}Visual compare: 2 read, 0 unchanged, 0 changed and not read, 0 not rendered (snapshot ${code}).\n`)
+      const unlanded = k.run(dir, '--compare')
+      const against = `0 The visual compare, against what the retro whose record names snapshot ${code} read on this machine.\n`
+      const againstNext = `0 The visual compare, against what the retro whose record names snapshot ${next} read on this machine.\n`
+      const nothing = 'Nothing to read: no picture is new or changed where a retro reads it.\n'
+      const service = k.repo(planned({ 1: [[1, 'T1', true]] }), { marker: { lane: 'service' } })
+      const undrawn = k.repo({ 'spec/app.md': APP_SPEC })
+      return [
+        ...k.expect([
+          [none, "1 No picture is in test-results/screens/, where the deep gates' e2e run writes them.\n"],
+          [fs.existsSync(saved), true],
+          [k.run(service, '--compare'), '1 The service lane has no pictures to compare.\n'],
+          [k.run(undrawn, '--compare'), '1 The visual compare waits for the design: design/manifest.md is missing.\n'],
+          [k.run(dir, '--compare', 'every'), `1 ${USAGE}\n`],
+        ]),
+        ...k.has(
+          first,
+          '0 The visual compare: no landed record names a snapshot yet, so every pair is read.\nRead these 2, each app picture beside its design picture, in test-results/screens/:\n- home, new: default.390, default.1280\nThe pictures were written from ',
+          `\nFor the record: "Visual compare: 2 read, 0 unchanged, 0 changed and not read, 0 not rendered (snapshot ${code})."\n`,
+        ),
+        ...(first.includes('older than the last commit') ? ['pictures written today were called older than a commit of days ago'] : []),
+        ...k.has(same, `${against}${nothing}Not read: 2 unchanged since a retro last read them.\n`),
+        ...k.has(
+          drifted,
+          `${against}${nothing}Not read: 1 unchanged since a retro last read them; 1 changed at the same size on screens no story or fix of this phase names, which stay listed until a retro reads them (home).\n\`state.mjs --compare all\` lists every changed pair to read, for a retro that reads those too.\n`,
+        ),
+        ...k.has(
+          all,
+          `${against}Read these 1, each app picture beside its design picture, in test-results/screens/:\n- home, changed: default.1280\nNot read: 1 unchanged since a retro last read them.\nThe pictures were written from `,
+          `\nFor the record: "Visual compare: 1 read, 1 unchanged, 0 changed and not read, 0 not rendered (snapshot ${allCode})."\n`,
+        ),
+        ...(allCode !== undefined && allCode !== code ? [] : [`the compare of all names ${allCode}`]),
+        ...k.has(changed, `${against}Read these 2, each app picture beside its design picture, in test-results/screens/:\n- home, resized: default.390 from 390x800 to 390x640\n- home, changed, and 1.1 names it: default.1280\n`),
+        ...(next !== undefined && next !== code ? [] : [`the compare after the fix names ${next}`]),
+        ...k.has(later, `${againstNext}${nothing}Not read: 2 unchanged since a retro last read them.\n`),
+        ...k.has(mentioned, againstNext),
+        ...k.has(unlanded, againstNext),
+      ]
+    },
+  ],
+  [
+    "a batch's and a retro's calls fold the emitter's files from the days before today, and a row a fold left twice counts once",
+    (k) => {
+      const dir = k.repo(planned({ 1: [[1, 'T1', true]], 2: [[1, 'T1', true]] }), { freeze: true })
+      k.commit(dir, 'feat(1.1): one', 0)
+      k.reviewed(dir, '1.1')
+      k.remote(dir)
+      const home = k.homeDir()
+      const row = JSON.stringify({ format: 1, ts: '2026-11-01T10:00:00.000Z', story: '1.1', tier: 'T1', agent: 'a1', wall: 600, cost: 0.1, model: 'm', effort: 'medium' })
+      const costs = path.join(home, '.epikloop', 'projects', MARKER.id)
+      // A fold that died between its append and its delete left this row in both places.
+      k.write(costs, 'cost.jsonl', `${row}\n`)
+      k.write(costs, 'cost/1792576800000-8d1e5c2a-1.json', `${row}\n`)
+      const day = (name) => path.join(home, '.epikloop', 'events', name)
+      const stop = `${JSON.stringify({ format: 1, kind: 'stop' })}\n`
+      k.write(day('2026-10-20'), '1792576800000-8d1e5c2a-1.json', stop)
+      const line = '- T1 at medium: 1 run, 10.0 min and $0.10 each on average\n'
+      // An eval's session leaves the machine's files as they are.
+      const asEval = k.cli(dir, ['--retro'], undefined, { EPIKLOOP_EVAL: '1' }).stdout
+      const kept = fs.existsSync(day('2026-10-20')) && fs.readdirSync(path.join(costs, 'cost')).length === 1
+      const brief = k.run(dir, '--retro')
+      // The retro's own call folded the day, before a batch's call could.
+      const atRetro = !fs.existsSync(day('2026-10-20')) && fs.existsSync(`${day('2026-10-20')}.jsonl`)
+      k.write(day('2026-10-21'), '1792576800000-8d1e5c2a-1.json', stop)
+      k.ready(dir, '2.1')
+      return [
+        ...k.has(asEval, line),
+        ...k.has(brief, line),
+        ...k.expect([
+          [kept, true],
+          [atRetro, true],
+          [fs.existsSync(day('2026-10-20')), false],
+          [fs.readFileSync(`${day('2026-10-20')}.jsonl`, 'utf8'), stop],
+          [fs.readFileSync(path.join(costs, 'cost.jsonl'), 'utf8'), `${row}\n${row}\n`],
+          [fs.existsSync(day('2026-10-21')), false],
+          [fs.existsSync(`${day('2026-10-21')}.jsonl`), true],
+        ]),
+      ]
+    },
+  ],
+  [
+    "a cost file that can't be read costs only itself, and the rows after it still count",
+    (k) => {
+      // A folder makes this case a home of its own.
+      k.folder()
+      const [home, id] = [k.homeDir(), MARKER.id]
+      const costs = path.join(home, '.epikloop', 'projects', id)
+      const row = (agent, wall) => `${JSON.stringify({ format: 1, ts: `2026-11-01T10:0${wall / 600}:00.000Z`, story: '1.1', tier: 'T1', agent, wall, cost: 0.1, model: 'm', effort: 'medium' })}\n`
+      k.write(costs, 'cost/1792576800000-8d1e5c2a-1.json', row('a1', 600))
+      // Another session's fold took this one between the listing and the read: here, a folder of
+      // its name stands in for it.
+      fs.mkdirSync(path.join(costs, 'cost', '1792576800001-8d1e5c2a-2.json'))
+      k.write(costs, 'cost/1792576800002-8d1e5c2a-3.json', row('a2', 1200))
+      return k.expect([[costRows(home, id).map((each) => `${each.agent} ${each.wall}`).join(', '), 'a1 600, a2 1200']])
+    },
+  ],
+  [
+    "--design says which model draws: the user's choice over the project's, and a value that is no name is passed over",
+    (k) => {
+      const dir = k.repo({ 'spec/app.md': APP_SPEC }, { marker: { model: { design: 'opus' } } })
+      const drawing = (env = {}) =>
+        designBrief(k.read(dir), k.project, { home: k.homeDir(), env })
+          .text.split('\n')
+          .filter((line) => line.startsWith('The drawing model'))
+          .join(' | ')
+      const project = drawing()
+      k.config('{"format":1,"model":{"design":"fable"}}')
+      const user = drawing()
+      const asEval = drawing({ EPIKLOOP_EVAL: '1' })
+      const cli = k.run(dir, '--design')
+      k.config('{"format":1,"model":{"design":"Fable 5.2"}}')
+      const passed = drawing()
+      k.config('{"format":1,"model":')
+      const broken = drawing()
+      const byProject = 'The drawing model: opus, which .epikloop/project.json sets.'
+      return k.expect([
+        [project, byProject],
+        [user, 'The drawing model: fable, which the human set in ~/.epikloop/config.json.'],
+        [asEval, byProject],
+        [cli.includes('\nThe drawing model: fable, which the human set in ~/.epikloop/config.json.\n'), true],
+        [passed, `The drawing model "Fable 5.2" in ~/.epikloop/config.json is no model name, a lowercase word such as fable, so it is passed over. | ${byProject}`],
+        [broken, byProject],
+      ])
+    },
+  ],
 ]
 
 async function selfTest() {
@@ -3248,7 +3720,7 @@ async function selfTest() {
   fs.writeFileSync(globalConfig, '[user]\n\tname = Self Test\n\temail = self-test@example.com\n[init]\n\tdefaultBranch = main\n')
   const env = {}
   for (const [key, value] of Object.entries(process.env)) {
-    if (!/^(?:GIT_.*|HOME|USERPROFILE)$/i.test(key)) env[key] = value
+    if (!/^(?:GIT_.*|HOME|USERPROFILE|EPIKLOOP_EVAL)$/i.test(key)) env[key] = value
   }
   Object.assign(env, { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: globalConfig, GIT_CEILING_DIRECTORIES: temp })
   // readState runs git in this process, so the scrubbed environment applies here too.
@@ -3334,10 +3806,25 @@ async function selfTest() {
     },
     // The user's settings in this case's home, as text.
     config: (text) => k.write(home, '.epikloop/config.json', text),
+    // This case's home.
+    homeDir: () => home,
+    // A picture in the web lane's folder, as its screens spec names one: a PNG's opening with its
+    // size, [width, height], and `seed` to tell two of a size apart.
+    png(dir, name, [width, height], seed = 1) {
+      const bytes = Buffer.alloc(37)
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0)
+      bytes.writeUInt32BE(13, 8)
+      bytes.write('IHDR', 12, 'latin1')
+      bytes.writeUInt32BE(width, 16)
+      bytes.writeUInt32BE(height, 20)
+      bytes.writeUInt32BE(seed, 33)
+      k.write(dir, `test-results/screens/${name}`, bytes)
+    },
     read: (dir, fields = {}) => readState(dir, { ...(k.project ?? MARKER), ...fields }, { now: NOW, home }),
-    // The CLI, run as a skill runs it, from `cwd`, with this case's home.
-    cli: (cwd, args = [], script = import.meta.filename) =>
-      spawnSync(process.execPath, [script, ...args], { cwd, env: { ...env, HOME: home, USERPROFILE: home }, encoding: 'utf8', windowsHide: true }),
+    // The CLI, run as a skill runs it, from `cwd`, with this case's home, and `more` in its
+    // environment.
+    cli: (cwd, args = [], script = import.meta.filename, more = {}) =>
+      spawnSync(process.execPath, [script, ...args], { cwd, env: { ...env, HOME: home, USERPROFILE: home, ...more }, encoding: 'utf8', windowsHide: true }),
     // The CLI's exit code and output for --ready, or for another batch flag.
     run(dir, ...args) {
       const run = k.cli(dir, args)

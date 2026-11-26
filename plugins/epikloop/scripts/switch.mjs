@@ -4,7 +4,8 @@
 //
 // Harbor lives in the optional epikloop-harbor plugin, and a plugin can't reach another plugin's
 // files, so Harbor's start-of-session hook records where it is installed, in
-// ~/.epikloop/harbor.json. Without that record, the answer is how to install it.
+// ~/.epikloop/harbor.json. Without that record, the answer is how to get the plugin to run:
+// installed from the marketplace, or loaded from its folder as the core may be.
 //
 //   node switch.mjs on|off|open
 //   node switch.mjs --self-test
@@ -15,7 +16,17 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const FILE = fileURLToPath(import.meta.url)
-const INSTALL = "its plugin, epikloop-harbor, isn't installed here: install it with `claude plugin install epikloop-harbor@epikloop`, then start a new session"
+
+// How Harbor's plugin comes to run in a session: installed from the marketplace, or, where the
+// core is loaded from a folder with --plugin-dir, loaded the same way beside it. `here` is the
+// folder of the core's scripts, and Harbor's folder is named when it lies beside the core's, as
+// in a checkout. doctor gives the same advice.
+export function installAdvice(here = path.dirname(FILE)) {
+  const beside = path.join(here, '..', '..', 'epikloop-harbor')
+  const folder = fs.existsSync(path.join(beside, 'harbor.mjs')) ? `"${beside}"` : "<the epikloop-harbor plugin's folder>"
+  return `install it with \`claude plugin install epikloop-harbor@epikloop\`, or, where the core is loaded with \`--plugin-dir\`, add a second \`--plugin-dir ${folder}\`, and then start a new session`
+}
+const missing = (here) => `its plugin, epikloop-harbor, hasn't run in a session here: ${installAdvice(here)}`
 
 function readJson(file) {
   try {
@@ -26,7 +37,8 @@ function readJson(file) {
 }
 
 // What the switch does for `command` in `home`: { code, text }, the exit code and what to print.
-export function flip(command, home) {
+// `here` is the folder of the core's scripts, for the advice.
+export function flip(command, home, here = path.dirname(FILE)) {
   if (!['on', 'off', 'open'].includes(command)) return { code: 1, text: 'usage: node switch.mjs on|off|open' }
   const dir = path.join(home, '.epikloop')
   if (command !== 'open') {
@@ -48,7 +60,13 @@ export function flip(command, home) {
   const root = readJson(path.join(dir, 'harbor.json'))?.root
   const harbor = typeof root === 'string' ? path.join(root, 'harbor.mjs') : null
   if (harbor === null || !fs.existsSync(harbor)) {
-    return { code: 0, text: command === 'on' ? `harbor: Harbor is on, but ${INSTALL}, which starts it` : `harbor: Harbor can't open, because ${INSTALL}` }
+    return {
+      code: 0,
+      text:
+        command === 'on'
+          ? `harbor: Harbor is on, but ${missing(here)}, which starts it. \`/epikloop:harbor off\` turns it off again.`
+          : `harbor: Harbor can't open, because ${missing(here)}. \`/epikloop:harbor off\` turns Harbor off.`,
+    }
   }
   const run = spawnSync(process.execPath, [harbor, command === 'on' ? 'start' : 'open'], { cwd: home, encoding: 'utf8', timeout: 15000, windowsHide: true })
   const said = `${run.stdout ?? ''}\n${run.stderr ?? ''}`.trim()
@@ -100,7 +118,10 @@ function selfTest() {
     config: (home) => fs.readFileSync(path.join(home, '.epikloop', 'config.json'), 'utf8'),
     expect: (pairs) => pairs.filter(([actual, wanted]) => JSON.stringify(actual) !== JSON.stringify(wanted)).map(([actual, wanted]) => `got ${JSON.stringify(actual)}, not ${JSON.stringify(wanted)}`),
   }
-  const install = "install it with `claude plugin install epikloop-harbor@epikloop`, then start a new session"
+  // The advice names Harbor's folder where it lies beside the core's, as it does in this checkout
+  // when the switch runs from here, and says what to name where it doesn't.
+  const beside = path.join(path.dirname(FILE), '..', '..', 'epikloop-harbor')
+  const install = `install it with \`claude plugin install epikloop-harbor@epikloop\`, or, where the core is loaded with \`--plugin-dir\`, add a second \`--plugin-dir "${beside}"\`, and then start a new session`
   const cases = [
     [
       'on, with no config yet, writes the flag and starts Harbor',
@@ -140,14 +161,36 @@ function selfTest() {
       },
     ],
     [
-      "without a record of Harbor's plugin, or with one whose folder is gone, it says how to install it",
+      "without a record of Harbor's plugin, or with one whose folder is gone, it says both ways to load it, and how to turn Harbor off",
       () => {
         const none = k.home({ root: null })
         const gone = k.home({ root: path.join(temp, 'gone') })
         return k.expect([
-          [k.run(none, 'on'), { code: 0, out: `harbor: Harbor is on, but its plugin, epikloop-harbor, isn't installed here: ${install}, which starts it\n`, called: [] }],
+          [k.run(none, 'on'), { code: 0, out: `harbor: Harbor is on, but its plugin, epikloop-harbor, hasn't run in a session here: ${install}, which starts it. \`/epikloop:harbor off\` turns it off again.\n`, called: [] }],
           [JSON.parse(k.config(none)).harbor, true],
-          [k.run(gone, 'open'), { code: 0, out: `harbor: Harbor can't open, because its plugin, epikloop-harbor, isn't installed here: ${install}\n`, called: [] }],
+          [k.run(gone, 'open'), { code: 0, out: `harbor: Harbor can't open, because its plugin, epikloop-harbor, hasn't run in a session here: ${install}. \`/epikloop:harbor off\` turns Harbor off.\n`, called: [] }],
+        ])
+      },
+    ],
+    [
+      "the advice names Harbor's folder only where it lies beside the core's",
+      () => {
+        // A core plugin's scripts folder with Harbor's plugin beside it, and one without.
+        const scripts = (name, harbor) => {
+          const here = path.join(temp, name, 'epikloop', 'scripts')
+          fs.mkdirSync(here, { recursive: true })
+          if (harbor) {
+            fs.mkdirSync(path.join(temp, name, 'epikloop-harbor'))
+            fs.writeFileSync(path.join(temp, name, 'epikloop-harbor', 'harbor.mjs'), '')
+          }
+          return here
+        }
+        const [checkout, installed] = [scripts('checkout', true), scripts('installed', false)]
+        const said = flip('open', k.home({ root: null }), installed).text
+        return k.expect([
+          [installAdvice(checkout).includes(`add a second \`--plugin-dir "${path.join(temp, 'checkout', 'epikloop-harbor')}"\``), true],
+          [installAdvice(installed).includes("add a second `--plugin-dir <the epikloop-harbor plugin's folder>`"), true],
+          [said.includes("`--plugin-dir <the epikloop-harbor plugin's folder>`") && said.includes('claude plugin install epikloop-harbor@epikloop'), true],
         ])
       },
     ],
