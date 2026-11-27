@@ -32,7 +32,7 @@ screens as the truth at story and retro time, and adopting a production reposito
 an earlier template layout and brings in the design the product has. Since then, solo mode has a
 review stage: a reviewer reads each story once it has landed, and the human settles what it finds.
 A retro notes what its phase showed about Epikloop itself, and reads the pictures that are new or
-changed.
+changed. On Windows, a gate run ends when the shell that started it is stopped.
 
 ## Map
 
@@ -74,8 +74,9 @@ changed.
     its self-test; `doctor` and the state reader call it
   - `templates/githooks/check.mjs` — the gate runner, which product repos carry as
     `.githooks/check.mjs`, with its self-test. Beside it are `templates/githooks/pre-commit` and
-    `pre-push`, and `templates/scripts/check.sh`, the shims that run it. The rest of the plugin
-    copies them verbatim.
+    `pre-push`, and `templates/scripts/check.sh`, the shims that run it; `check.sh` also names
+    the shell that started it, where Git for Windows runs it. The rest of the plugin copies them
+    verbatim.
   - `templates/github/workflows/check.yml` — team mode's required check, which runs the pre-push
     gates over a pull request's commits; and `templates/CLAUDE.template.md`, a product's
     `CLAUDE.md` (named apart, since a `CLAUDE.md` here would load in this repo's sessions). The
@@ -267,6 +268,8 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - It reads `Severity` and `Reworks`, and reports one that is malformed or not last. The retro's
     brief counts the reviews by tier and the rework that landed since the last retro, whatever
     its epic, and a reviewer's cost rows stay out of the ETA and show on a line of their own.
+  - It reads a record's fields wherever they stand in its entry, past a line the format doesn't
+    name and lines set under a field, and still reports one that is missing or given twice.
   - It reads the notes for Epikloop a record carries, wherever they stand in its entry, and gives
     a retro what the machine's log counted since the tag that closed the last one, beside a
     branch of that tag's name, with the notes collected on the way.
@@ -335,8 +338,12 @@ Validating the marketplace alone skips the plugins' own files, so run all three 
   - It holds one run's slow gates at a time, each case in a home of its own: a run waits for
     another's and reports the wait; a dead, overdue or unreadable lock is passed over; and a
     commit, a push the stamp covers, a run in CI and a run inside the holder never wait.
-  - Then it checks that each mutation of the secret scan and of that wait is caught, each against
-    its own case.
+  - It ends a run whose shell is gone, with a stand-in process for the shell: the command and
+    the lock go, and no stamp or result is written. A run whose shell lives, or was gone from
+    the start, runs to its end, and one that waits for other gates starts no command. On
+    Windows it ends the shell of a run started through `scripts/check.sh` under git's own sh.
+  - Then it checks that each mutation of the secret scan, of that wait and of that ending is
+    caught, each against its own case.
   - CI runs it again on Node 22.0.0, the floor.
 - **The fixture's self-test** builds every eval fixture in a temporary folder with a home of its
   own. It reads each fixture's stage as the briefing does, the web page's from stage 3 to 5, runs

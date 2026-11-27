@@ -128,6 +128,43 @@ All notable changes to Epikloop are recorded here.
 
 ### Changed
 
+- A gate run ends when the shell that started it is gone ([issue #14](https://github.com/Yheng/Epikloop/issues/14)).
+  - **The failure, read on 2026-11-27 from one project's first batch with the review stage, on
+    Windows.** A worker ran the full gates as a background command, and Claude Code stopped that
+    command because the machine was low on memory. The stop ended the session's own shells and
+    nothing under them: the gate runner went on for 9 more minutes with its test command, which
+    held about 12.6 GB while 4.1 GB of 31.7 GB was free. The session found the run, asked the
+    human what to do with it, and waited 49 minutes for the answer. The run passed, so the event
+    log holds it as a run with a result, and the retro's count of runs with no result can't show
+    it.
+  - Reproduced on 2026-11-27 with a stand-in: a command stopped in Git Bash leaves the shim's
+    shell, the program it ran and everything under that. Git for Windows starts a program
+    through a process that is gone at once, so no process that is stopped is the parent of what
+    is left. A command stopped in PowerShell takes everything with it.
+  - `scripts/check.sh` gains a line, adopted 2026-11-27, which names the shell that started it
+    in `CHECK_STARTER` where the shell can say which process it is. The runner looks for that
+    process every second while a gate's command runs. Once it is gone, the runner stops the
+    command with everything it started, gives the machine's lock back, and exits with no stamp
+    and no result. A run that waits for other gates stops waiting and starts no command.
+  - This change's first design had the runner look up the process that started its parent. The
+    stand-in showed that process gone before any stop, so the shim names the shell instead.
+  - A project takes the new files with `init.mjs --refresh`.
+- A record's fields are read wherever they stand in its entry (issue #14).
+  - **The failure.** The reader took a decision's fields from the unbroken run of field lines
+    that opens its entry. One project's retro record listed its evidence as lines set under a
+    field and was reformatted so that it read. In two trials of the retro's eval on 2026-11-26,
+    the session wrote a labelled line of its own before the last field, and the reader reported
+    three fields as missing that were there.
+  - Adopted 2026-11-27: each field is read at the start of a line anywhere in the entry, up to
+    the next heading. A field that is missing, or given twice, is still a problem. Stories,
+    questions and the design manifest are read as before.
+- A small fix that can't land is a backlog line (issue #14).
+  - **The failure, in the same batch of 2026-11-27.** A worker made a one-line fix after its
+    story landed. Its gate run was stopped, so it took the fix back and named it in its report,
+    of which the batch keeps one line. The worker's text gave a small mechanical finding one
+    route, its own commit, and the fix reached no backlog.
+  - Adopted 2026-11-27: the worker's sentence gives that finding a second route, one dated
+    backlog line, when its fix can't land.
 - A retro's visual compare reads the pictures that are new or changed ([issue #13](https://github.com/Yheng/Epikloop/issues/13)).
   - **The failure, read on 2026-11-26 from two projects' retro records and folders.** The
     compare was to read every designed state at both widths. One project renders 258 app

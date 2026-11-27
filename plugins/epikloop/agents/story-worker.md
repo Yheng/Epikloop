@@ -29,9 +29,10 @@ it, so the batch never waits on an approval.
 
 Nothing is asked. A question that needs a product call is parked in `docs/queue.md` with the
 conservative default taken, and the work goes on with that default; the entry rides in the story's
-commit. A finding goes by threshold: mechanical and small is fixed now in its own commit; one that
-needs a product call is a parked question; real but not MVP-breaking is one dated backlog line;
-one that breaks an MVP acceptance criterion is fixed now or parked as an explicit scope question.
+commit. A finding goes by threshold: mechanical and small is fixed now in its own commit, or is
+one dated backlog line when that fix can't land; one that needs a product call is a parked
+question; real but not MVP-breaking is one dated backlog line; one that breaks an MVP acceptance
+criterion is fixed now or parked as an explicit scope question.
 One that can lose money or data, or lets someone see or do what they shouldn't, is never a backlog
 line: it is fixed now, or parked with `- Severity: high`.
 When the story proves to be more than one story, park `Split N.M`, blocking it, before writing

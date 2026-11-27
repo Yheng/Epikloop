@@ -72,19 +72,15 @@ function readLines(root, rel) {
 }
 
 // Reads the `- Key: value` lines that open an entry, from line `i`, into `fields`. Returns the
-// index of the first line after them. A key in `many` may come any number of times, and reads as
-// the list of its values.
-function readFields(lines, i, names, fields, problem, many = []) {
+// index of the first line after them.
+function readFields(lines, i, names, fields, problem) {
   let at = i
   while (at < lines.length && lines[at].trim() === '' && Object.keys(fields).length === 0) at += 1
   for (; at < lines.length; at += 1) {
     const field = /^- ([A-Z][A-Za-z -]*): (.*)$/.exec(lines[at])
     if (field === null || !names.includes(field[1])) break
-    if (many.includes(field[1])) fields[field[1]] = [...(fields[field[1]] ?? []), field[2].trim()]
-    else {
-      if (field[1] in fields) problem(at + 1, `has a second ${field[1]}`)
-      fields[field[1]] = field[2].trim()
-    }
+    if (field[1] in fields) problem(at + 1, `has a second ${field[1]}`)
+    fields[field[1]] = field[2].trim()
   }
   return at
 }
@@ -268,8 +264,15 @@ function readDecisions(root, problems) {
     }
     const [, id, title, date] = heading
     if (decisions.some((d) => d.id === id)) problems.push(`${rel}:${i + 1}: ${id} appears twice`)
+    // A record's fields are read wherever they stand in its entry, so a line the format doesn't
+    // name, or lines set under a field, hide none of the fields after them.
     const fields = {}
-    readFields(lines, i + 1, ['Answers', ...required, 'Epikloop'], fields, (at, what) => problems.push(`${rel}:${at}: ${id} ${what}`), ['Epikloop'])
+    for (let n = i + 1; n < lines.length && !/^##? /.test(lines[n]); n += 1) {
+      const field = /^- ([A-Z][A-Za-z -]*): (.*)$/.exec(lines[n])
+      if (field === null || !['Answers', ...required].includes(field[1])) continue
+      if (field[1] in fields) problems.push(`${rel}:${n + 1}: ${id} has a second ${field[1]}`)
+      fields[field[1]] = field[2].trim()
+    }
     for (const field of required) if (fields[field] === undefined) problems.push(`${rel}:${i + 1}: ${id} has no ${field}`)
     const answers = fields.Answers !== undefined && /^Q-\d{3,}$/.test(fields.Answers) ? fields.Answers : null
     if (fields.Answers !== undefined && answers === null) problems.push(`${rel}:${i + 1}: ${id}'s Answers is not a Q-NNN`)
@@ -3476,6 +3479,70 @@ const CASES = [
         [s.decisions.map((d) => `${d.id} ${d.date} ${d.notes.length}`).join(', '), 'DECISION-001 2026-11-11 0, DECISION-002 2026-11-12 2, DECISION-003 2026-11-13 1, DECISION-004 2026-11-14 0, DECISION-005 2026-11-15 2'],
         [s.decisions[1].notes.join(' / '), 'the push gate ran every test for a commit that changed only docs. / the cap cut the build off twice.'],
         [s.decisions[4].notes.join(' / '), 'the brief asks for staging where there is none. / a note under another line.'],
+      ])
+    },
+  ],
+  [
+    "a record's fields are read wherever they stand in its entry",
+    (k) => {
+      const dir = k.folder({
+        'docs/decisions.md': [
+          '# Decisions',
+          '',
+          // A labelled line the format doesn't name, lines set under a field and a blank line stand
+          // between the fields.
+          '## DECISION-001 Phase 1 retro (2026-11-11)',
+          '- Answers: Q-007',
+          '- Context: c',
+          '- Decision: d',
+          '- Evidence: the smoke passed.',
+          '  - one line of it',
+          '  - Rejected: a line set under another is no field',
+          '',
+          '- Rejected: r',
+          'Prose between the fields.',
+          '- Trade-offs: t',
+          '- Implementation note: n',
+          '',
+          // A field that isn't there is still missing, whatever else the entry holds.
+          '## DECISION-002 Short (2026-11-12)',
+          '- Context: c',
+          '- Reviews: none waited.',
+          '- Decision: d',
+          '- Trade-offs: t',
+          '- Implementation note: n',
+          '',
+          // A field given twice is still a problem, with other lines between the two.
+          '## DECISION-003 Twice (2026-11-13)',
+          '- Context: c',
+          '- Decision: d',
+          '- Rejected: r',
+          '- Trade-offs: t',
+          '- Implementation note: n',
+          '',
+          'More, in prose.',
+          '- Decision: again',
+          '',
+          // The fields of one entry are not read into the entry before it.
+          '## DECISION-004 Empty (2026-11-14)',
+          '',
+          '## DECISION-005 Whole (2026-11-15)',
+          '- Context: c',
+          '- Decision: d',
+          '- Rejected: r',
+          '- Trade-offs: t',
+          '- Implementation note: n',
+          '',
+        ].join('\n'),
+      })
+      const s = k.read(dir)
+      const missing = ['Context', 'Decision', 'Rejected', 'Trade-offs', 'Implementation note'].map((field) => `docs/decisions.md:33: DECISION-004 has no ${field}`)
+      return k.expect([
+        [
+          s.problems.filter((problem) => problem.startsWith('docs/decisions.md')).join(' | '),
+          ['docs/decisions.md:16: DECISION-002 has no Rejected', 'docs/decisions.md:31: DECISION-003 has a second Decision', ...missing].join(' | '),
+        ],
+        [s.decisions.map((d) => `${d.id} ${d.answers}`).join(', '), 'DECISION-001 Q-007, DECISION-002 null, DECISION-003 null, DECISION-004 null, DECISION-005 null'],
       ])
     },
   ],

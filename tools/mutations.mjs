@@ -507,11 +507,13 @@ export const MUTATIONS = [
 
   // The state reader: the notes a record carries, the machine's counts in a retro's brief, the
   // drawing model, the lane's pictures, what a compare trusts, and the fold before a batch.
-  m(STATE, ['state'], "end a record's fields at a note for Epikloop", "['Answers', ...required, 'Epikloop'], fields,", "['Answers', ...required], fields,"),
+  m(STATE, ['state'], "end a record's fields at the first line that is no field", "if (field === null || !['Answers', ...required].includes(field[1])) continue", "if (field === null || !['Answers', ...required].includes(field[1])) break"),
+  m(STATE, ['state'], "read the next record's fields into a record", "for (let n = i + 1; n < lines.length && !/^##? /.test(lines[n]); n += 1) {", "for (let n = i + 1; n < lines.length; n += 1) {"),
+  m(STATE, ['state'], "let a record give a field twice", "      if (field[1] in fields) problems.push(`${rel}:${n + 1}: ${id} has a second ${field[1]}`)\n", ""),
+  m(STATE, ['state'], "take a line set under another for a record's field", "const field = /^- ([A-Z][A-Za-z -]*): (.*)$/.exec(lines[n])", "const field = /^\\s*- ([A-Z][A-Za-z -]*): (.*)$/.exec(lines[n])"),
   m(STATE, ['state'], "count an empty note", "/^[ \\t]*- Epikloop:[ \\t]*(\\S.*)$/gm", "/^[ \\t]*- Epikloop:[ \\t]*(.*)$/gm"),
   m(STATE, ['state'], "pass over a note that sits under another line", "/^[ \\t]*- Epikloop:[ \\t]*(\\S.*)$/gm", "/^- Epikloop:[ \\t]*(\\S.*)$/gm"),
   m(STATE, ['state'], "read a record's notes only among the fields that open it", "notes: notesIn(text), text })", "notes: (fields.Epikloop ?? []).filter(Boolean), text })"),
-  m(STATE, ['state'], "refuse a second note in a record", ", ['Epikloop'])", ")"),
   m(STATE, ['state'], "accept any key in a lane's design", "Object.keys(design).every((key) => key === 'widths' || key === 'renders')", "true"),
   m(STATE, ['state'], "accept a lane's renders outside the project", "if (renders !== undefined && !(typeof renders === 'string' && ", "if (false && !(typeof renders === 'string' && "),
   m(STATE, ['state'], "accept a lane's renders that its fragment doesn't name", "if (renders !== undefined && !Object.values(lane.sections).some(", "if (false && !Object.values(lane.sections).some("),

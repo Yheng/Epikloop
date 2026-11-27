@@ -583,7 +583,7 @@ The runner lives in your repository, so it works in a plain clone without the pl
 
 - `.githooks/check.mjs` is the runner, in Node.
 - `.githooks/pre-commit` and `.githooks/pre-push` are two-line hooks that run it.
-- `scripts/check.sh` is a two-line sh shim that runs it by hand and in CI. From PowerShell, run
+- `scripts/check.sh` is a three-line sh shim that runs it by hand and in CI. From PowerShell, run
   `node .githooks/check.mjs` instead, since on Windows a `.sh` file opens in Git Bash.
 
 | Mode | When | Runs |
@@ -631,6 +631,12 @@ The runner lives in your repository, so it works in a plain clone without the pl
   - A run that was killed is passed over at once, and a stuck one once its caps have run out.
   - A problem with the lock, `~/.epikloop/gates.lock`, is said in one line and holds nothing up.
     Nothing waits in CI, or where `~/.epikloop` is missing.
+- **A stopped run really stops.** On Windows, a session that stops a command it ran in Git Bash
+  ends only the shell, and the gates under it used to run on with their tests.
+  - `scripts/check.sh` tells the runner which shell started it. When that shell is gone, the
+    runner stops the command it is running with everything that command started, and exits.
+  - Such a run stamps nothing. In the event log it is a run that started and has no result.
+  - From PowerShell, and on macOS and Linux, a stopped command already takes its gates with it.
 - **The secret scan** covers:
   - secret files at any depth
   - current key formats and password-bearing database URLs, in added lines only
@@ -797,7 +803,7 @@ Epikloop owns exactly these files in a product repository, and nothing else, eve
 | `spec/` | The living spec: one `<capability>.md` per capability, with stable requirement IDs and business rules quoted verbatim, plus `architecture.md` |
 | `design/` | The design brief, `refs/`, `directions/`, `screens/`, `tokens.css`, `manifest.md` and the `index.html` gallery |
 | `docs/` | `stories/<epic>.md`, `decisions.md` (append-only `DECISION-XXX` entries) and `queue.md` (parked questions and backlog lines, each dated) |
-| `scripts/check.sh` and `.githooks/` | The gate runner, `.githooks/check.mjs`; the two-line hooks that run it; and a two-line sh shim that runs it by hand and in CI |
+| `scripts/check.sh` and `.githooks/` | The gate runner, `.githooks/check.mjs`; the two-line hooks that run it; and a three-line sh shim that runs it by hand and in CI |
 | `CLAUDE.md` | Project rules only, under 200 lines; the pipeline protocol arrives by hook instead |
 | One entry in the stack's install step | It arms `.githooks/` |
 | `.github/workflows/check.yml` | The required check, in team mode only: the pre-push gates over every commit a pull request adds |

@@ -77,7 +77,10 @@ Example: [`templates/docs/queue.md`](../plugins/epikloop/templates/docs/queue.md
 Example: [`templates/docs/decisions.md`](../plugins/epikloop/templates/docs/decisions.md).
 
 - **Entries.** Each entry is `## DECISION-NNN Title (YYYY-MM-DD)`, with these fields: `- Context:`,
-  `- Decision:`, `- Rejected:`, `- Trade-offs:` and `- Implementation note:`.
+  `- Decision:`, `- Rejected:`, `- Trade-offs:` and `- Implementation note:`. The reader takes
+  each field wherever it stands in the entry, at the start of a line: a line the format doesn't
+  name, or lines set under a field, hide none of the fields after them. A field that is missing,
+  or given twice, is a problem.
 - **Answers.** An entry that answers a parked question also carries `- Answers: Q-NNN`.
 - **Records.** The closing ceremonies record themselves as entries with fixed titles: `retro`
   writes `Phase N retro`, the MVP sign-off `MVP sign-off`, and `release` `Go live`, or

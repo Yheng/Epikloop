@@ -84,8 +84,9 @@ Nothing else, ever.
 - **Teammates are gated too.**
   - `.githooks/` holds the gate runner, `check.mjs`, and the two-line `pre-commit` and `pre-push`
     hooks that run it. The stack's install step arms them.
-  - `scripts/check.sh` (the name is brand-free) is a two-line sh shim that runs the same runner by
-    hand and in CI.
+  - `scripts/check.sh` (the name is brand-free) is a three-line sh shim that runs the same runner
+    by hand and in CI. Its middle line names the shell that started it, where Git for Windows
+    runs it.
   - All of it works in a plain clone without the plugin, which teammates' git hooks and the
     team-mode CI check need.
 - **Solo or team.** Team mode is the standard; solo is supported.
@@ -324,6 +325,18 @@ How the gates run:
     runs overlap, as a dead run's own commands can with the run that follows it.
   - A gate command is told the run it is inside, as `CHECK_INSIDE`, and a run it starts doesn't
     wait for that run.
+- **A run ends with the shell that started it.** Under Git for Windows, a shell that is stopped
+  takes nothing it started with it, so a run that a session stopped went on with its commands
+  ([issue #14](https://github.com/Yheng/Epikloop/issues/14)).
+  - `scripts/check.sh` names its shell's process in `CHECK_STARTER`, where the shell can say
+    which process it is. Nowhere else does it name one, and nothing is watched.
+  - While a gate's command runs, the runner looks for that process every second. Once it is
+    gone, the runner stops the command with everything it started, gives the lock back and
+    exits. A run that waits for other gates stops waiting, and starts no command.
+  - Such a run stamps nothing and writes no result, so the event log keeps a start with no
+    result, which a retro's brief counts.
+  - A process that is already gone when the run begins, or a value that is no process id, is
+    not watched. A run started through another script is watched against that script's shell.
   - Nothing waits in CI, where `~/.epikloop/` is missing, or with `CHECK_NO_WAIT` set. The eval
     runner sets it, since its sessions are timed and run under the machine's own home.
   - Waiting runs have no order among them, and one checkout has no lock of its own: in 1,310 runs

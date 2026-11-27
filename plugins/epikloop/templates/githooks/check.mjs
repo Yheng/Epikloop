@@ -13,7 +13,8 @@
 // The slow gates, test, build and e2e, don't start once a quick one has failed. A green run stamps
 // the working state it checked, and a commit, a push or a deep run of that state skips what the
 // stamp covers; a full run skips nothing. One run's slow gates are at work at a time on a machine:
-// a run that finds another's at work waits for them, and goes on by itself.
+// a run that finds another's at work waits for them, and goes on by itself. A run that
+// scripts/check.sh started from a shell on Windows ends when that shell does.
 //
 // It prints failures and one summary line, and never a secret's value. It fails unless it ends
 // green: the hooks set exit code 1 before they load it, and so does its first statement.
@@ -49,14 +50,19 @@ const GIVE_UP = 8
 const LONGEST = 3 * 61 * 60_000
 // The run whose lock this process holds, which its gate commands are told.
 let INSIDE = null
+// The shell that started this run, which a gate command is watched against: its process id, or
+// null. Under Git for Windows a shell that is stopped takes nothing it started with it, so
+// scripts/check.sh names its shell in CHECK_STARTER there, and a command looks for it every LOOK.
+let STARTER = null
 const ZERO = /^0+$/
 const POSIX = process.platform !== 'win32'
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 // Runs a program to its end or its cap, keeping all of its output. It settles once the program has
 // exited and its pipes have closed; a shell command gets two seconds after its exit, in case a
-// grandchild still holds the pipes.
-function run(file, args, { cwd, env, input, timeout, shell = false } = {}) {
+// grandchild still holds the pipes. With a `starter`, a process id, the program is also stopped,
+// with everything it started, once that process is gone, and the result says so as `orphaned`.
+function run(file, args, { cwd, env, input, timeout, shell = false, starter = null } = {}) {
   return new Promise((resolve) => {
     const out = []
     const err = []
@@ -64,21 +70,31 @@ function run(file, args, { cwd, env, input, timeout, shell = false } = {}) {
     let child
     let exit = {}
     let timedOut = false
+    let orphaned = false
     let settled = false
     let grace
     const timer = setTimeout(() => {
       timedOut = true
       stop(child)
     }, timeout)
+    const watch =
+      starter === null
+        ? null
+        : setInterval(() => {
+            if (orphaned || alive(starter)) return
+            orphaned = true
+            stop(child)
+          }, LOOK)
     const settle = (extra = {}) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
       clearTimeout(grace)
+      clearInterval(watch)
       child?.stdout?.destroy()
       child?.stderr?.destroy()
       const stdout = Buffer.concat(out)
-      resolve({ ...exit, ...extra, timedOut, stdout, stderr: Buffer.concat(err), all: Buffer.concat(all) })
+      resolve({ ...exit, ...extra, timedOut, orphaned, stdout, stderr: Buffer.concat(err), all: Buffer.concat(all) })
     }
     try {
       child = spawn(file, args, {
@@ -858,7 +874,11 @@ async function commandGate(name, spec) {
   }
   if (spec.auto) Object.assign(env, { COREPACK_ENABLE_NETWORK: '0', UV_OFFLINE: '1', GOPROXY: 'off', RUSTUP_AUTO_INSTALL: '0' })
   if (INSIDE !== null) env.CHECK_INSIDE = INSIDE
-  const r = await run(spec.command, [], { env, timeout: CAP, shell: true })
+  // A command isn't started for a shell that is gone, and one stopped because its shell went ends
+  // the run: nobody is there to read why.
+  if (STARTER !== null && !alive(STARTER)) return { status: 'fail', orphaned: true }
+  const r = await run(spec.command, [], { env, timeout: CAP, shell: true, starter: STARTER })
+  if (r.orphaned) return { status: 'fail', orphaned: true }
   if (!r.error && !r.timedOut && r.code === 0) return { status: 'ok' }
   const output = redact(r.all.toString('utf8').replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''))
   const log = await saveLog(name, output)
@@ -1143,6 +1163,13 @@ function alive(pid) {
   }
 }
 
+// The process CHECK_STARTER names, when it is a process id and that process is there; null for
+// anything else, which no run is watched against.
+function starterOf(env) {
+  const pid = Number(env.CHECK_STARTER)
+  return Number.isInteger(pid) && pid > 0 && pid < 2 ** 31 && alive(pid) ? pid : null
+}
+
 // The lock's record, or null for anything else. A record is judged by its fields, so runners of
 // different versions read each other's: a run id, a process id, and a time to hold the lock until
 // that a run could have set.
@@ -1238,6 +1265,8 @@ async function takeLock(ctx, gates) {
         return { held: true, waited: said.size > 0 ? performance.now() - began : 0 }
       }
       if (seen === 'none' || seen === 'inside') return none
+      // A run whose shell is gone waits for nothing: its first command finds the shell gone.
+      if (STARTER !== null && !alive(STARTER)) return none
       if (seen.stuck === undefined) {
         tries = 0
         if (!said.has(seen.run)) console.log(redact(waitingLine(seen)))
@@ -1298,6 +1327,7 @@ async function main(argv) {
   process.chdir(top)
   const ctx = { mode, top, config: null, commands: null, push: null, before: null, work: null, stamped: null, run: crypto.randomBytes(4).toString('hex') }
   let results = null
+  let orphaned = false
   try {
     ctx.config = readConfig()
   } catch (error) {
@@ -1333,6 +1363,7 @@ async function main(argv) {
     // the wait for it is outside every gate's own time and cap.
     const slow = names.filter((name) => HEAVY.includes(name) && ctx.commands[name] !== null && skip(name) === null)
     let lock = null
+    STARTER = starterOf(process.env)
     for (const name of names) {
       const why = skip(name)
       // A slow gate doesn't start once a quick one has failed.
@@ -1343,10 +1374,20 @@ async function main(argv) {
         const first = lock === null && slow.includes(name)
         if (first) lock = await takeLock(ctx, slow.length)
         const r = await gate(name, () => commandGate(name, ctx.commands[name]))
+        if (r.orphaned) {
+          orphaned = true
+          break
+        }
         results.push(first && lock.waited > 0 ? { ...r, waited: lock.waited } : r)
       }
     }
     if (lock?.held) releaseLock(ctx)
+  }
+  // A run whose shell is gone has stopped its command and given the lock back. It stamps nothing
+  // and writes no result, so the event log keeps it as a run that was started and didn't end.
+  if (orphaned) {
+    const label = mode === 'full' ? 'check' : `check --${mode}`
+    return console.log(`${label}: FAIL · stopped, since the shell that started this run is gone · ${((performance.now() - started) / 1000).toFixed(1)} s`)
   }
   const green = results.every((r) => r.status !== 'fail')
   // A stamp is earned by a run that ran all four stamped commands itself, or by a green one whose
@@ -1493,7 +1534,7 @@ function kit(temp, source, shims) {
   fs.writeFileSync(globalConfig, '[maintenance]\n\tauto = false\n')
   const base = {}
   for (const [key, value] of Object.entries(process.env)) {
-    if (!/^(?:GIT_.*|CI|CLAUDE_CODE_SESSION_ID|CHECK_TIMEOUT_MS|CHECK_INSIDE|CHECK_NO_WAIT|HOME|USERPROFILE)$/i.test(key)) base[key] = value
+    if (!/^(?:GIT_.*|CI|CLAUDE_CODE_SESSION_ID|CHECK_TIMEOUT_MS|CHECK_INSIDE|CHECK_NO_WAIT|CHECK_STARTER|HOME|USERPROFILE)$/i.test(key)) base[key] = value
   }
   Object.assign(base, {
     GIT_CONFIG_NOSYSTEM: '1',
@@ -1526,6 +1567,7 @@ function kit(temp, source, shims) {
     "const read = (suffix) => (fs.existsSync(file(suffix)) ? fs.readFileSync(file(suffix), 'utf8') : '')",
     "fs.writeFileSync(file('inside'), process.env.CHECK_INSIDE ?? '')",
     "fs.appendFileSync(file('count'), 'x')",
+    "fs.writeFileSync(file('pid'), String(process.pid))",
     "process.stdout.write(read('print') || `${name} ran\\n`)",
     // A held command waits for its go file, for 100 seconds at most.
     "for (let i = 0; read('hold') && !fs.existsSync(file('go')) && i < 2000; i += 1) await new Promise((resolve) => setTimeout(resolve, 50))",
@@ -2973,6 +3015,18 @@ function queueCases(k) {
     if (!fs.existsSync(events)) return []
     return fs.readdirSync(events).flatMap((day) => fs.readdirSync(path.join(events, day)).map((name) => JSON.parse(fs.readFileSync(path.join(events, day, name), 'utf8'))))
   }
+  // A stand-in for the shell that started a run: a process a case ends when it chooses.
+  const standIn = () => spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120000)'], { stdio: 'ignore', windowsHide: true })
+  const ended = (child) =>
+    new Promise((resolve) => {
+      child.once('exit', resolve)
+      child.kill()
+    })
+  // Whether a process is gone, within ten seconds.
+  const goes = async (pid) => {
+    for (let i = 0; i < 200 && alive(pid); i += 1) await sleep(50)
+    return !alive(pid)
+  }
   const slashed = (text) => text.split('\\').join('/')
   // The end of a repository's folder as git names it, whatever form the temporary folder's own
   // path takes on the way there.
@@ -3259,6 +3313,125 @@ function queueCases(k) {
         )
       },
     ],
+    [
+      'a run ends when the shell that started it is gone',
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        const shell = standIn()
+        try {
+          setState(r, 'test', 'hold', '1')
+          // The cap, twenty seconds, is what ends the command of a runner that doesn't watch its shell.
+          const run = start(r, [], { env: at(home, { CHECK_STARTER: String(shell.pid), CHECK_TIMEOUT_MS: '20000' }) })
+          const began = await appears(path.join(r.state, 'test.pid'))
+          const command = Number(fs.readFileSync(path.join(r.state, 'test.pid'), 'utf8'))
+          await ended(shell)
+          const since = performance.now()
+          const res = await run.done
+          const took = performance.now() - since
+          const kinds = eventsOf(home).map((e) => e.kind)
+          return every(
+            began || 'the test command never started',
+            (res.code > 0 && /^check: FAIL · stopped, since the shell that started this run is gone · \d+\.\d s\s*$/m.test(res.out)) || `expected the run to say it stopped; got exit ${res.code}: ${k.brief(res.out)}`,
+            took < 10_000 || `the run went on for ${Math.round(took)} ms after its shell was gone`,
+            (await goes(command)) || 'the command it was running is still there',
+            runs(r, 'build') === 0 || 'build ran after the shell was gone',
+            lockOf(home) === null || 'the lock was left behind',
+            !fs.existsSync(path.join(r.dir, '.git', 'check-stamp.json')) || 'the run stamped the tree',
+            (kinds.length === 1 && kinds[0] === 'gate.started') || `its events: ${kinds.join(', ')}`,
+          )
+        } finally {
+          shell.kill()
+        }
+      },
+    ],
+    [
+      'a run whose shell lives runs to its end',
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        // The shell is this self-test's own process. The test command is held for longer than a
+        // runner takes to look for its shell again.
+        setState(r, 'test', 'hold', '1')
+        const run = start(r, [], { env: at(home, { CHECK_STARTER: String(process.pid) }) })
+        await appears(path.join(r.state, 'test.pid'))
+        await sleep(2500)
+        setState(r, 'test', 'go', '1')
+        const res = await run.done
+        return every(passes(res), runs(r, 'build') === 1 || `build ran ${runs(r, 'build')} times`, fs.existsSync(path.join(r.dir, '.git', 'check-stamp.json')) || 'no stamp was written', lockOf(home) === null || 'the lock was left behind')
+      },
+    ],
+    [
+      "a shell that is gone when the run begins isn't watched, nor a value that is no process",
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        const outcomes = []
+        for (const value of ['2147483644', '0', '-4', '4294967300', 'bash', '']) {
+          const res = await start(r, [], { env: at(home, { CHECK_STARTER: value }) }).done
+          outcomes.push(passes(res) === true || `with CHECK_STARTER=${JSON.stringify(value)}: ${k.brief(res.out)}`)
+        }
+        return every(...outcomes, runs(r, 'test') === 6 || `test ran ${runs(r, 'test')} times`)
+      },
+    ],
+    [
+      'a run whose shell goes while it waits for other gates starts none of its own',
+      async (src) => {
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        const shell = standIn()
+        try {
+          const theirs = plant(home, live())
+          const run = start(r, [], { env: at(home, { CHECK_STARTER: String(shell.pid) }) })
+          const waited = await run.said('waiting for the gates of')
+          await ended(shell)
+          const stopped = await Promise.race([run.done.then(() => true), sleep(6000).then(() => false)])
+          const kept = lockOf(home)
+          // A run that still waits is let through, so that it ends.
+          if (!stopped) fs.rmSync(lockFile(home), { force: true })
+          const res = await run.done
+          return every(
+            waited || 'the run did not wait',
+            stopped || 'it went on waiting once its shell was gone',
+            res.out.includes('stopped, since the shell that started this run is gone') || `expected the run to say it stopped: ${k.brief(res.out)}`,
+            runs(r, 'test') === 0 || 'its test command was started',
+            kept === theirs || "the other run's lock was touched",
+          )
+        } finally {
+          shell.kill()
+        }
+      },
+    ],
+    [
+      'scripts/check.sh names the shell that started it, where Git for Windows runs it',
+      async (src) => {
+        // Elsewhere a stopped shell takes what it started with it, and the shim names nothing.
+        if (POSIX) return true
+        const r = await makeRepo({ src, commands: true })
+        const home = homeOf(r)
+        setState(r, 'test', 'hold', '1')
+        // git runs an alias that starts with ! in its own sh, which here says which process it is,
+        // starts the gates and stays. Ending that sh is what a session's stopped command comes to.
+        const alias = 'alias.gates=!cat /proc/$$/winpid > "$SELFTEST_STATE/shell.pid"; scripts/check.sh; true'
+        const run = exec('git', ['-c', alias, 'gates'], { cwd: r.dir, env: at(home, { SELFTEST_STATE: r.state, CHECK_TIMEOUT_MS: '8000' }) })
+        const began = (await appears(path.join(r.state, 'test.pid'))) && fs.existsSync(path.join(r.state, 'shell.pid'))
+        const command = began ? Number(fs.readFileSync(path.join(r.state, 'test.pid'), 'utf8')) : 0
+        const shell = began ? Number(fs.readFileSync(path.join(r.state, 'shell.pid'), 'utf8')) : 0
+        try {
+          if (shell > 0) process.kill(shell)
+        } catch {}
+        const went = command > 0 && (await goes(command))
+        if (!went) setState(r, 'test', 'go', '1')
+        const res = await run
+        return every(
+          began || "the gates never started under git's sh",
+          went || 'the test command went on after its shell was ended',
+          res.out.includes('stopped, since the shell that started this run is gone') || `expected the run to say it stopped: ${k.brief(res.out)}`,
+          runs(r, 'build') === 0 || 'build ran after the shell was gone',
+          lockOf(home) === null || 'the lock was left behind',
+        )
+      },
+    ],
   ]
 }
 
@@ -3351,6 +3524,17 @@ function mutations() {
     ["another run's folder printed as it is", [['/[\\u0000-\\u001f\\u007f]/.test(cwd) ? JSON.stringify(cwd) : cwd', 'cwd']], "what a waiting run says of another run's record is cleaned"],
     ["another run's folder printed at any length", [['record.cwd.slice(0, 200)', 'record.cwd']], "what a waiting run says of another run's record is cleaned"],
     ['any mode printed', [["['fast', 'full', 'push', 'deep'].includes(record.mode) ? record.mode : '?'", 'record.mode']], "what a waiting run says of another run's record is cleaned"],
+    // A run ends when the shell that started it is gone.
+    ['the shell never read', [['    STARTER = starterOf(process.env)\n', '']], 'a run ends when the shell that started it is gone'],
+    ['a shell that is gone not looked for', [['            if (orphaned || alive(starter)) return\n', '            return\n']], 'a run ends when the shell that started it is gone'],
+    ['the command left running when its shell is gone', [['            orphaned = true\n            stop(child)\n', '            orphaned = true\n']], 'a run ends when the shell that started it is gone'],
+    ['a stopped run goes on to its next gate', [['        if (r.orphaned) {\n          orphaned = true\n          break\n        }\n', '']], 'a run ends when the shell that started it is gone'],
+    ['a stopped run reported as one that ended', [['    return console.log(`${label}: FAIL · stopped, since', '    console.log(`${label}: FAIL · stopped, since']], 'a run ends when the shell that started it is gone'],
+    ['the lock kept by a run whose shell went', [['    if (lock?.held) releaseLock(ctx)\n', '']], 'a run ends when the shell that started it is gone'],
+    ['every shell taken as gone', [['            if (orphaned || alive(starter)) return\n', '            if (orphaned) return\n']], 'a run whose shell lives runs to its end'],
+    ['a shell gone at the start watched', [['pid < 2 ** 31 && alive(pid) ? pid : null', 'pid < 2 ** 31 ? pid : null']], "a shell that is gone when the run begins isn't watched, nor a value that is no process"],
+    ['a waiting run goes on waiting when its shell is gone', [['      if (STARTER !== null && !alive(STARTER)) return none\n', '']], 'a run whose shell goes while it waits for other gates starts none of its own'],
+    ['a command started for a shell that is gone', [["  if (STARTER !== null && !alive(STARTER)) return { status: 'fail', orphaned: true }\n", '']], 'a run whose shell goes while it waits for other gates starts none of its own'],
   ]
 }
 
